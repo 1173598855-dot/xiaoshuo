@@ -1,0 +1,123 @@
+import type { ProviderCatalogEntry } from "./types";
+
+const PROVIDER_CATALOG = [
+  {
+    id: "openai",
+    kind: "openai",
+    name: "OpenAI",
+    description: "OpenAI Responses API",
+    defaultModel: "gpt-5.6-sol",
+    models: [
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", role: "quality" },
+      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", role: "balanced" },
+      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", role: "fast" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+  },
+  {
+    id: "anthropic",
+    kind: "anthropic",
+    name: "Anthropic",
+    description: "Claude Messages API",
+    defaultModel: "claude-opus-4-8",
+    models: [
+      { id: "claude-opus-4-8", label: "Claude Opus 4.8", role: "quality" },
+      { id: "claude-sonnet-5", label: "Claude Sonnet 5", role: "balanced" },
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", role: "fast" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+  },
+  {
+    id: "google",
+    kind: "google",
+    name: "Google Gemini",
+    description: "Google GenAI API",
+    defaultModel: "gemini-2.5-pro",
+    models: [
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", role: "quality" },
+      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", role: "fast" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+  },
+  {
+    id: "deepseek",
+    kind: "openai-compatible",
+    name: "DeepSeek",
+    description: "DeepSeek OpenAI-compatible API",
+    defaultModel: "deepseek-chat",
+    models: [
+      { id: "deepseek-chat", label: "DeepSeek Chat", role: "balanced" },
+      { id: "deepseek-reasoner", label: "DeepSeek Reasoner", role: "quality" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+    baseUrl: "https://api.deepseek.com",
+  },
+  {
+    id: "qwen",
+    kind: "openai-compatible",
+    name: "通义千问",
+    description: "DashScope OpenAI-compatible API",
+    defaultModel: "qwen-plus",
+    models: [
+      { id: "qwen-plus", label: "Qwen Plus", role: "balanced" },
+      { id: "qwen-max", label: "Qwen Max", role: "quality" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    id: "openrouter",
+    kind: "openai-compatible",
+    name: "OpenRouter",
+    description: "OpenRouter model gateway",
+    defaultModel: "openrouter/auto",
+    models: [{ id: "openrouter/auto", label: "Auto Router", role: "balanced" }],
+    modelEditable: true,
+    requiresApiKey: true,
+    baseUrl: "https://openrouter.ai/api/v1",
+  },
+  {
+    id: "siliconflow",
+    kind: "openai-compatible",
+    name: "SiliconFlow",
+    description: "SiliconFlow OpenAI-compatible API",
+    defaultModel: "Qwen/Qwen3-32B",
+    models: [
+      { id: "Qwen/Qwen3-32B", label: "Qwen3 32B", role: "balanced" },
+    ],
+    modelEditable: true,
+    requiresApiKey: true,
+    baseUrl: "https://api.siliconflow.cn/v1",
+  },
+  {
+    id: "ollama",
+    kind: "openai-compatible",
+    name: "Ollama",
+    description: "Local models through Ollama",
+    defaultModel: "qwen3:8b",
+    models: [{ id: "qwen3:8b", label: "Qwen3 8B", role: "local" }],
+    modelEditable: true,
+    requiresApiKey: false,
+    baseUrl: "http://127.0.0.1:11434/v1",
+  },
+  {
+    id: "custom",
+    kind: "openai-compatible",
+    name: "自定义兼容端点",
+    description: "Any OpenAI-compatible chat completions endpoint",
+    defaultModel: "",
+    models: [],
+    modelEditable: true,
+    requiresApiKey: true,
+    baseUrlEditable: true,
+  },
+] as const satisfies readonly ProviderCatalogEntry[];
+
+export function getProviderCatalog(): readonly ProviderCatalogEntry[] {
+  return PROVIDER_CATALOG;
+}

@@ -163,39 +163,39 @@ Expected: PASS.
 - Produces: `GenerationService.generate(input): Promise<GenerationDto>`
 - Produces: `GenerationService.accept(id): Promise<{ generation; chapter }>`
 
-- [ ] **Step 1: Write provider catalog RED**
+- [x] **Step 1: Write provider catalog RED**
 
 Assert that OpenAI, Anthropic, Google, custom compatible, and Ollama presets expose distinct adapter kinds, editable model IDs, required fields, and no credentials.
 
-- [ ] **Step 2: Implement catalog and adapter contract**
+- [x] **Step 2: Implement catalog and adapter contract**
 
 Define normalized error codes `AUTHENTICATION_FAILED`, `RATE_LIMITED`, `UPSTREAM_UNAVAILABLE`, `REQUEST_INVALID`, `REQUEST_ABORTED`, and `UNKNOWN_PROVIDER_ERROR`.
 
-- [ ] **Step 3: Write generation RED**
+- [x] **Step 3: Write generation RED**
 
 Use a fake provider that returns `风从城门外吹来。`. Assert that generation stores `baseRevision` and candidate without changing the chapter, accept appends exactly once, discard never changes content, and a chapter edit between generate and accept produces `REVISION_CONFLICT`.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 Run: `npm run test:run -- tests/server/generation-service.test.ts`
 
 Expected: FAIL because generation behavior does not exist.
 
-- [ ] **Step 5: Implement prompt builder, adapters, and transaction**
+- [x] **Step 5: Implement prompt builder, adapters, and transaction**
 
 OpenAI uses the official Responses API and reads `output_text`. Anthropic uses `client.messages.create` and narrows text blocks. Google uses `models.generateContent`. Compatible providers use the official OpenAI SDK with a validated `baseURL`; Ollama supplies the local preset. Use injected clients/transports in tests.
 
-- [ ] **Step 6: Run GREEN**
+- [x] **Step 6: Run GREEN**
 
 Run: `npm run test:run -- tests/server/provider-catalog.test.ts tests/server/generation-service.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Add routes and verify credential redaction**
+- [x] **Step 7: Add routes and verify credential redaction**
 
 Add provider catalog, generate, accept, and discard routes. Route tests must search serialized database rows and response bodies to prove the sentinel API key never appears.
 
-- [ ] **Step 8: Run route GREEN**
+- [x] **Step 8: Run route GREEN**
 
 Run: `npm run test:run -- tests/server/generation-routes.test.ts`
 

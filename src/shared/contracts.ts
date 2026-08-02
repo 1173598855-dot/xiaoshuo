@@ -69,18 +69,31 @@ export const ProviderKindSchema = z.enum([
 ]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
-const ProviderBaseSchema = z.object({
+const NativeProviderBaseSchema = z.object({
   model: z.string().trim().min(1).max(200),
   apiKey: z.string().min(1).max(2_000),
 });
 
+const CompatibleBaseUrlSchema = z
+  .url()
+  .refine((value) => {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password
+    );
+  }, "Only credential-free HTTP(S) endpoints are supported");
+
 export const ProviderConfigSchema = z.discriminatedUnion("kind", [
-  ProviderBaseSchema.extend({ kind: z.literal("openai") }),
-  ProviderBaseSchema.extend({ kind: z.literal("anthropic") }),
-  ProviderBaseSchema.extend({ kind: z.literal("google") }),
-  ProviderBaseSchema.extend({
+  NativeProviderBaseSchema.extend({ kind: z.literal("openai") }),
+  NativeProviderBaseSchema.extend({ kind: z.literal("anthropic") }),
+  NativeProviderBaseSchema.extend({ kind: z.literal("google") }),
+  z.object({
     kind: z.literal("openai-compatible"),
-    baseUrl: z.string().url(),
+    model: z.string().trim().min(1).max(200),
+    apiKey: z.string().max(2_000).default(""),
+    baseUrl: CompatibleBaseUrlSchema,
   }),
 ]);
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
