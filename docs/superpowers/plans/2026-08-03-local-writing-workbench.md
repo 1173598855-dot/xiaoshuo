@@ -96,7 +96,7 @@ Expected: exit code 0.
 - Produces: `WorkspaceRepository.updateChapter(chapterId, input): ChapterDto`
 - Produces: `createApp(dependencies): Hono`
 
-- [ ] **Step 1: Write failing repository tests**
+- [x] **Step 1: Write failing repository tests**
 
 Cover default workspace seeding, chapter creation order, successful update, full revision snapshot, locked chapter rejection, and stale `expectedRevision` rejection.
 
@@ -112,31 +112,31 @@ expect(() => repository.updateChapter(chapter.id, {
 })).toThrowError(RevisionConflictError);
 ```
 
-- [ ] **Step 2: Run repository RED**
+- [x] **Step 2: Run repository RED**
 
 Run: `npm run test:run -- tests/server/workspace-repository.test.ts`
 
 Expected: FAIL because the repository does not exist.
 
-- [ ] **Step 3: Implement repository transactions**
+- [x] **Step 3: Implement repository transactions**
 
 Seed `未命名长篇` and `第一章` only when no project exists. On update, load the current row, compare revision, reject locked content changes, snapshot the old row, update with `revision + 1`, and return the new DTO from one transaction.
 
-- [ ] **Step 4: Run repository GREEN**
+- [x] **Step 4: Run repository GREEN**
 
 Run: `npm run test:run -- tests/server/workspace-repository.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Write and run failing route tests**
+- [x] **Step 5: Write and run failing route tests**
 
 Test `GET /api/health`, `GET /api/workspace`, chapter creation, validation errors, and `409 REVISION_CONFLICT` using `app.request()`.
 
-- [ ] **Step 6: Implement routes and normalized errors**
+- [x] **Step 6: Implement routes and normalized errors**
 
 Use Zod `safeParse`, return `{ error: { code, message, fieldErrors? } }`, and never serialize an unknown upstream error object directly.
 
-- [ ] **Step 7: Run route GREEN**
+- [x] **Step 7: Run route GREEN**
 
 Run: `npm run test:run -- tests/server/workspace-routes.test.ts`
 
