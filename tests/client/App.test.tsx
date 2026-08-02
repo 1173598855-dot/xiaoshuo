@@ -119,6 +119,70 @@ describe("App", () => {
     });
   });
 
+  it("flushes a local draft before creating a chapter", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    const editor = await screen.findByRole("textbox", { name: "章节正文" });
+
+    fireEvent.change(editor, { target: { value: "新建前的最新正文。" } });
+    fireEvent.click(screen.getByRole("button", { name: "新建章节" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "章节正文" })).toHaveValue("");
+    });
+    const patchIndex = fetchMock.mock.calls.findIndex(
+      ([url, request]) =>
+        String(url).includes(workspace.chapters[0].id) &&
+        request?.method === "PATCH",
+    );
+    const createIndex = fetchMock.mock.calls.findIndex(
+      ([url, request]) =>
+        String(url).includes(`/api/projects/${workspace.project.id}/chapters`) &&
+        request?.method === "POST",
+    );
+    expect(patchIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeGreaterThan(patchIndex);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[patchIndex]?.[1]?.body)),
+    ).toEqual({
+      expectedRevision: 0,
+      content: "新建前的最新正文。",
+    });
+  });
+
+  it.each(["conflict", "error"] as const)(
+    "keeps the current chapter when a %s save blocks switch and create",
+    async (patchFailure) => {
+      const fetchMock = createFetchMock({ patchFailure });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<App />);
+      const editor = await screen.findByRole("textbox", { name: "章节正文" });
+
+      fireEvent.change(editor, { target: { value: "不能丢失的失败草稿。" } });
+      fireEvent.click(screen.getByRole("button", { name: "打开第二章" }));
+
+      if (patchFailure === "conflict") {
+        await screen.findByText("章节已在其他位置更新，本地草稿仍保留。");
+      } else {
+        await screen.findByText("保存失败");
+      }
+      fireEvent.change(editor, {
+        target: { value: workspace.chapters[0].content },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "打开第二章" }));
+      fireEvent.click(screen.getByRole("button", { name: "新建章节" }));
+
+      expect(editor).toHaveValue(workspace.chapters[0].content);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, request]) =>
+            String(url).includes("/api/projects/") && request?.method === "POST",
+        ),
+      ).toBe(false);
+    },
+  );
+
   it("updates chapter status with optimistic revision", async () => {
     const fetchMock = createFetchMock();
     vi.stubGlobal("fetch", fetchMock);
@@ -146,6 +210,121 @@ describe("App", () => {
     expect(screen.getByText("Revision 1")).toBeInTheDocument();
   });
 
+  it.each(["success", "conflict"] as const)(
+    "keeps status %s ownership on the source chapter while navigation is attempted",
+    async (result) => {
+      const statusResponse = deferred<Response>();
+      const fallback = createFetchMock();
+      const fetchMock = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const body = init?.body ? JSON.parse(String(init.body)) : null;
+          if (init?.method === "PATCH" && body?.status) {
+            return statusResponse.promise;
+          }
+          return fallback(input, init);
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      render(<App />);
+      const editor = await screen.findByRole("textbox", { name: "章节正文" });
+
+      fireEvent.change(screen.getByRole("combobox", { name: "章节状态" }), {
+        target: { value: "final" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "打开第二章" }));
+
+      expect(editor).toHaveValue(workspace.chapters[0].content);
+      await act(async () => {
+        statusResponse.resolve(
+          result === "success"
+            ? jsonResponse({
+                ...workspace.chapters[0],
+                status: "final",
+                revision: 1,
+              })
+            : apiErrorResponse(
+                409,
+                "REVISION_CONFLICT",
+                "章节已在其他位置更新，请重新加载后再保存。",
+              ),
+        );
+        await statusResponse.promise;
+      });
+
+      expect(editor).toHaveValue(workspace.chapters[0].content);
+      if (result === "success") {
+        expect(screen.getByRole("combobox", { name: "章节状态" })).toHaveValue(
+          "final",
+        );
+        expect(screen.queryByText("章节已在其他位置更新，本地草稿仍保留。"))
+          .not.toBeInTheDocument();
+      } else {
+        expect(
+          await screen.findByText("章节已在其他位置更新，本地草稿仍保留。"),
+        ).toBeInTheDocument();
+      }
+    },
+  );
+
+  it("acquires the status mutation lock before flushing", async () => {
+    const contentResponse = deferred<Response>();
+    const fallback = createFetchMock();
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : null;
+        if (init?.method === "PATCH" && body?.content) {
+          return contentResponse.promise;
+        }
+        if (init?.method === "PATCH" && body?.status) {
+          return jsonResponse({
+            ...workspace.chapters[0],
+            content: "状态前先保存的正文。",
+            status: body.status,
+            revision: 2,
+          });
+        }
+        return fallback(input, init);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    const editor = await screen.findByRole("textbox", { name: "章节正文" });
+    const status = screen.getByRole("combobox", { name: "章节状态" });
+
+    fireEvent.change(editor, { target: { value: "状态前先保存的正文。" } });
+    fireEvent.change(status, { target: { value: "final" } });
+    fireEvent.change(status, { target: { value: "published" } });
+
+    expect(
+      fetchMock.mock.calls.filter(([, request]) => {
+        const body = request?.body ? JSON.parse(String(request.body)) : null;
+        return request?.method === "PATCH" && Boolean(body?.status);
+      }),
+    ).toHaveLength(0);
+    await act(async () => {
+      contentResponse.resolve(
+        jsonResponse({
+          ...workspace.chapters[0],
+          content: "状态前先保存的正文。",
+          revision: 1,
+        }),
+      );
+      await contentResponse.promise;
+    });
+    await waitFor(() => {
+      const statusCalls = fetchMock.mock.calls.filter(([, request]) => {
+        const body = request?.body ? JSON.parse(String(request.body)) : null;
+        return request?.method === "PATCH" && Boolean(body?.status);
+      });
+      expect(statusCalls).toHaveLength(1);
+      expect(JSON.parse(String(statusCalls[0]?.[1]?.body))).toEqual({
+        expectedRevision: 1,
+        status: "final",
+      });
+    });
+    expect(status).toHaveValue("final");
+  });
+
   it("preserves the local draft when autosave conflicts", async () => {
     vi.stubGlobal("fetch", createFetchMock({ conflictOnPatch: true }));
     render(<App />);
@@ -162,7 +341,12 @@ describe("App", () => {
   });
 });
 
-function createFetchMock(options: { conflictOnPatch?: boolean } = {}) {
+function createFetchMock(
+  options: {
+    conflictOnPatch?: boolean;
+    patchFailure?: "conflict" | "error";
+  } = {},
+) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
 
@@ -175,16 +359,15 @@ function createFetchMock(options: { conflictOnPatch?: boolean } = {}) {
     }
 
     if (url.includes("/api/chapters/") && init?.method === "PATCH") {
-      if (options.conflictOnPatch) {
-        return jsonResponse(
-          {
-            error: {
-              code: "REVISION_CONFLICT",
-              message: "章节已在其他位置更新，请重新加载后再保存。",
-            },
-          },
+      if (options.conflictOnPatch || options.patchFailure === "conflict") {
+        return apiErrorResponse(
           409,
+          "REVISION_CONFLICT",
+          "章节已在其他位置更新，请重新加载后再保存。",
         );
+      }
+      if (options.patchFailure === "error") {
+        return apiErrorResponse(500, "INTERNAL_ERROR", "保存失败。");
       }
 
       const body = JSON.parse(String(init.body));
@@ -199,6 +382,23 @@ function createFetchMock(options: { conflictOnPatch?: boolean } = {}) {
       });
     }
 
+    if (
+      url.includes(`/api/projects/${workspace.project.id}/chapters`) &&
+      init?.method === "POST"
+    ) {
+      return jsonResponse(
+        {
+          ...workspace.chapters[0],
+          id: "4c21a15b-cee4-45c4-99ef-fc4bc07767f7",
+          title: "第三章",
+          content: "",
+          position: 2,
+          revision: 0,
+        },
+        201,
+      );
+    }
+
     throw new Error(`Unhandled fetch: ${init?.method ?? "GET"} ${url}`);
   });
 }
@@ -208,4 +408,22 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function apiErrorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
+  return jsonResponse({ error: { code, message } }, status);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

@@ -55,3 +55,64 @@ Additional scoped checks:
 ## Concerns
 
 None within Task 5A scope. Pre-existing uncommitted responsive CSS and all generation/provider/service changes were intentionally left unstaged.
+
+---
+
+## Review Fix: Status Mutation Ownership And Focused Coverage
+
+### Findings Addressed
+
+- Acquired a synchronous ref-backed status mutation lock before any dirty-draft flush. Rapid status changes can no longer start parallel flush/PATCH chains.
+- Blocked chapter switching and chapter creation while a status mutation owns the lock, keeping its success or conflict result attached to the source chapter.
+- Captured the source chapter identity for status and autosave conflict callbacks. Conflict UI is set or cleared only when that identity is still active.
+- Closed the clean-navigation bypass for existing `conflict` and `error` save states.
+
+### Added Coverage
+
+- Dirty chapter creation flushes the latest content before the create request.
+- Revision conflict and generic save failure both prevent chapter switching and creation, including when content is later reverted to the old snapshot value.
+- In-flight status success and conflict both retain source-chapter ownership when navigation is attempted.
+- Rapid status changes during a dirty flush produce one content save followed by one status PATCH using the returned revision.
+- StrictMode replay aborts the old workspace request and ignores its stale response.
+- StrictMode replay aborts the old provider-catalog request and ignores its stale response.
+
+### RED Evidence
+
+Command:
+
+`npm run test:run -- tests/client/use-autosave.test.tsx tests/client/App.test.tsx tests/client/loading-ownership.test.tsx`
+
+- Exit code: 1
+- Test files: 1 failed, 2 passed
+- Tests: 3 failed, 14 passed
+- Expected failures:
+  - status success moved from chapter A to chapter B before completion;
+  - status conflict moved from chapter A to chapter B before completion;
+  - two rapid status changes produced two status PATCH requests.
+
+### GREEN Evidence
+
+Same command after implementation:
+
+- Exit code: 0
+- Test files: 3 passed
+- Tests: 17 passed
+- Warnings/errors: none
+
+`npm run typecheck`
+
+- Exit code: 0
+- `tsc --noEmit` completed without diagnostics
+
+Scoped ESLint for the changed App and test files exited 0. `git diff --check` reported no whitespace errors.
+
+### Review Fix Files
+
+- `src/client/App.tsx`
+- `tests/client/App.test.tsx`
+- `tests/client/loading-ownership.test.tsx`
+- `.superpowers/sdd/task-5a-report.md`
+
+### Remaining Concerns
+
+None within Task 5A scope. Task 5B generation/provider lifecycle files remain untouched and unstaged.

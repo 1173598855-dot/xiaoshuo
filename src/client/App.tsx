@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   Chapter,
@@ -40,8 +40,12 @@ export function App() {
   const [generationOpen, setGenerationOpen] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const selectedChapterIdRef = useRef(selectedChapter?.id ?? null);
+  const statusMutationLockRef = useRef(false);
   const [providerSettings, setProviderSettings] =
     useState<SessionProviderSettings | null>(loadProviderSettings);
+
+  selectedChapterIdRef.current = selectedChapter?.id ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,9 +73,12 @@ export function App() {
     [selectedChapter],
   );
 
+  const saveIdentity = selectedChapter?.id ?? null;
   const onConflict = useCallback(() => {
-    setConflict(true);
-  }, []);
+    if (selectedChapterIdRef.current === saveIdentity) {
+      setConflict(true);
+    }
+  }, [saveIdentity]);
 
   const { status: saveStatus, flush } = useAutosave({
     identity: selectedChapter?.id ?? "none",
@@ -102,6 +109,8 @@ export function App() {
   };
 
   const handleSelectChapter = (chapterId: string) => {
+    if (statusMutationLockRef.current) return;
+    if (saveStatus === "conflict" || saveStatus === "error") return;
     if (chapterId === selectedChapter?.id) {
       setChaptersOpen(false);
       return;
@@ -120,6 +129,7 @@ export function App() {
   };
 
   const handleCreateChapter = async () => {
+    if (statusMutationLockRef.current) return;
     if (!(await flushBeforeMutation())) return;
     await createChapter();
     setConflict(false);
@@ -130,30 +140,37 @@ export function App() {
     if (
       !selectedChapter ||
       status === selectedChapter.status ||
-      statusUpdating
+      statusMutationLockRef.current
     ) {
       return;
     }
 
-    const chapter = await flushBeforeMutation();
-    if (!chapter || chapter.id !== selectedChapter.id) return;
-
+    const sourceChapterId = selectedChapter.id;
+    statusMutationLockRef.current = true;
     setStatusUpdating(true);
     try {
+      const chapter = await flushBeforeMutation();
+      if (!chapter || chapter.id !== sourceChapterId) return;
+
       const updated = await apiClient.updateChapter(chapter.id, {
         expectedRevision: chapter.revision,
         status,
       });
       replaceChapter(updated);
-      setConflict(false);
+      if (selectedChapterIdRef.current === sourceChapterId) {
+        setConflict(false);
+      }
     } catch (updateError) {
       if (
         updateError instanceof ApiRequestError &&
         updateError.code === "REVISION_CONFLICT"
       ) {
-        setConflict(true);
+        if (selectedChapterIdRef.current === sourceChapterId) {
+          setConflict(true);
+        }
       }
     } finally {
+      statusMutationLockRef.current = false;
       setStatusUpdating(false);
     }
   };
