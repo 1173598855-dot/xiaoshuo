@@ -1,0 +1,13 @@
+.worktrees/
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.log
+.env
+.env.*
+!.env.example
