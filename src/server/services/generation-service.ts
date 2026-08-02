@@ -8,9 +8,11 @@ import {
   type WorkspaceRepository,
 } from "../repositories/workspace-repository";
 import {
-  NormalizedProviderError,
   type TextGenerationProvider,
 } from "../providers/types";
+import { getProviderCatalog } from "../providers/catalog";
+import { normalizeProviderError } from "../providers/normalize-error";
+import { NormalizedProviderError } from "../providers/types";
 import {
   buildGenerationContext,
   buildGenerationPrompt,
@@ -38,6 +40,15 @@ export class ContextTooLargeError extends Error {
   }
 }
 
+export class ProviderConfigMismatchError extends Error {
+  readonly code = "PROVIDER_CONFIG_INVALID";
+
+  constructor() {
+    super("Provider id does not match the configured adapter kind");
+    this.name = "ProviderConfigMismatchError";
+  }
+}
+
 export class GenerationService {
   constructor(private readonly dependencies: GenerationServiceDependencies) {}
 
@@ -45,6 +56,13 @@ export class GenerationService {
     input: CreateGenerationInput,
     signal?: AbortSignal,
   ): Promise<Generation> {
+    const catalogEntry = getProviderCatalog().find(
+      ({ id }) => id === input.providerId,
+    );
+    if (!catalogEntry || catalogEntry.kind !== input.provider.kind) {
+      throw new ProviderConfigMismatchError();
+    }
+
     const chapter = this.dependencies.workspaceRepository.getChapter(
       input.chapterId,
     );
@@ -63,6 +81,7 @@ export class GenerationService {
     const pending = this.dependencies.generationRepository.createPending({
       chapterId: chapter.id,
       baseRevision: chapter.revision,
+      providerId: input.providerId,
       provider: input.provider.kind,
       model: input.provider.model,
       operation: input.operation,
@@ -102,7 +121,7 @@ export class GenerationService {
         result.usage,
       );
     } catch (error) {
-      const normalized = normalizeGenerationError(error, signal);
+      const normalized = normalizeProviderError(error, signal);
       this.dependencies.generationRepository.fail(
         pending.id,
         normalized.code,
@@ -119,27 +138,4 @@ export class GenerationService {
   async discard(generationId: string): Promise<Generation> {
     return this.dependencies.generationRepository.discard(generationId);
   }
-}
-
-function normalizeGenerationError(
-  error: unknown,
-  signal?: AbortSignal,
-): NormalizedProviderError {
-  if (error instanceof NormalizedProviderError) {
-    return error;
-  }
-
-  if (signal?.aborted) {
-    return new NormalizedProviderError(
-      "REQUEST_ABORTED",
-      "生成请求已取消。",
-      { cause: error },
-    );
-  }
-
-  return new NormalizedProviderError(
-    "UNKNOWN_PROVIDER_ERROR",
-    "模型服务返回了无法识别的错误。",
-    { cause: error },
-  );
 }

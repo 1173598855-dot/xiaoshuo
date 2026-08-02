@@ -142,5 +142,6 @@ describe("provider adapters", () => {
       message: "模型服务拒绝了当前凭据。",
     });
     expect(normalized.message).not.toContain("sk-secret-value");
+    expect(normalized.cause).toBeUndefined();
   });
 });

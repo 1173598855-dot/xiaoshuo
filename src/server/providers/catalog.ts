@@ -113,7 +113,8 @@ const PROVIDER_CATALOG = [
     defaultModel: "",
     models: [],
     modelEditable: true,
-    requiresApiKey: true,
+    requiresApiKey: false,
+    apiKeyOptional: true,
     baseUrlEditable: true,
   },
 ] as const satisfies readonly ProviderCatalogEntry[];

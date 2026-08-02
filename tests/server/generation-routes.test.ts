@@ -5,10 +5,8 @@ import { createApp } from "../../src/server/app";
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
 import { getProviderCatalog } from "../../src/server/providers/catalog";
-import {
-  NormalizedProviderError,
-  type TextGenerationProvider,
-} from "../../src/server/providers/types";
+import { normalizeProviderError } from "../../src/server/providers/normalize-error";
+import type { TextGenerationProvider } from "../../src/server/providers/types";
 import { GenerationRepository } from "../../src/server/repositories/generation-repository";
 import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
 import { GenerationService } from "../../src/server/services/generation-service";
@@ -61,6 +59,7 @@ describe("generation routes", () => {
 
     expect(generatedResponse.status).toBe(201);
     expect(generation).toMatchObject({
+      providerId: "openai",
       candidate: "门外传来三声叩响。",
       status: "completed",
     });
@@ -104,6 +103,7 @@ describe("generation routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...requestBody(chapter.id, chapter.revision),
+        providerId: "ollama",
         provider: {
           kind: "openai-compatible",
           model: "qwen3:8b",
@@ -139,13 +139,10 @@ describe("generation routes", () => {
     const secretCause = new Error(`upstream included ${SENTINEL_API_KEY}`);
     generate = vi
       .fn<TextGenerationProvider["generate"]>()
-      .mockRejectedValue(
-        new NormalizedProviderError(
-          "RATE_LIMITED",
-          "模型请求过于频繁，请稍后重试。",
-          { cause: secretCause },
-        ),
-      );
+      .mockRejectedValue(normalizeProviderError({
+        status: 429,
+        message: secretCause.message,
+      }));
     app = appWithProvider(generate);
     const chapter = workspaceRepository.getWorkspace().chapters[0];
 
@@ -185,6 +182,7 @@ function requestBody(chapterId: string, expectedRevision: number) {
     expectedRevision,
     operation: "continue",
     instruction: "让来客进入场景",
+    providerId: "openai",
     provider: {
       kind: "openai",
       model: "test-model",

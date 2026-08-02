@@ -5,6 +5,7 @@ import type {
   Chapter,
   Generation,
   GenerationOperation,
+  ProviderId,
   ProviderKind,
 } from "../../shared/contracts";
 import type { ProviderUsage } from "../providers/types";
@@ -22,6 +23,7 @@ interface RepositoryOptions {
 interface PendingGenerationInput {
   chapterId: string;
   baseRevision: number;
+  providerId: ProviderId;
   provider: ProviderKind;
   model: string;
   operation: GenerationOperation;
@@ -33,6 +35,7 @@ interface GenerationRow {
   id: string;
   chapter_id: string;
   base_revision: number;
+  provider_id: ProviderId;
   provider: ProviderKind;
   model: string;
   operation: GenerationOperation;
@@ -95,15 +98,16 @@ export class GenerationRepository {
     this.database
       .prepare(
         `INSERT INTO generations (
-           id, chapter_id, base_revision, provider, model, operation,
+           id, chapter_id, base_revision, provider_id, provider, model, operation,
            instruction, context_json, candidate, status, usage_json,
            error_code, error_message, created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', NULL, NULL, NULL, ?, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', NULL, NULL, NULL, ?, NULL)`,
       )
       .run(
         id,
         input.chapterId,
         input.baseRevision,
+        input.providerId,
         input.provider,
         input.model,
         input.operation,
@@ -211,7 +215,11 @@ export class GenerationRepository {
       }
 
       const timestamp = this.now();
-      const nextContent = appendCandidate(chapter.content, generation.candidate);
+      const nextContent = mergeCandidate(
+        chapter.content,
+        generation.candidate,
+        generation.operation,
+      );
 
       this.database
         .prepare(
@@ -262,18 +270,17 @@ export class GenerationRepository {
       throw error;
     }
 
+    const acceptedGeneration = this.get(generationId);
     return {
-      generation: this.get(generationId),
-      chapter: this.workspaceRepository.getChapter(
-        this.get(generationId).chapterId,
-      ),
+      generation: acceptedGeneration,
+      chapter: this.workspaceRepository.getChapter(acceptedGeneration.chapterId),
     };
   }
 
   private requireRow(generationId: string): GenerationRow {
     const row = this.database
       .prepare(
-        `SELECT id, chapter_id, base_revision, provider, model, operation,
+        `SELECT id, chapter_id, base_revision, provider_id, provider, model, operation,
                 instruction, candidate, status, usage_json, error_code,
                 error_message, created_at, accepted_at
          FROM generations
@@ -289,8 +296,16 @@ export class GenerationRepository {
   }
 }
 
-function appendCandidate(content: string, candidate: string): string {
+function mergeCandidate(
+  content: string,
+  candidate: string,
+  operation: GenerationOperation,
+): string {
   const cleanCandidate = candidate.trim();
+
+  if (operation !== "continue") {
+    return cleanCandidate;
+  }
 
   if (content.length === 0) {
     return cleanCandidate;
@@ -305,6 +320,7 @@ function toGeneration(row: GenerationRow): Generation {
     id: row.id,
     chapterId: row.chapter_id,
     baseRevision: row.base_revision,
+    providerId: row.provider_id,
     provider: row.provider,
     model: row.model,
     operation: row.operation,

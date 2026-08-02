@@ -47,9 +47,8 @@ export class NormalizedProviderError extends Error {
   constructor(
     readonly code: NormalizedProviderErrorCode,
     message: string,
-    options?: ErrorOptions,
   ) {
-    super(message, options);
+    super(message);
     this.name = "NormalizedProviderError";
   }
 }

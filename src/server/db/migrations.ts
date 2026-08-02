@@ -44,6 +44,7 @@ const V1_SCHEMA = `
     id TEXT PRIMARY KEY,
     chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
+    provider_id TEXT NOT NULL,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     operation TEXT NOT NULL CHECK (operation IN ('continue', 'rewrite', 'polish')),
@@ -74,10 +75,26 @@ export function migrate(database: DatabaseSync): void {
 
   try {
     database.exec(V1_SCHEMA);
+    const generationColumns = database
+      .prepare("PRAGMA table_info(generations)")
+      .all() as Array<{ name: string }>;
+
+    if (!generationColumns.some(({ name }) => name === "provider_id")) {
+      database.exec(
+        "ALTER TABLE generations ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'custom'",
+      );
+      database.exec(
+        `UPDATE generations
+         SET provider_id = CASE
+           WHEN provider = 'openai-compatible' THEN 'custom'
+           ELSE provider
+         END`,
+      );
+    }
     database
       .prepare(
         `INSERT INTO app_meta (key, value)
-         VALUES ('schema_version', '1')
+         VALUES ('schema_version', '2')
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       )
       .run();

@@ -69,6 +69,19 @@ export const ProviderKindSchema = z.enum([
 ]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
+export const ProviderIdSchema = z.enum([
+  "openai",
+  "anthropic",
+  "google",
+  "deepseek",
+  "qwen",
+  "openrouter",
+  "siliconflow",
+  "ollama",
+  "custom",
+]);
+export type ProviderId = z.infer<typeof ProviderIdSchema>;
+
 export const ProviderModelSuggestionSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -79,7 +92,7 @@ export type ProviderModelSuggestion = z.infer<
 >;
 
 export const ProviderCatalogEntrySchema = z.object({
-  id: z.string(),
+  id: ProviderIdSchema,
   kind: ProviderKindSchema,
   name: z.string(),
   description: z.string(),
@@ -87,6 +100,7 @@ export const ProviderCatalogEntrySchema = z.object({
   models: z.array(ProviderModelSuggestionSchema).readonly(),
   modelEditable: z.literal(true),
   requiresApiKey: z.boolean(),
+  apiKeyOptional: z.boolean().optional(),
   baseUrl: z.string().optional(),
   baseUrlEditable: z.boolean().optional(),
 });
@@ -143,6 +157,7 @@ export const GenerationSchema = z.object({
   id: z.string().uuid(),
   chapterId: z.string().uuid(),
   baseRevision: z.number().int().nonnegative(),
+  providerId: ProviderIdSchema,
   provider: ProviderKindSchema,
   model: z.string(),
   operation: GenerationOperationSchema,
@@ -171,6 +186,7 @@ export const CreateGenerationInputSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
   operation: GenerationOperationSchema,
   instruction: z.string().trim().min(1).max(4_000),
+  providerId: ProviderIdSchema,
   provider: ProviderConfigSchema,
 });
 export type CreateGenerationInput = z.infer<

@@ -21,6 +21,7 @@ import {
 } from "./repositories/workspace-repository";
 import {
   ContextTooLargeError,
+  ProviderConfigMismatchError,
   type GenerationService,
 } from "./services/generation-service";
 
@@ -190,6 +191,16 @@ export function createApp({
           "当前章节过长，请缩小正文范围后再生成。",
         ),
         413,
+      );
+    }
+
+    if (error instanceof ProviderConfigMismatchError) {
+      return context.json(
+        apiError(
+          "PROVIDER_CONFIG_INVALID",
+          "模型入口与适配器配置不匹配。",
+        ),
+        400,
       );
     }
 

@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("database migrations", () => {
-  it("creates the complete v1 schema idempotently", () => {
+  it("creates the complete schema idempotently", () => {
     const database = createDatabase(":memory:");
     databases.push(database);
 
@@ -39,7 +39,14 @@ describe("database migrations", () => {
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string };
 
-    expect(version.value).toBe("1");
+    expect(version.value).toBe("2");
+
+    const generationColumns = database
+      .prepare("PRAGMA table_info(generations)")
+      .all() as Array<{ name: string }>;
+    expect(generationColumns).toContainEqual(
+      expect.objectContaining({ name: "provider_id" }),
+    );
   });
 
   it("enables foreign key enforcement", () => {

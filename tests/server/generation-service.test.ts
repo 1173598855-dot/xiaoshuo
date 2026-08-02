@@ -15,7 +15,10 @@ import {
   NormalizedProviderError,
   type TextGenerationProvider,
 } from "../../src/server/providers/types";
-import { GenerationService } from "../../src/server/services/generation-service";
+import {
+  GenerationService,
+  ProviderConfigMismatchError,
+} from "../../src/server/services/generation-service";
 
 const SENTINEL_API_KEY = "sk-must-never-be-persisted";
 
@@ -53,6 +56,7 @@ describe("GenerationService", () => {
       expectedRevision: chapter.revision,
       operation: "continue",
       instruction: "写出陌生人抵达城门的场景",
+      providerId: "openai",
       provider: {
         kind: "openai",
         model: "test-model",
@@ -64,6 +68,7 @@ describe("GenerationService", () => {
     expect(generation).toMatchObject({
       chapterId: chapter.id,
       baseRevision: 0,
+      providerId: "openai",
       provider: "openai",
       model: "test-model",
       candidate: "风从城门外吹来。",
@@ -102,6 +107,32 @@ describe("GenerationService", () => {
       "风从城门外吹来。",
     );
   });
+
+  it.each(["rewrite", "polish"] as const)(
+    "replaces the manuscript when accepting a %s candidate",
+    async (operation) => {
+      const service = createService(
+        vi
+          .fn<TextGenerationProvider["generate"]>()
+          .mockResolvedValue({ text: "完整的新正文", usage: null }),
+      );
+      const chapter = workspaceRepository.getWorkspace().chapters[0];
+      const edited = workspaceRepository.updateChapter(chapter.id, {
+        expectedRevision: chapter.revision,
+        content: "不应保留的旧正文",
+      });
+      const generation = await service.generate({
+        ...generationInput(chapter.id),
+        expectedRevision: edited.revision,
+        operation,
+      });
+
+      const accepted = await service.accept(generation.id);
+
+      expect(accepted.chapter.content).toBe("完整的新正文");
+      expect(accepted.chapter.revision).toBe(2);
+    },
+  );
 
   it("rejects acceptance when the chapter changed after generation", async () => {
     const service = createService(
@@ -172,6 +203,18 @@ describe("GenerationService", () => {
     expect(workspaceRepository.getChapter(chapter.id)).toEqual(chapter);
   });
 
+  it("rejects a provider id whose catalog kind does not match the config", async () => {
+    const service = createService(vi.fn<TextGenerationProvider["generate"]>());
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+
+    await expect(
+      service.generate({
+        ...generationInput(chapter.id),
+        providerId: "ollama",
+      }),
+    ).rejects.toBeInstanceOf(ProviderConfigMismatchError);
+  });
+
   function createService(generate: TextGenerationProvider["generate"]) {
     return new GenerationService({
       workspaceRepository,
@@ -189,6 +232,7 @@ function generationInput(chapterId: string) {
     expectedRevision: 0,
     operation: "continue" as const,
     instruction: "继续这一章",
+    providerId: "openai" as const,
     provider: {
       kind: "openai" as const,
       model: "test-model",
