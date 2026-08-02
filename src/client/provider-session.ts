@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   ProviderConfigSchema,
+  ProviderIdSchema,
   type ProviderCatalogEntry,
   type ProviderConfig,
 } from "../shared/contracts";
@@ -9,7 +10,7 @@ import {
 export const PROVIDER_SESSION_KEY = "xiaoyi.provider-config.v1";
 
 const SessionProviderSettingsSchema = z.object({
-  providerId: z.string().min(1),
+  providerId: ProviderIdSchema,
   model: z.string(),
   apiKey: z.string(),
   baseUrl: z.string().optional(),
@@ -38,6 +39,10 @@ export function storeProviderSettings(
   settings: SessionProviderSettings,
 ): void {
   sessionStorage.setItem(PROVIDER_SESSION_KEY, JSON.stringify(settings));
+}
+
+export function clearProviderSettings(): void {
+  sessionStorage.removeItem(PROVIDER_SESSION_KEY);
 }
 
 export function resolveProviderSettings(

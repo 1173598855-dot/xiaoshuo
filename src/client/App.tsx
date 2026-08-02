@@ -14,6 +14,7 @@ import { ProviderDialog } from "./components/ProviderDialog";
 import { useAutosave } from "./hooks/use-autosave";
 import { useWorkspace } from "./hooks/use-workspace";
 import {
+  clearProviderSettings,
   loadProviderSettings,
   storeProviderSettings,
   type SessionProviderSettings,
@@ -186,11 +187,19 @@ export function App() {
     setProviderDialogOpen(false);
   };
 
+  const handleAuthenticationFailure = () => {
+    clearProviderSettings();
+    setProviderSettings(null);
+    setProviderDialogOpen(true);
+  };
+
   const handleAcceptedChapter = (chapter: typeof selectedChapter) => {
     if (!chapter) return;
     replaceChapter(chapter);
-    setDraftContent(chapter.content);
-    setConflict(false);
+    if (selectedChapterIdRef.current === chapter.id) {
+      setDraftContent(chapter.content);
+      setConflict(false);
+    }
   };
 
   if (loading) {
@@ -250,6 +259,7 @@ export function App() {
         open={generationOpen}
         flushDraft={flush}
         onChapterAccepted={handleAcceptedChapter}
+        onAuthenticationFailure={handleAuthenticationFailure}
         onConfigureProvider={() => setProviderDialogOpen(true)}
         onClose={() => setGenerationOpen(false)}
       />

@@ -33,6 +33,7 @@ interface GenerationPanelProps {
   open: boolean;
   flushDraft: () => Promise<Chapter | undefined>;
   onChapterAccepted: (chapter: Chapter) => void;
+  onAuthenticationFailure: () => void;
   onConfigureProvider: () => void;
   onClose: () => void;
 }
@@ -57,32 +58,46 @@ export function GenerationPanel({
   open,
   flushDraft,
   onChapterAccepted,
+  onAuthenticationFailure,
   onConfigureProvider,
   onClose,
 }: GenerationPanelProps) {
   const [operation, setOperation] = useState<GenerationOperation>("continue");
   const [instruction, setInstruction] = useState("");
-  const [generation, setGeneration] = useState<Generation | null>(null);
-  const [phase, setPhase] = useState<RequestPhase>("idle");
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [generations, setGenerations] = useState<
+    Record<string, Generation | undefined>
+  >({});
+  const [phases, setPhases] = useState<Record<string, RequestPhase | undefined>>(
+    {},
+  );
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
+  const abortRef = useRef<{
+    chapterId: string;
+    controller: AbortController;
+  } | null>(null);
   const resolvedProvider = useMemo(
     () => resolveProviderSettings(providerSettings, providers),
     [providerSettings, providers],
   );
+  const generation = generations[chapter.id] ?? null;
+  const phase = phases[chapter.id] ?? "idle";
+  const error = errors[chapter.id] ?? null;
   const hasUnsavedChanges = draftContent !== chapter.content;
   const busy = phase !== "idle";
 
   useEffect(() => {
-    setGeneration(null);
-    setError(null);
     setInstruction("");
-    abortRef.current?.abort();
+    const activeRequest = abortRef.current;
+    if (activeRequest && activeRequest.chapterId !== chapter.id) {
+      activeRequest.controller.abort();
+      abortRef.current = null;
+      setChapterPhase(activeRequest.chapterId, "idle");
+    }
   }, [chapter.id]);
 
   useEffect(
     () => () => {
-      abortRef.current?.abort();
+      abortRef.current?.controller.abort();
     },
     [],
   );
@@ -92,24 +107,27 @@ export function GenerationPanel({
       onConfigureProvider();
       return;
     }
-    if (!instruction.trim() || busy) return;
+    if (!instruction.trim() || busy || generation?.status === "completed") {
+      return;
+    }
 
-    setError(null);
-    setPhase("generating");
+    const sourceChapterId = chapter.id;
+    setChapterError(sourceChapterId, null);
+    setChapterPhase(sourceChapterId, "generating");
     let sourceChapter = chapter;
 
     if (hasUnsavedChanges) {
       const saved = await flushDraft();
       if (!saved) {
-        setError("请先解决正文保存问题，再生成候选。");
-        setPhase("idle");
+        setChapterError(sourceChapterId, "请先解决正文保存问题，再生成候选。");
+        setChapterPhase(sourceChapterId, "idle");
         return;
       }
       sourceChapter = saved;
     }
 
     const controller = new AbortController();
-    abortRef.current = controller;
+    abortRef.current = { chapterId: sourceChapterId, controller };
 
     try {
       const nextGeneration = await apiClient.generate(
@@ -118,18 +136,26 @@ export function GenerationPanel({
           expectedRevision: sourceChapter.revision,
           operation,
           instruction: instruction.trim(),
+          providerId: resolvedProvider.entry.id,
           provider: resolvedProvider.config,
         },
         controller.signal,
       );
-      setGeneration(nextGeneration);
+      if (!controller.signal.aborted) {
+        setChapterGeneration(sourceChapterId, nextGeneration);
+      }
     } catch (requestError) {
       if (!controller.signal.aborted) {
-        setError(errorMessage(requestError));
+        setChapterError(sourceChapterId, errorMessage(requestError));
+        if (isAuthenticationFailure(requestError)) {
+          onAuthenticationFailure();
+        }
       }
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setPhase("idle");
+      if (abortRef.current?.controller === controller) {
+        abortRef.current = null;
+        setChapterPhase(sourceChapterId, "idle");
+      }
     }
   };
 
@@ -142,34 +168,39 @@ export function GenerationPanel({
       saveStatus === "conflict" ||
       chapter.revision !== generation.baseRevision
     ) {
-      setError("正文有尚未保存的修改，暂时不能采纳候选。");
+      setChapterError(
+        generation.chapterId,
+        "正文有尚未保存的修改，暂时不能采纳候选。",
+      );
       return;
     }
 
-    setError(null);
-    setPhase("accepting");
+    const sourceChapterId = generation.chapterId;
+    setChapterError(sourceChapterId, null);
+    setChapterPhase(sourceChapterId, "accepting");
     try {
       const accepted = await apiClient.acceptGeneration(generation.id);
-      setGeneration(accepted.generation);
+      setChapterGeneration(sourceChapterId, accepted.generation);
       onChapterAccepted(accepted.chapter);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setChapterError(sourceChapterId, errorMessage(requestError));
     } finally {
-      setPhase("idle");
+      setChapterPhase(sourceChapterId, "idle");
     }
   };
 
   const discard = async () => {
     if (!generation || busy) return;
-    setError(null);
-    setPhase("discarding");
+    const sourceChapterId = generation.chapterId;
+    setChapterError(sourceChapterId, null);
+    setChapterPhase(sourceChapterId, "discarding");
     try {
       await apiClient.discardGeneration(generation.id);
-      setGeneration(null);
+      setChapterGeneration(sourceChapterId, null);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setChapterError(sourceChapterId, errorMessage(requestError));
     } finally {
-      setPhase("idle");
+      setChapterPhase(sourceChapterId, "idle");
     }
   };
 
@@ -177,6 +208,7 @@ export function GenerationPanel({
     Boolean(resolvedProvider) &&
     Boolean(instruction.trim()) &&
     !busy &&
+    generation?.status !== "completed" &&
     saveStatus !== "saving" &&
     saveStatus !== "conflict" &&
     chapter.status !== "locked";
@@ -326,10 +358,37 @@ export function GenerationPanel({
       </div>
     </aside>
   );
+
+  function setChapterGeneration(
+    chapterId: string,
+    nextGeneration: Generation | null,
+  ): void {
+    setGenerations((current) => ({
+      ...current,
+      [chapterId]: nextGeneration ?? undefined,
+    }));
+  }
+
+  function setChapterPhase(chapterId: string, nextPhase: RequestPhase): void {
+    setPhases((current) => ({ ...current, [chapterId]: nextPhase }));
+  }
+
+  function setChapterError(chapterId: string, nextError: string | null): void {
+    setErrors((current) => ({ ...current, [chapterId]: nextError ?? undefined }));
+  }
 }
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return "生成请求未能完成，请稍后重试。";
+}
+
+function isAuthenticationFailure(error: unknown): boolean {
+  return (
+    error instanceof ApiRequestError &&
+    (error.status === 401 ||
+      error.status === 403 ||
+      error.code === "AUTHENTICATION_FAILED")
+  );
 }

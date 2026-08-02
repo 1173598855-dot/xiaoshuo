@@ -162,7 +162,7 @@ export function ProviderDialog({
             </label>
           ) : null}
 
-          {selectedProvider?.requiresApiKey ? (
+          {selectedProvider?.requiresApiKey || selectedProvider?.apiKeyOptional ? (
             <label className="form-field">
               <span>API Key</span>
               <span className="secret-input">
