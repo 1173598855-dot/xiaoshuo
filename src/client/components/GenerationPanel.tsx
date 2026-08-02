@@ -75,6 +75,13 @@ export function GenerationPanel({
     chapterId: string;
     controller: AbortController;
   } | null>(null);
+  const chapterIdRef = useRef<string | null>(chapter.id);
+  const generationFlowRef = useRef<{
+    chapterId: string;
+    token: object;
+  } | null>(null);
+  const mountedRef = useRef(false);
+  chapterIdRef.current = chapter.id;
   const resolvedProvider = useMemo(
     () => resolveProviderSettings(providerSettings, providers),
     [providerSettings, providers],
@@ -87,6 +94,11 @@ export function GenerationPanel({
 
   useEffect(() => {
     setInstruction("");
+    const activeFlow = generationFlowRef.current;
+    if (activeFlow && activeFlow.chapterId !== chapter.id) {
+      generationFlowRef.current = null;
+      setChapterPhase(activeFlow.chapterId, "idle");
+    }
     const activeRequest = abortRef.current;
     if (activeRequest && activeRequest.chapterId !== chapter.id) {
       activeRequest.controller.abort();
@@ -95,12 +107,14 @@ export function GenerationPanel({
     }
   }, [chapter.id]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationFlowRef.current = null;
       abortRef.current?.controller.abort();
-    },
-    [],
-  );
+    };
+  }, []);
 
   const generate = async () => {
     if (!resolvedProvider) {
@@ -112,15 +126,24 @@ export function GenerationPanel({
     }
 
     const sourceChapterId = chapter.id;
+    const flowToken = {};
+    generationFlowRef.current = {
+      chapterId: sourceChapterId,
+      token: flowToken,
+    };
     setChapterError(sourceChapterId, null);
     setChapterPhase(sourceChapterId, "generating");
     let sourceChapter = chapter;
 
     if (hasUnsavedChanges) {
       const saved = await flushDraft();
+      if (!isGenerationFlowActive(sourceChapterId, flowToken)) {
+        return;
+      }
       if (!saved) {
         setChapterError(sourceChapterId, "请先解决正文保存问题，再生成候选。");
         setChapterPhase(sourceChapterId, "idle");
+        generationFlowRef.current = null;
         return;
       }
       sourceChapter = saved;
@@ -155,6 +178,9 @@ export function GenerationPanel({
       if (abortRef.current?.controller === controller) {
         abortRef.current = null;
         setChapterPhase(sourceChapterId, "idle");
+      }
+      if (generationFlowRef.current?.token === flowToken) {
+        generationFlowRef.current = null;
       }
     }
   };
@@ -375,6 +401,14 @@ export function GenerationPanel({
 
   function setChapterError(chapterId: string, nextError: string | null): void {
     setErrors((current) => ({ ...current, [chapterId]: nextError ?? undefined }));
+  }
+
+  function isGenerationFlowActive(chapterId: string, token: object): boolean {
+    return (
+      mountedRef.current &&
+      chapterIdRef.current === chapterId &&
+      generationFlowRef.current?.token === token
+    );
   }
 }
 

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../src/client/App";
+import { GenerationPanel } from "../../src/client/components/GenerationPanel";
+import type { Chapter } from "../../src/shared/contracts";
 
 const PROVIDER_SESSION_KEY = "xiaoyi.provider-config.v1";
 const API_KEY = "sk-session-only-secret";
@@ -261,7 +263,7 @@ describe("generation workflow", () => {
 
     expect(await screen.findByRole("dialog", { name: "模型配置" })).toBeInTheDocument();
     expect(sessionStorage.getItem(PROVIDER_SESSION_KEY)).toBeNull();
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(await screen.findByLabelText("API Key")).toHaveValue("");
   });
 
   it("allows a custom compatible endpoint without an API key", async () => {
@@ -288,6 +290,65 @@ describe("generation workflow", () => {
       baseUrl: "http://127.0.0.1:9000/v1",
     });
     expect(screen.getByText("自定义兼容端点 · local-model")).toBeInTheDocument();
+  });
+
+  it("does not generate for an old chapter after its dirty flush resolves", async () => {
+    const pendingFlush = deferred<Chapter>();
+    const fetchMock = vi.fn(async () => jsonResponse(generation, 201));
+    vi.stubGlobal("fetch", fetchMock);
+    const sharedProps = {
+      providers,
+      providerSettings: {
+        providerId: "openai" as const,
+        model: "gpt-test-custom",
+        apiKey: API_KEY,
+      },
+      saveStatus: "dirty" as const,
+      open: true,
+      flushDraft: vi.fn(() => pendingFlush.promise),
+      onChapterAccepted: vi.fn(),
+      onAuthenticationFailure: vi.fn(),
+      onConfigureProvider: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const firstChapter = workspace.chapters[0] as Chapter;
+    const secondChapter = workspace.chapters[1] as Chapter;
+    const { rerender } = render(
+      <GenerationPanel
+        {...sharedProps}
+        chapter={firstChapter}
+        draftContent="等待保存的第一章正文。"
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "生成指令" }), {
+      target: { value: "让来客进入场景" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成候选" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    rerender(
+      <GenerationPanel
+        {...sharedProps}
+        chapter={secondChapter}
+        draftContent={secondChapter.content}
+        saveStatus="saved"
+      />,
+    );
+    await act(async () => {
+      pendingFlush.resolve({
+        ...firstChapter,
+        content: "等待保存的第一章正文。",
+        revision: 1,
+      });
+      await pendingFlush.promise;
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "生成候选" })).toHaveTextContent(
+      "生成候选",
+    );
   });
 });
 
@@ -368,4 +429,14 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

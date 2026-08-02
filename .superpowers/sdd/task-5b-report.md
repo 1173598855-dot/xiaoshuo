@@ -52,4 +52,56 @@ The final commit hash is reported in the task handoff because a commit cannot co
 
 ## Concerns
 
-None within Task 5B scope. Pre-existing shared-contract, provider, server, responsive CSS, and Task 5C changes were preserved in the working tree and remain unstaged.
+None within the initial Task 5B client scope. The pre-existing shared/provider/server dependency bundle was preserved for the review follow-up documented below; unrelated responsive CSS and handoff changes remained unstaged.
+
+---
+
+## Review Fix: Frozen Dependencies And Pre-request Ownership
+
+### Findings Addressed
+
+- Froze the existing cohesive provider/server dependency bundle in commit `091f523`. The commit includes shared provider IDs, catalog optional-key metadata, persisted generation `providerId`, provider/config matching, v2 migration, error-cause redaction, operation-aware acceptance, deterministic e2e provider wiring, and their server tests.
+- Registered a chapter-owned generation flow token before awaiting a dirty draft flush. Chapter changes and unmount invalidate the flow; a resolved stale flush cannot create an AbortController, issue a generation POST, update a candidate, or change another chapter's phase.
+- Added a focused GenerationPanel regression test that rerenders to another chapter while `flushDraft` is pending.
+- Corrected a genuine asynchronous test defect by waiting for the provider dialog effect to render the cleared API Key field after authentication failure.
+
+### RED Evidence
+
+`npm run test:run -- tests/client/generation-workflow.test.tsx`
+
+- Exit code: 1
+- Test files: 1 failed
+- Tests: 1 failed, 7 passed
+- Expected failure: the stale first-chapter flow issued one `/api/generations` POST after navigation while its dirty flush resolved.
+
+### GREEN Evidence
+
+`npm run test:run -- tests/client/generation-workflow.test.tsx`
+
+- Exit code: 0
+- Test files: 1 passed
+- Tests: 8 passed
+- Final sequential duration: 2.67s
+
+`npm run test:run -- tests/server/database.test.ts tests/server/generation-routes.test.ts tests/server/generation-service.test.ts tests/server/provider-adapters.test.ts tests/server/provider-catalog.test.ts`
+
+- Exit code: 0
+- Test files: 5 passed
+- Tests: 22 passed
+- Final sequential duration: 672ms
+
+`npm run typecheck`
+
+- Exit code: 0
+- `tsc --noEmit` completed without diagnostics.
+
+Scoped ESLint across the dependency and client fix files exited 0. The dependency commit check and client diff-check reported no whitespace errors.
+
+### Review Commits
+
+- Dependency/server bundle: `091f523 fix: freeze provider generation contracts`
+- Stale-generation intent fix: reported in the final handoff because a commit cannot contain its own hash.
+
+### Remaining Concerns
+
+None within Task 5B scope. README, package metadata, responsive CSS, e2e, AGENTS, plans, progress notes, and scratch review packages remain outside both commits.
