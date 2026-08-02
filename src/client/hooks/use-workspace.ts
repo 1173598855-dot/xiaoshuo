@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Chapter, Workspace } from "../../shared/contracts";
 import { apiClient } from "../api/client";
@@ -11,13 +11,20 @@ export function useWorkspace() {
   const [draftContent, setDraftContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeLoadRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async (preferredChapterId?: string) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
     setLoading(true);
     setError(null);
 
     try {
-      const nextWorkspace = await apiClient.getWorkspace();
+      const nextWorkspace = await apiClient.getWorkspace(controller.signal);
+      if (activeLoadRef.current !== controller || controller.signal.aborted) {
+        return;
+      }
       const selected =
         nextWorkspace.chapters.find(
           ({ id }) => id === preferredChapterId,
@@ -26,18 +33,25 @@ export function useWorkspace() {
       setSelectedChapterId(selected?.id ?? null);
       setDraftContent(selected?.content ?? "");
     } catch (loadError) {
+      if (activeLoadRef.current !== controller || controller.signal.aborted) {
+        return;
+      }
       setError(
         loadError instanceof Error
           ? loadError.message
           : "无法读取本地项目。",
       );
     } finally {
-      setLoading(false);
+      if (activeLoadRef.current === controller && !controller.signal.aborted) {
+        activeLoadRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void load();
+    return () => activeLoadRef.current?.abort();
   }, [load]);
 
   const selectedChapter = useMemo(

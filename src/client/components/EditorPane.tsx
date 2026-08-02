@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Cloud, RefreshCw } from "lucide-react";
 
-import type { Chapter } from "../../shared/contracts";
+import type { Chapter, ChapterStatus } from "../../shared/contracts";
+import { CHAPTER_STATUS_OPTIONS } from "../chapter-status";
 import type { SaveStatus } from "../hooks/use-autosave";
 
 interface EditorPaneProps {
@@ -8,7 +9,9 @@ interface EditorPaneProps {
   content: string;
   saveStatus: SaveStatus;
   conflict: boolean;
+  statusUpdating: boolean;
   onChange: (content: string) => void;
+  onStatusChange: (status: ChapterStatus) => void;
   onReload: () => void;
 }
 
@@ -26,7 +29,9 @@ export function EditorPane({
   content,
   saveStatus,
   conflict,
+  statusUpdating,
   onChange,
+  onStatusChange,
   onReload,
 }: EditorPaneProps) {
   const characterCount = content.replace(/\s/g, "").length;
@@ -35,9 +40,21 @@ export function EditorPane({
     <main className="editor-pane">
       <header className="editor-toolbar">
         <div className="chapter-heading">
-          <span className={`status-pill status-${chapter.status}`}>
-            {chapter.status === "draft" ? "草稿" : chapter.status}
-          </span>
+          <select
+            className={`status-pill status-${chapter.status}`}
+            aria-label="章节状态"
+            value={chapter.status}
+            disabled={statusUpdating}
+            onChange={(event) =>
+              onStatusChange(event.target.value as ChapterStatus)
+            }
+          >
+            {CHAPTER_STATUS_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
           <h2>{chapter.title}</h2>
         </div>
         <div className={`save-indicator save-${saveStatus}`}>

@@ -72,6 +72,69 @@ describe("useAutosave", () => {
     expect(onConflict).toHaveBeenCalledWith(conflict);
     expect(screen.getByTestId("save-status")).toHaveTextContent("conflict");
   });
+
+  it("serializes an explicit flush behind an in-flight save", async () => {
+    const first = deferred<Chapter>();
+    const second = deferred<Chapter>();
+    const save = vi
+      .fn<(content: string, expectedRevision: number) => Promise<Chapter>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    render(<Harness save={save} />);
+    const editor = screen.getByRole("textbox", { name: "测试正文" });
+    fireEvent.change(editor, { target: { value: "第一次编辑" } });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(editor, { target: { value: "保存中的新编辑" } });
+    fireEvent.click(screen.getByRole("button", { name: "立即保存" }));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve({ ...chapter, content: "第一次编辑", revision: 1 });
+      await first.promise;
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenNthCalledWith(2, "保存中的新编辑", 1);
+
+    await act(async () => {
+      second.resolve({ ...chapter, content: "保存中的新编辑", revision: 2 });
+      await second.promise;
+    });
+    expect(screen.getByTestId("save-status")).toHaveTextContent("saved");
+  });
+
+  it("ignores an old chapter save when a new identity becomes active", async () => {
+    const oldSave = deferred<Chapter>();
+    const save = vi
+      .fn<(content: string, expectedRevision: number) => Promise<Chapter>>()
+      .mockReturnValueOnce(oldSave.promise)
+      .mockResolvedValueOnce({
+        ...chapter,
+        id: "25475167-42c7-4722-b3fa-c0e23359db16",
+        content: "第二章的新编辑",
+        revision: 4,
+      });
+
+    render(<IdentityHarness save={save} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "身份正文" }), {
+      target: { value: "第一章在途编辑" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.click(screen.getByRole("button", { name: "切换身份" }));
+
+    await act(async () => {
+      oldSave.resolve({ ...chapter, content: "第一章在途编辑", revision: 1 });
+      await oldSave.promise;
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "身份正文" }), {
+      target: { value: "第二章的新编辑" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+
+    expect(save).toHaveBeenNthCalledWith(2, "第二章的新编辑", 3);
+  });
 });
 
 function Harness({
@@ -84,7 +147,7 @@ function Harness({
   onConflict?: (error: ApiRequestError) => void;
 }) {
   const [content, setContent] = useState(chapter.content);
-  const { status } = useAutosave({
+  const { status, flush } = useAutosave({
     identity: chapter.id,
     content,
     revision: chapter.revision,
@@ -105,6 +168,65 @@ function Harness({
         />
       </label>
       <span data-testid="save-status">{status}</span>
+      <button type="button" onClick={() => void flush()}>
+        立即保存
+      </button>
     </>
   );
+}
+
+function IdentityHarness({
+  save,
+}: {
+  save: (content: string, expectedRevision: number) => Promise<Chapter>;
+}) {
+  const secondChapter: Chapter = {
+    ...chapter,
+    id: "25475167-42c7-4722-b3fa-c0e23359db16",
+    title: "第二章",
+    content: "第二章正文",
+    revision: 3,
+  };
+  const [activeChapter, setActiveChapter] = useState(chapter);
+  const [content, setContent] = useState(chapter.content);
+  const { status } = useAutosave({
+    identity: activeChapter.id,
+    content,
+    revision: activeChapter.revision,
+    delay: 800,
+    save,
+    onSaved: () => undefined,
+    onConflict: () => undefined,
+  });
+
+  return (
+    <>
+      <textarea
+        aria-label="身份正文"
+        value={content}
+        onChange={(event) => setContent(event.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          setActiveChapter(secondChapter);
+          setContent(secondChapter.content);
+        }}
+      >
+        切换身份
+      </button>
+      <span data-testid="identity-status">{status}</span>
+    </>
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
 }

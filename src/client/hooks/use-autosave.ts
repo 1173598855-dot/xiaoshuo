@@ -23,6 +23,12 @@ interface UseAutosaveOptions {
   onError?: (error: Error) => void;
 }
 
+interface InFlightSave {
+  identity: string;
+  token: object;
+  promise: Promise<Chapter | undefined>;
+}
+
 export function useAutosave({
   identity,
   content,
@@ -40,6 +46,8 @@ export function useAutosave({
   const lastSavedContentRef = useRef(content);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
+  const blockedRef = useRef(false);
+  const inFlightRef = useRef<InFlightSave | null>(null);
   const callbacksRef = useRef({ save, onSaved, onConflict, onError });
 
   contentRef.current = content;
@@ -49,58 +57,87 @@ export function useAutosave({
     identityRef.current = identity;
     revisionRef.current = revision;
     lastSavedContentRef.current = content;
+    blockedRef.current = false;
   }
+
+  useEffect(() => {
+    setStatus("idle");
+  }, [identity]);
 
   useEffect(() => {
     if (revisionRef.current === revision) return;
 
     revisionRef.current = revision;
     lastSavedContentRef.current = content;
+    blockedRef.current = false;
     setStatus("saved");
   }, [content, revision]);
 
-  const persist = useCallback(async (targetContent: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    setStatus("saving");
-
-    try {
-      const saved = await callbacksRef.current.save(
-        targetContent,
-        revisionRef.current,
-      );
-      revisionRef.current = saved.revision;
-      lastSavedContentRef.current = targetContent;
-      callbacksRef.current.onSaved(saved);
-      setStatus(
-        contentRef.current === targetContent ? "saved" : "dirty",
-      );
-      return saved;
-    } catch (error) {
-      if (
-        error instanceof ApiRequestError &&
-        error.code === "REVISION_CONFLICT"
-      ) {
-        setStatus("conflict");
-        callbacksRef.current.onConflict(error);
-      } else {
-        const normalized =
-          error instanceof Error ? error : new Error("Autosave failed");
-        setStatus("error");
-        callbacksRef.current.onError?.(normalized);
+  const startSave = useCallback(
+    (targetIdentity: string, targetContent: string) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
-      return undefined;
-    }
-  }, []);
+
+      const token = {};
+      const expectedRevision = revisionRef.current;
+      const callbacks = callbacksRef.current;
+
+      if (identityRef.current === targetIdentity) {
+        setStatus("saving");
+      }
+
+      const promise = (async (): Promise<Chapter | undefined> => {
+        try {
+          const saved = await callbacks.save(targetContent, expectedRevision);
+          callbacks.onSaved(saved);
+
+          if (identityRef.current === targetIdentity) {
+            revisionRef.current = saved.revision;
+            lastSavedContentRef.current = targetContent;
+            blockedRef.current = false;
+            setStatus(
+              contentRef.current === targetContent ? "saved" : "dirty",
+            );
+          }
+
+          return saved;
+        } catch (error) {
+          if (identityRef.current !== targetIdentity) return undefined;
+
+          blockedRef.current = true;
+          if (
+            error instanceof ApiRequestError &&
+            error.code === "REVISION_CONFLICT"
+          ) {
+            setStatus("conflict");
+            callbacks.onConflict(error);
+          } else {
+            const normalized =
+              error instanceof Error ? error : new Error("Autosave failed");
+            setStatus("error");
+            callbacks.onError?.(normalized);
+          }
+          return undefined;
+        } finally {
+          if (inFlightRef.current?.token === token) {
+            inFlightRef.current = null;
+          }
+        }
+      })();
+
+      inFlightRef.current = { identity: targetIdentity, token, promise };
+      return promise;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
       !enabled ||
+      blockedRef.current ||
       status === "saving" ||
-      status === "conflict" ||
       content === lastSavedContentRef.current
     ) {
       return;
@@ -110,8 +147,9 @@ export function useAutosave({
       setStatus("dirty");
     }
 
+    const targetIdentity = identity;
     timerRef.current = setTimeout(() => {
-      void persist(content);
+      void startSave(targetIdentity, content);
     }, delay);
 
     return () => {
@@ -120,19 +158,31 @@ export function useAutosave({
         timerRef.current = null;
       }
     };
-  }, [content, delay, enabled, persist, status]);
+  }, [content, delay, enabled, identity, startSave, status]);
 
   const flush = useCallback(async () => {
-    if (
-      !enabled ||
-      status === "conflict" ||
-      contentRef.current === lastSavedContentRef.current
-    ) {
-      return undefined;
+    if (!enabled || blockedRef.current) return undefined;
+
+    const targetIdentity = identityRef.current;
+    let latestSaved: Chapter | undefined;
+
+    while (identityRef.current === targetIdentity && !blockedRef.current) {
+      const inFlight = inFlightRef.current;
+      if (inFlight?.identity === targetIdentity) {
+        latestSaved = await inFlight.promise;
+        if (!latestSaved) return undefined;
+        continue;
+      }
+
+      if (contentRef.current === lastSavedContentRef.current) {
+        return latestSaved;
+      }
+
+      return startSave(targetIdentity, contentRef.current);
     }
 
-    return persist(contentRef.current);
-  }, [enabled, persist, status]);
+    return undefined;
+  }, [enabled, startSave]);
 
   return { status, flush };
 }

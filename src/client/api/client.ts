@@ -1,13 +1,14 @@
 import {
+  ApiErrorSchema,
   ChapterSchema,
   GenerationSchema,
   ProviderCatalogEntrySchema,
   WorkspaceSchema,
   type Chapter,
-  type ChapterStatus,
   type CreateGenerationInput,
   type Generation,
   type ProviderCatalogEntry,
+  type UpdateChapterInput,
   type Workspace,
 } from "../../shared/contracts";
 
@@ -24,13 +25,15 @@ export class ApiRequestError extends Error {
 }
 
 export const apiClient = {
-  async getWorkspace(): Promise<Workspace> {
-    return WorkspaceSchema.parse(await requestJson("/api/workspace"));
+  async getWorkspace(signal?: AbortSignal): Promise<Workspace> {
+    return WorkspaceSchema.parse(
+      await requestJson("/api/workspace", { signal }),
+    );
   },
 
-  async getProviders(): Promise<readonly ProviderCatalogEntry[]> {
+  async getProviders(signal?: AbortSignal): Promise<readonly ProviderCatalogEntry[]> {
     return ProviderCatalogEntrySchema.array().parse(
-      await requestJson("/api/providers"),
+      await requestJson("/api/providers", { signal }),
     );
   },
 
@@ -45,12 +48,7 @@ export const apiClient = {
 
   async updateChapter(
     chapterId: string,
-    input: {
-      expectedRevision: number;
-      content?: string;
-      title?: string;
-      status?: ChapterStatus;
-    },
+    input: UpdateChapterInput,
   ): Promise<Chapter> {
     return ChapterSchema.parse(
       await requestJson(`/api/chapters/${chapterId}`, {
@@ -103,20 +101,17 @@ async function requestJson(path: string, init: RequestInit = {}): Promise<unknow
   }
 
   const response = await fetch(path, { ...init, headers });
-  const body = (await response.json()) as {
-    error?: {
-      code?: string;
-      message?: string;
-      fieldErrors?: Record<string, string[]>;
-    };
-  };
+  const body: unknown = await response.json();
 
   if (!response.ok) {
+    const parsedError = ApiErrorSchema.safeParse(body);
     throw new ApiRequestError(
       response.status,
-      body.error?.code ?? "UNKNOWN_ERROR",
-      body.error?.message ?? "本地服务无法完成请求。",
-      body.error?.fieldErrors,
+      parsedError.success ? parsedError.data.error.code : "UNKNOWN_ERROR",
+      parsedError.success
+        ? parsedError.data.error.message
+        : "本地服务无法完成请求。",
+      parsedError.success ? parsedError.data.error.fieldErrors : undefined,
     );
   }
 

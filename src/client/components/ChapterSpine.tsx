@@ -1,6 +1,7 @@
 import { FilePlus2, X } from "lucide-react";
 
 import type { Chapter, Project } from "../../shared/contracts";
+import { CHAPTER_STATUS_LABELS } from "../chapter-status";
 
 interface ChapterSpineProps {
   project: Project;
@@ -11,13 +12,6 @@ interface ChapterSpineProps {
   onCreate: () => void;
   onClose: () => void;
 }
-
-const STATUS_LABELS: Record<Chapter["status"], string> = {
-  draft: "草稿",
-  final: "定稿",
-  published: "已发布",
-  locked: "已锁定",
-};
 
 export function ChapterSpine({
   project,
@@ -59,14 +53,14 @@ export function ChapterSpine({
           >
             <span
               className={`chapter-status-dot status-${chapter.status}`}
-              title={STATUS_LABELS[chapter.status]}
+              title={CHAPTER_STATUS_LABELS[chapter.status]}
             />
             <span className="chapter-index">
               {String(index + 1).padStart(2, "0")}
             </span>
             <span className="chapter-labels">
               <strong>{chapter.title}</strong>
-              <small>{STATUS_LABELS[chapter.status]}</small>
+              <small>{CHAPTER_STATUS_LABELS[chapter.status]}</small>
             </span>
             <span className="chapter-revision">r{chapter.revision}</span>
           </button>

@@ -96,6 +96,56 @@ describe("App", () => {
     expect(screen.getByText("Revision 1")).toBeInTheDocument();
   });
 
+  it("flushes a local draft before switching chapters", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    const editor = await screen.findByRole("textbox", { name: "章节正文" });
+
+    fireEvent.change(editor, { target: { value: "切章前必须保存。" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开第二章" }));
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        ([url, request]) =>
+          String(url).includes(workspace.chapters[0].id) &&
+          request?.method === "PATCH",
+      );
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        expectedRevision: 0,
+        content: "切章前必须保存。",
+      });
+      expect(editor).toHaveValue("信封里只有一张车票。");
+    });
+  });
+
+  it("updates chapter status with optimistic revision", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByRole("textbox", { name: "章节正文" });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "章节状态" }), {
+      target: { value: "final" },
+    });
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        ([url, request]) =>
+          String(url).includes(workspace.chapters[0].id) &&
+          request?.method === "PATCH",
+      );
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        expectedRevision: 0,
+        status: "final",
+      });
+    });
+    expect(screen.getByRole("combobox", { name: "章节状态" })).toHaveValue(
+      "final",
+    );
+    expect(screen.getByText("Revision 1")).toBeInTheDocument();
+  });
+
   it("preserves the local draft when autosave conflicts", async () => {
     vi.stubGlobal("fetch", createFetchMock({ conflictOnPatch: true }));
     render(<App />);
@@ -138,10 +188,14 @@ function createFetchMock(options: { conflictOnPatch?: boolean } = {}) {
       }
 
       const body = JSON.parse(String(init.body));
+      const chapter = url.includes(workspace.chapters[1].id)
+        ? workspace.chapters[1]
+        : workspace.chapters[0];
       return jsonResponse({
-        ...workspace.chapters[0],
-        content: body.content,
-        revision: 1,
+        ...chapter,
+        content: body.content ?? chapter.content,
+        status: body.status ?? chapter.status,
+        revision: chapter.revision + 1,
       });
     }
 

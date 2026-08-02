@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { ProviderCatalogEntry } from "../shared/contracts";
+import type {
+  Chapter,
+  ChapterStatus,
+  ProviderCatalogEntry,
+} from "../shared/contracts";
 import { apiClient, ApiRequestError } from "./api/client";
 import { AppRail } from "./components/AppRail";
 import { ChapterSpine } from "./components/ChapterSpine";
@@ -35,11 +39,21 @@ export function App() {
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const [generationOpen, setGenerationOpen] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const [providerSettings, setProviderSettings] =
     useState<SessionProviderSettings | null>(loadProviderSettings);
 
   useEffect(() => {
-    void apiClient.getProviders().then(setProviders).catch(() => setProviders([]));
+    const controller = new AbortController();
+    void apiClient
+      .getProviders(controller.signal)
+      .then((nextProviders) => {
+        if (!controller.signal.aborted) setProviders(nextProviders);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setProviders([]);
+      });
+    return () => controller.abort();
   }, []);
 
   const save = useCallback(
@@ -55,7 +69,7 @@ export function App() {
     [selectedChapter],
   );
 
-  const onConflict = useCallback((_error: ApiRequestError) => {
+  const onConflict = useCallback(() => {
     setConflict(true);
   }, []);
 
@@ -69,10 +83,79 @@ export function App() {
     onConflict,
   });
 
-  const handleSelectChapter = (chapterId: string) => {
+  const flushBeforeMutation = async (): Promise<Chapter | undefined> => {
+    if (!selectedChapter) return undefined;
+    if (saveStatus === "conflict" || saveStatus === "error") return undefined;
+    if (
+      draftContent === selectedChapter.content &&
+      saveStatus !== "saving"
+    ) {
+      return selectedChapter;
+    }
+    return flush();
+  };
+
+  const finishChapterSelection = (chapterId: string) => {
     selectChapter(chapterId);
     setConflict(false);
     setChaptersOpen(false);
+  };
+
+  const handleSelectChapter = (chapterId: string) => {
+    if (chapterId === selectedChapter?.id) {
+      setChaptersOpen(false);
+      return;
+    }
+    if (
+      draftContent === selectedChapter?.content &&
+      saveStatus !== "saving"
+    ) {
+      finishChapterSelection(chapterId);
+      return;
+    }
+
+    void (async () => {
+      if (await flushBeforeMutation()) finishChapterSelection(chapterId);
+    })();
+  };
+
+  const handleCreateChapter = async () => {
+    if (!(await flushBeforeMutation())) return;
+    await createChapter();
+    setConflict(false);
+    setChaptersOpen(false);
+  };
+
+  const handleStatusChange = async (status: ChapterStatus) => {
+    if (
+      !selectedChapter ||
+      status === selectedChapter.status ||
+      statusUpdating
+    ) {
+      return;
+    }
+
+    const chapter = await flushBeforeMutation();
+    if (!chapter || chapter.id !== selectedChapter.id) return;
+
+    setStatusUpdating(true);
+    try {
+      const updated = await apiClient.updateChapter(chapter.id, {
+        expectedRevision: chapter.revision,
+        status,
+      });
+      replaceChapter(updated);
+      setConflict(false);
+    } catch (updateError) {
+      if (
+        updateError instanceof ApiRequestError &&
+        updateError.code === "REVISION_CONFLICT"
+      ) {
+        setConflict(true);
+      }
+    } finally {
+      setStatusUpdating(false);
+    }
   };
 
   const handleReload = async () => {
@@ -128,7 +211,7 @@ export function App() {
         selectedChapterId={selectedChapter.id}
         open={chaptersOpen}
         onSelect={handleSelectChapter}
-        onCreate={() => void createChapter()}
+        onCreate={() => void handleCreateChapter()}
         onClose={() => setChaptersOpen(false)}
       />
       <EditorPane
@@ -136,7 +219,9 @@ export function App() {
         content={draftContent}
         saveStatus={saveStatus}
         conflict={conflict}
+        statusUpdating={statusUpdating}
         onChange={setDraftContent}
+        onStatusChange={(status) => void handleStatusChange(status)}
         onReload={() => void handleReload()}
       />
       <GenerationPanel
