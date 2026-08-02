@@ -69,6 +69,31 @@ export const ProviderKindSchema = z.enum([
 ]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
+export const ProviderModelSuggestionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  role: z.enum(["quality", "balanced", "fast", "local"]).optional(),
+});
+export type ProviderModelSuggestion = z.infer<
+  typeof ProviderModelSuggestionSchema
+>;
+
+export const ProviderCatalogEntrySchema = z.object({
+  id: z.string(),
+  kind: ProviderKindSchema,
+  name: z.string(),
+  description: z.string(),
+  defaultModel: z.string(),
+  models: z.array(ProviderModelSuggestionSchema).readonly(),
+  modelEditable: z.literal(true),
+  requiresApiKey: z.boolean(),
+  baseUrl: z.string().optional(),
+  baseUrlEditable: z.boolean().optional(),
+});
+export type ProviderCatalogEntry = z.infer<
+  typeof ProviderCatalogEntrySchema
+>;
+
 const NativeProviderBaseSchema = z.object({
   model: z.string().trim().min(1).max(200),
   apiKey: z.string().min(1).max(2_000),

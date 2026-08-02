@@ -1,23 +1,10 @@
-import type { ProviderConfig, ProviderKind } from "../../shared/contracts";
+import type {
+  ProviderCatalogEntry,
+  ProviderConfig,
+  ProviderKind,
+} from "../../shared/contracts";
 
-export interface ProviderModelSuggestion {
-  id: string;
-  label: string;
-  role?: "quality" | "balanced" | "fast" | "local";
-}
-
-export interface ProviderCatalogEntry {
-  id: string;
-  kind: ProviderKind;
-  name: string;
-  description: string;
-  defaultModel: string;
-  models: readonly ProviderModelSuggestion[];
-  modelEditable: true;
-  requiresApiKey: boolean;
-  baseUrl?: string;
-  baseUrlEditable?: boolean;
-}
+export type { ProviderCatalogEntry };
 
 export interface ProviderGenerateInput {
   model: string;

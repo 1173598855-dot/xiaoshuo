@@ -1,0 +1,61 @@
+:root {
+  color-scheme: light;
+  font-family: "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
+  color: #20251f;
+  background: #f4f6f3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --ink: #20251f;
+  --ink-soft: #596058;
+  --canvas: #f4f6f3;
+  --paper: #ffffff;
+  --line: #dce1dc;
+  --line-strong: #c9d0c9;
+  --pine: #2e6a4f;
+  --pine-soft: #e5f0e9;
+  --coral: #c9574c;
+  --coral-soft: #fae9e6;
+  --violet: #6c5a8d;
+  --violet-soft: #eeeaf6;
+  --amber: #a06e25;
+  --rail: #242a25;
+  --shadow: 0 12px 32px rgb(32 37 31 / 8%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #6c5a8d;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}

@@ -223,35 +223,35 @@ Expected: PASS.
 - Consumes: workspace, provider, generation, accept, and discard API DTOs.
 - Produces: a responsive three-pane workbench with session-only provider configuration.
 
-- [ ] **Step 1: Write UI RED**
+- [x] **Step 1: Write UI RED**
 
 Mock `fetch` and assert that the workspace renders, selecting a chapter changes the editor, edits autosave after 800ms, and a `409` preserves the local text while displaying a conflict action.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/client/App.test.tsx tests/client/use-autosave.test.tsx`
 
 Expected: FAIL because the client does not exist.
 
-- [ ] **Step 3: Implement the workbench shell and editor**
+- [x] **Step 3: Implement the workbench shell and editor**
 
 Use lucide icons with accessible labels/tooltips. Keep controls at stable dimensions. Build the chapter spine, serif editor, save state, word count, status menu, new chapter action, and responsive drawers.
 
-- [ ] **Step 4: Run editor GREEN**
+- [x] **Step 4: Run editor GREEN**
 
 Run: `npm run test:run -- tests/client/App.test.tsx tests/client/use-autosave.test.tsx`
 
 Expected: PASS for workspace and autosave tests.
 
-- [ ] **Step 5: Add provider and candidate workflow tests**
+- [x] **Step 5: Add provider and candidate workflow tests**
 
 Assert that keys are written only to `sessionStorage`, generation renders in a distinct review surface, discard removes the candidate, and accept updates the editor once.
 
-- [ ] **Step 6: Implement provider dialog and generation review**
+- [x] **Step 6: Implement provider dialog and generation review**
 
 Model IDs remain editable. Disable generate without required configuration. Keep candidate, usage, error, retry, accept, and discard states complete; accepting while local edits are pending must save first or block with a clear action.
 
-- [ ] **Step 7: Run full client GREEN**
+- [x] **Step 7: Run full client GREEN**
 
 Run: `npm run test:run -- tests/client`
 
