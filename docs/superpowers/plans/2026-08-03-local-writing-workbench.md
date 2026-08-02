@@ -40,11 +40,11 @@
 - Produces: `migrate(database: DatabaseSync): void`
 - Produces: shared Zod schemas for project, chapter, generation, API error, and provider config.
 
-- [ ] **Step 1: Add package and TypeScript/Vite/Vitest configuration**
+- [x] **Step 1: Add package and TypeScript/Vite/Vitest configuration**
 
 Use npm scripts `dev`, `dev:server`, `dev:web`, `typecheck`, `test`, `test:run`, `build`, and `e2e`. Keep the package ESM and require Node `>=24`.
 
-- [ ] **Step 2: Write the failing migration test**
+- [x] **Step 2: Write the failing migration test**
 
 ```ts
 it("creates the complete v1 schema idempotently", () => {
@@ -61,17 +61,17 @@ it("creates the complete v1 schema idempotently", () => {
 });
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 Run: `npm run test:run -- tests/server/database.test.ts`
 
 Expected: FAIL because `createDatabase` and migrations do not exist.
 
-- [ ] **Step 4: Implement the minimal database and schema**
+- [x] **Step 4: Implement the minimal database and schema**
 
 Enable foreign keys and WAL for file databases. Apply migrations inside a transaction and store schema version in `app_meta`. Define stable UUID text keys, integer revisions, ISO timestamps, foreign keys, and generation status checks.
 
-- [ ] **Step 5: Run GREEN and typecheck**
+- [x] **Step 5: Run GREEN and typecheck**
 
 Run: `npm run test:run -- tests/server/database.test.ts`
 
