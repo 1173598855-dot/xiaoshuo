@@ -41,8 +41,13 @@ export function App() {
   const [generationOpen, setGenerationOpen] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [creatingChapter, setCreatingChapter] = useState(false);
+  const [chapterActionError, setChapterActionError] = useState<string | null>(
+    null,
+  );
   const selectedChapterIdRef = useRef(selectedChapter?.id ?? null);
   const statusMutationLockRef = useRef(false);
+  const chapterCreationLockRef = useRef(false);
   const [providerSettings, setProviderSettings] =
     useState<SessionProviderSettings | null>(loadProviderSettings);
 
@@ -106,11 +111,12 @@ export function App() {
   const finishChapterSelection = (chapterId: string) => {
     selectChapter(chapterId);
     setConflict(false);
+    setChapterActionError(null);
     setChaptersOpen(false);
   };
 
   const handleSelectChapter = (chapterId: string) => {
-    if (statusMutationLockRef.current) return;
+    if (statusMutationLockRef.current || chapterCreationLockRef.current) return;
     if (saveStatus === "conflict" || saveStatus === "error") return;
     if (chapterId === selectedChapter?.id) {
       setChaptersOpen(false);
@@ -130,18 +136,30 @@ export function App() {
   };
 
   const handleCreateChapter = async () => {
-    if (statusMutationLockRef.current) return;
-    if (!(await flushBeforeMutation())) return;
-    await createChapter();
-    setConflict(false);
-    setChaptersOpen(false);
+    if (statusMutationLockRef.current || chapterCreationLockRef.current) return;
+
+    chapterCreationLockRef.current = true;
+    setCreatingChapter(true);
+    setChapterActionError(null);
+    try {
+      if (!(await flushBeforeMutation())) return;
+      await createChapter();
+      setConflict(false);
+      setChaptersOpen(false);
+    } catch (createError) {
+      setChapterActionError(chapterCreationErrorMessage(createError));
+    } finally {
+      chapterCreationLockRef.current = false;
+      setCreatingChapter(false);
+    }
   };
 
   const handleStatusChange = async (status: ChapterStatus) => {
     if (
       !selectedChapter ||
       status === selectedChapter.status ||
-      statusMutationLockRef.current
+      statusMutationLockRef.current ||
+      chapterCreationLockRef.current
     ) {
       return;
     }
@@ -225,10 +243,19 @@ export function App() {
 
   return (
     <>
-      <div className="app-shell">
+      <div
+        className="app-shell"
+        aria-hidden={providerDialogOpen ? "true" : undefined}
+      >
       <AppRail
-        onToggleChapters={() => setChaptersOpen((open) => !open)}
-        onToggleGeneration={() => setGenerationOpen((open) => !open)}
+        onToggleChapters={() => {
+          setChaptersOpen((open) => !open);
+          setGenerationOpen(false);
+        }}
+        onToggleGeneration={() => {
+          setGenerationOpen((open) => !open);
+          setChaptersOpen(false);
+        }}
         onConfigureProvider={() => setProviderDialogOpen(true)}
       />
       <ChapterSpine
@@ -236,6 +263,8 @@ export function App() {
         chapters={workspace.chapters}
         selectedChapterId={selectedChapter.id}
         open={chaptersOpen}
+        creating={creatingChapter}
+        actionError={chapterActionError}
         onSelect={handleSelectChapter}
         onCreate={() => void handleCreateChapter()}
         onClose={() => setChaptersOpen(false)}
@@ -245,7 +274,7 @@ export function App() {
         content={draftContent}
         saveStatus={saveStatus}
         conflict={conflict}
-        statusUpdating={statusUpdating}
+        statusUpdating={statusUpdating || creatingChapter}
         onChange={setDraftContent}
         onStatusChange={(status) => void handleStatusChange(status)}
         onReload={() => void handleReload()}
@@ -273,4 +302,9 @@ export function App() {
       />
     </>
   );
+}
+
+function chapterCreationErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) return error.message;
+  return "新建章节失败，请稍后重试。";
 }

@@ -6,7 +6,10 @@ import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
 import { getProviderCatalog } from "../../src/server/providers/catalog";
 import { normalizeProviderError } from "../../src/server/providers/normalize-error";
-import type { TextGenerationProvider } from "../../src/server/providers/types";
+import {
+  NormalizedProviderError,
+  type TextGenerationProvider,
+} from "../../src/server/providers/types";
 import { GenerationRepository } from "../../src/server/repositories/generation-repository";
 import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
 import { GenerationService } from "../../src/server/services/generation-service";
@@ -116,6 +119,71 @@ describe("generation routes", () => {
     expect(response.status).toBe(201);
   });
 
+  it("rejects credential-bearing compatible endpoint URLs before resolving a provider", async () => {
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+    const response = await app.request("/api/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...requestBody(chapter.id, chapter.revision),
+        providerId: "custom",
+        provider: {
+          kind: "openai-compatible",
+          model: "test-model",
+          apiKey: "",
+          baseUrl: "https://example.test/v1?api_key=should-not-be-a-url",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "VALIDATION_ERROR" },
+    });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "changes a preset endpoint",
+      provider: {
+        kind: "openai-compatible",
+        model: "deepseek-chat",
+        apiKey: SENTINEL_API_KEY,
+        baseUrl: "https://example.test/v1",
+      },
+    },
+    {
+      label: "omits a preset API key",
+      provider: {
+        kind: "openai-compatible",
+        model: "deepseek-chat",
+        apiKey: "",
+        baseUrl: "https://api.deepseek.com",
+      },
+    },
+  ])("rejects a request that $label", async ({ provider }) => {
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+    const response = await app.request("/api/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...requestBody(chapter.id, chapter.revision),
+        providerId: "deepseek",
+        provider,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "PROVIDER_CONFIG_INVALID",
+        message: "模型入口与适配器配置不匹配。",
+      },
+    });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
   it("discards completed candidates without touching the chapter", async () => {
     const chapter = workspaceRepository.getWorkspace().chapters[0];
     const generatedResponse = await app.request("/api/generations", {
@@ -161,6 +229,33 @@ describe("generation routes", () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain(SENTINEL_API_KEY);
+  });
+
+  it("redacts a pre-normalized provider error before storing or returning it", async () => {
+    generate = vi
+      .fn<TextGenerationProvider["generate"]>()
+      .mockRejectedValue(
+        new NormalizedProviderError(
+          "RATE_LIMITED",
+          `upstream included ${SENTINEL_API_KEY}`,
+        ),
+      );
+    app = appWithProvider(generate);
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+
+    const response = await app.request("/api/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(requestBody(chapter.id, chapter.revision)),
+    });
+    const body = await response.json();
+    const stored = database
+      .prepare("SELECT error_message FROM generations ORDER BY created_at DESC LIMIT 1")
+      .get() as { error_message: string };
+
+    expect(response.status).toBe(429);
+    expect(JSON.stringify(body)).not.toContain(SENTINEL_API_KEY);
+    expect(stored.error_message).not.toContain(SENTINEL_API_KEY);
   });
 
   function appWithProvider(providerGenerate: TextGenerationProvider["generate"]) {

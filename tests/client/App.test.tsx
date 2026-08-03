@@ -151,6 +151,68 @@ describe("App", () => {
     });
   });
 
+  it("creates only one chapter while the first request is still pending", async () => {
+    const creation = deferred<Response>();
+    const fallback = createFetchMock();
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (
+          String(input).includes(`/api/projects/${workspace.project.id}/chapters`) &&
+          init?.method === "POST"
+        ) {
+          return creation.promise;
+        }
+        return fallback(input, init);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const createButton = await screen.findByRole("button", {
+      name: "新建章节",
+    });
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url, request]) =>
+            String(url).includes(`/api/projects/${workspace.project.id}/chapters`) &&
+            request?.method === "POST",
+        ),
+      ).toHaveLength(1);
+    });
+
+    await act(async () => {
+      creation.resolve(
+        jsonResponse(
+          {
+            ...workspace.chapters[0],
+            id: "4c21a15b-cee4-45c4-99ef-fc4bc07767f7",
+            title: "第三章",
+            content: "",
+            position: 2,
+            revision: 0,
+          },
+          201,
+        ),
+      );
+      await creation.promise;
+    });
+  });
+
+  it("shows an actionable error when chapter creation fails", async () => {
+    vi.stubGlobal("fetch", createFetchMock({ createFailure: true }));
+    render(<App />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新建章节" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("创建章节失败。");
+  });
+
   it.each(["conflict", "error"] as const)(
     "keeps the current chapter when a %s save blocks switch and create",
     async (patchFailure) => {
@@ -345,6 +407,7 @@ function createFetchMock(
   options: {
     conflictOnPatch?: boolean;
     patchFailure?: "conflict" | "error";
+    createFailure?: boolean;
   } = {},
 ) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -386,6 +449,9 @@ function createFetchMock(
       url.includes(`/api/projects/${workspace.project.id}/chapters`) &&
       init?.method === "POST"
     ) {
+      if (options.createFailure) {
+        return apiErrorResponse(500, "INTERNAL_ERROR", "创建章节失败。");
+      }
       return jsonResponse(
         {
           ...workspace.chapters[0],

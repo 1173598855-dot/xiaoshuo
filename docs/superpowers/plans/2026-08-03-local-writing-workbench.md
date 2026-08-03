@@ -42,7 +42,7 @@
 
 - [x] **Step 1: Add package and TypeScript/Vite/Vitest configuration**
 
-Use npm scripts `dev`, `dev:server`, `dev:web`, `typecheck`, `test`, `test:run`, `build`, and `e2e`. Keep the package ESM and require Node `>=24`.
+Use npm scripts `dev`, `dev:server`, `dev:web`, `lint`, `typecheck`, `test`, `test:run`, `build`, and `e2e`. Keep the package ESM and require Node `>=24`.
 
 - [x] **Step 2: Write the failing migration test**
 
@@ -262,17 +262,22 @@ Expected: PASS.
 **Files:**
 - Create: `playwright.config.ts`
 - Create: `e2e/workbench.spec.ts`
+- Create: `e2e/visual-inspection.spec.ts`
+- Create: `eslint.config.js`
+- Create: `scripts/smoke-built-server.mjs`
 - Create: `AGENTS.md`
-- Modify: `README.md`
+- Modify: `README.md`, `package.json`
 
 **Interfaces:**
 - Produces: reproducible commands and a browser-verified end-to-end workflow.
 
-- [ ] **Step 1: Write end-to-end test**
+- [x] **Step 1: Write end-to-end test**
 
 Use a deterministic fake provider in test mode. Cover opening the seeded project, editing and saving, generating a candidate, proving the editor is unchanged, accepting once, refreshing, and seeing persisted content.
 
-- [ ] **Step 2: Run complete automated verification**
+- [x] **Step 2: Run complete automated verification**
+
+Run: `npm run lint`
 
 Run: `npm run typecheck`
 
@@ -284,14 +289,14 @@ Run: `npm run e2e`
 
 Expected: every command exits 0 with no unhandled warnings.
 
-- [ ] **Step 3: Inspect desktop and mobile screenshots**
+- [x] **Step 3: Inspect desktop and mobile screenshots**
 
-Capture at `1440x960`, `1024x768`, and `390x844`. Check nonblank rendering, stable panels, no overlap or clipped text, visible focus, candidate review, and mobile drawers. Revise CSS until all checks pass.
+Capture at `1440x960`, `1024x768`, `900x844`, and `390x844`, plus the mobile chapter drawer. Check nonblank rendering, stable panels, no overlap or clipped text, visible focus, candidate review, and mobile drawers. Revise CSS until all checks pass.
 
-- [ ] **Step 4: Self-review the diff**
+- [x] **Step 4: Self-review the diff**
 
 Check requirement coverage, key redaction, revision boundaries, API error paths, data flow, reusable helpers, duplication, and deferred-scope leakage. Fix findings and rerun all commands.
 
-- [ ] **Step 5: Update durable project guidance**
+- [x] **Step 5: Update durable project guidance**
 
 Document install/run/test commands, data location, provider setup, supported adapter semantics, current limitations, and the next milestone in README and AGENTS.

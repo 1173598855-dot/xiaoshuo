@@ -173,9 +173,10 @@ describe("GenerationService", () => {
   });
 
   it("records normalized provider failures while leaving the chapter untouched", async () => {
+    const sensitiveMessage = "provider detail includes sk-service-secret";
     const failure = new NormalizedProviderError(
       "RATE_LIMITED",
-      "模型请求过于频繁。",
+      sensitiveMessage,
     );
     const service = createService(
       vi.fn<TextGenerationProvider["generate"]>().mockRejectedValue(failure),
@@ -184,7 +185,10 @@ describe("GenerationService", () => {
 
     await expect(
       service.generate(generationInput(chapter.id)),
-    ).rejects.toBe(failure);
+    ).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      message: "模型请求过于频繁，请稍后重试。",
+    });
 
     const stored = database
       .prepare(
@@ -198,8 +202,9 @@ describe("GenerationService", () => {
     expect(stored).toEqual({
       status: "failed",
       error_code: "RATE_LIMITED",
-      error_message: "模型请求过于频繁。",
+      error_message: "模型请求过于频繁，请稍后重试。",
     });
+    expect(JSON.stringify(stored)).not.toContain(sensitiveMessage);
     expect(workspaceRepository.getChapter(chapter.id)).toEqual(chapter);
   });
 

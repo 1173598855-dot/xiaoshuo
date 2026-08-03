@@ -4,6 +4,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+output/
 data/*.db
 data/*.db-shm
 data/*.db-wal

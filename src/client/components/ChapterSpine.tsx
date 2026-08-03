@@ -8,6 +8,8 @@ interface ChapterSpineProps {
   chapters: Chapter[];
   selectedChapterId: string | null;
   open: boolean;
+  creating: boolean;
+  actionError: string | null;
   onSelect: (chapterId: string) => void;
   onCreate: () => void;
   onClose: () => void;
@@ -18,6 +20,8 @@ export function ChapterSpine({
   chapters,
   selectedChapterId,
   open,
+  creating,
+  actionError,
   onSelect,
   onCreate,
   onClose,
@@ -49,6 +53,7 @@ export function ChapterSpine({
             }`}
             type="button"
             aria-label={`打开${chapter.title}`}
+            disabled={creating}
             onClick={() => onSelect(chapter.id)}
           >
             <span
@@ -67,7 +72,17 @@ export function ChapterSpine({
         ))}
       </div>
 
-      <button className="new-chapter-button" type="button" onClick={onCreate}>
+      {actionError ? (
+        <div className="chapter-action-error" role="alert">
+          {actionError}
+        </div>
+      ) : null}
+      <button
+        className="new-chapter-button"
+        type="button"
+        disabled={creating}
+        onClick={onCreate}
+      >
         <FilePlus2 size={17} />
         新建章节
       </button>

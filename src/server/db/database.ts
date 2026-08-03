@@ -1,6 +1,13 @@
 import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
+
+// Keep the Node 24-only builtin out of tsup's bare-specifier rewrite.
+const nodeRequire = createRequire(import.meta.url);
+const { DatabaseSync } = nodeRequire(["node", "sqlite"].join(":")) as {
+  DatabaseSync: new (filename: string) => DatabaseSyncType;
+};
 
 export const DEFAULT_DATABASE_PATH = resolve(
   process.cwd(),
@@ -10,7 +17,7 @@ export const DEFAULT_DATABASE_PATH = resolve(
 
 export function createDatabase(
   filename = DEFAULT_DATABASE_PATH,
-): DatabaseSync {
+): DatabaseSyncType {
   if (filename !== ":memory:") {
     mkdirSync(dirname(filename), { recursive: true });
   }

@@ -59,7 +59,7 @@ export class GenerationService {
     const catalogEntry = getProviderCatalog().find(
       ({ id }) => id === input.providerId,
     );
-    if (!catalogEntry || catalogEntry.kind !== input.provider.kind) {
+    if (!catalogEntry || !matchesCatalogConfiguration(catalogEntry, input.provider)) {
       throw new ProviderConfigMismatchError();
     }
 
@@ -138,4 +138,23 @@ export class GenerationService {
   async discard(generationId: string): Promise<Generation> {
     return this.dependencies.generationRepository.discard(generationId);
   }
+}
+
+function matchesCatalogConfiguration(
+  entry: ReturnType<typeof getProviderCatalog>[number],
+  config: CreateGenerationInput["provider"],
+): boolean {
+  if (entry.kind !== config.kind) {
+    return false;
+  }
+
+  if (entry.requiresApiKey && !config.apiKey.trim()) {
+    return false;
+  }
+
+  if (config.kind !== "openai-compatible") {
+    return true;
+  }
+
+  return entry.baseUrlEditable === true || config.baseUrl === entry.baseUrl;
 }

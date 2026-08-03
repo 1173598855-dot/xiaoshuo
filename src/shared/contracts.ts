@@ -120,7 +120,9 @@ const CompatibleBaseUrlSchema = z
     return (
       (url.protocol === "http:" || url.protocol === "https:") &&
       !url.username &&
-      !url.password
+      !url.password &&
+      !url.search &&
+      !url.hash
     );
   }, "Only credential-free HTTP(S) endpoints are supported");
 

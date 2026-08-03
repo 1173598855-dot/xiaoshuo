@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import {
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Check, Eye, EyeOff, X } from "lucide-react";
 
 import type { ProviderCatalogEntry } from "../../shared/contracts";
@@ -30,6 +37,9 @@ export function ProviderDialog({
   const [baseUrl, setBaseUrl] = useState("");
   const [keyVisible, setKeyVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const providerSelectRef = useRef<HTMLSelectElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const selectedProvider = useMemo(
     () => providers.find(({ id }) => id === providerId) ?? null,
@@ -51,6 +61,18 @@ export function ProviderDialog({
     setKeyVisible(false);
     setError(null);
   }, [open, providers, settings]);
+
+  useEffect(() => {
+    if (!open) {
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+      return;
+    }
+
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    providerSelectRef.current?.focus();
+  }, [open]);
 
   if (!open) return null;
 
@@ -90,14 +112,44 @@ export function ProviderDialog({
     onSave(nextSettings);
   };
 
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+    const focusable = dialogRef.current
+      ? Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+          ),
+        )
+      : [];
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first && last) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="provider-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={handleKeyDown}
       >
         <header className="dialog-header">
           <div>
@@ -119,6 +171,7 @@ export function ProviderDialog({
           <label className="form-field">
             <span>服务商</span>
             <select
+              ref={providerSelectRef}
               aria-label="服务商"
               value={providerId}
               onChange={(event) => selectProvider(event.target.value)}
