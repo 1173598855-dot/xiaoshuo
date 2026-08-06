@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
+  CompatibleBaseUrlSchema,
   CreateGenerationInputSchema,
   DesktopGenerationInputSchema,
   ProviderConfigSchema,
@@ -73,6 +74,13 @@ export class ProviderVault {
     }
 
     const settings = this.toPersistedSettings(parsedInput.data, catalogEntry);
+    if (
+      settings.providerId === "custom" &&
+      this.readSettings()?.baseUrl !== settings.baseUrl &&
+      parsedInput.data.apiKey === undefined
+    ) {
+      this.clearStoredKey(settings.providerId);
+    }
     if (parsedInput.data.apiKey !== undefined) {
       this.saveKey(settings.providerId, parsedInput.data.apiKey);
     }
@@ -91,11 +99,7 @@ export class ProviderVault {
     }
 
     this.sessionKeys.delete(providerId);
-    if (this.safeStorage.isEncryptionAvailable()) {
-      const vault = this.readEncryptedVault();
-      delete vault.keys[providerId];
-      this.writeEncryptedVault(vault);
-    }
+    this.clearStoredKey(providerId);
 
     return { ...settings, hasApiKey: false };
   }
@@ -189,6 +193,12 @@ export class ProviderVault {
       if (!entry) {
         return null;
       }
+      if (
+        baseUrl !== undefined &&
+        !CompatibleBaseUrlSchema.safeParse(baseUrl).success
+      ) {
+        return null;
+      }
       return this.toPersistedSettings(
         {
           providerId: validProviderId.data,
@@ -221,6 +231,17 @@ export class ProviderVault {
 
     const vault = this.readEncryptedVault();
     vault.keys[providerId] = apiKey;
+    this.writeEncryptedVault(vault);
+  }
+
+  private clearStoredKey(providerId: ProviderId): void {
+    this.sessionKeys.delete(providerId);
+    if (!this.safeStorage.isEncryptionAvailable()) {
+      return;
+    }
+
+    const vault = this.readEncryptedVault();
+    delete vault.keys[providerId];
     this.writeEncryptedVault(vault);
   }
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -213,6 +213,57 @@ describe("desktop provider vault", () => {
     ).resolves.toMatchObject({
       provider: { baseUrl: "http://127.0.0.1:11434/v1", apiKey: "" },
     });
+  });
+
+  it("does not reuse a custom key after its endpoint changes", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "custom",
+      model: "custom-model",
+      baseUrl: "https://first.example.test/v1",
+      apiKey: "sk-first-endpoint-secret",
+    });
+    await vault.saveSettings({
+      providerId: "custom",
+      model: "custom-model",
+      baseUrl: "https://second.example.test/v1",
+    });
+
+    await expect(
+      vault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "缁х画",
+        providerId: "custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        baseUrl: "https://second.example.test/v1",
+        apiKey: "",
+      },
+    });
+  });
+
+  it("rejects hand-written provider settings with an unsafe endpoint", async () => {
+    const { vault, paths } = createVault();
+    for (const baseUrl of [
+      "https://writer:password@models.example.test/v1",
+      "https://models.example.test/v1?key=sk-query-secret",
+      "https://models.example.test/v1#sk-fragment-secret",
+      "file:///C:/models",
+    ]) {
+      writeFileSync(
+        paths.settingsPath,
+        JSON.stringify({
+          providerId: "custom",
+          model: "custom-model",
+          baseUrl,
+        }),
+      );
+
+      await expect(vault.getSettings()).resolves.toBeNull();
+    }
   });
 
   it("rejects an invalid custom endpoint with a credential-free public error", async () => {

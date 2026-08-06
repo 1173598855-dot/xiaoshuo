@@ -45,3 +45,25 @@ Result: 2 test files and 8 tests passed; TypeScript check passed; no whitespace 
 ## Self-review and concern
 
 `npm run lint` currently fails on the pre-existing untracked `scripts/create-desktop-icon.mjs` because ESLint does not recognize `Buffer` as a global. That file is outside Task 4 and was not changed. The Task 4 files have no reported lint errors. No API key is written to JSON settings, SQLite, return summaries, or the public error object.
+
+## Review follow-up: custom endpoint credential binding and settings tampering
+
+Additional RED command:
+
+```powershell
+npm run test:run -- tests/desktop/provider-vault.test.ts
+```
+
+Result: failed as expected with two regressions: a key saved for custom endpoint A was reused after saving endpoint B without a key, and hand-written `provider-settings.json` values with URL userinfo were returned by `getSettings()`.
+
+Follow-up GREEN verification:
+
+```powershell
+npm run test:run -- tests/desktop/paths.test.ts tests/desktop/provider-vault.test.ts
+npm run typecheck
+git diff --check
+```
+
+Result: 2 test files and 10 tests passed; TypeScript check passed; no whitespace errors.
+
+The minimal safety policy is to clear the custom provider credential whenever the custom endpoint changes without a replacement credential. `getSettings()` additionally validates any on-disk endpoint through `CompatibleBaseUrlSchema`, returning `null` for userinfo, query, hash, or non-HTTP(S) values without returning the unsafe URL.
