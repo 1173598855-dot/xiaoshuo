@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,6 +71,53 @@ describe("App", () => {
       "信封里只有一张车票。",
     );
     expect(screen.getByText("Revision 3")).toBeInTheDocument();
+  });
+
+  it("creates the first chapter for a loaded project with no chapters", async () => {
+    const emptyWorkspace = { ...workspace, chapters: [] };
+    const firstChapter = {
+      ...workspace.chapters[0],
+      content: "",
+      position: 0,
+      revision: 0,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/workspace")) return jsonResponse(emptyWorkspace);
+      if (url.endsWith("/api/providers")) return jsonResponse([]);
+      if (
+        url.includes(`/api/projects/${workspace.project.id}/chapters`) &&
+        init?.method === "POST"
+      ) {
+        return jsonResponse(firstChapter, 201);
+      }
+      throw new Error(`Unhandled fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const emptyWorkspaceView = await screen.findByRole("main", {
+      name: "空章节工作区",
+    });
+    fireEvent.click(
+      within(emptyWorkspaceView).getByRole("button", { name: "新建章节" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/projects/${workspace.project.id}/chapters`,
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, request]) =>
+          String(url).includes("/api/chapters/") && request?.method === "PATCH",
+      ),
+    ).toBe(false);
+    expect(
+      await screen.findByRole("textbox", { name: "章节正文" }),
+    ).toHaveValue("");
   });
 
   it("autosaves edits with the current revision", async () => {

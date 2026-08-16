@@ -1,5 +1,30 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { publicProviderErrorMessage } from "../../shared/contracts";
+
+const GENERATIONS_TABLE_DEFINITION = `(
+    id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
+    provider_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK (operation IN ('continue', 'rewrite', 'polish')),
+    instruction TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    candidate TEXT,
+    status TEXT NOT NULL
+      CHECK (status IN ('pending', 'completed', 'accepted', 'discarded', 'failed')),
+    usage_json TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    accepted_at TEXT
+) STRICT`;
+
+const LEGACY_EMPTY_OUTPUT_ERROR_MESSAGE =
+  "\u6a21\u578b\u6ca1\u6709\u8fd4\u56de\u53ef\u7528\u6587\u672c\u3002";
+
 const V1_SCHEMA = `
   CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
@@ -40,25 +65,7 @@ const V1_SCHEMA = `
     UNIQUE (chapter_id, revision)
   ) STRICT;
 
-  CREATE TABLE IF NOT EXISTS generations (
-    id TEXT PRIMARY KEY,
-    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
-    base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
-    provider_id TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    model TEXT NOT NULL,
-    operation TEXT NOT NULL CHECK (operation IN ('continue', 'rewrite', 'polish')),
-    instruction TEXT NOT NULL,
-    context_json TEXT NOT NULL,
-    candidate TEXT,
-    status TEXT NOT NULL
-      CHECK (status IN ('pending', 'completed', 'accepted', 'discarded', 'failed')),
-    usage_json TEXT,
-    error_code TEXT,
-    error_message TEXT,
-    created_at TEXT NOT NULL,
-    accepted_at TEXT
-  ) STRICT;
+  CREATE TABLE IF NOT EXISTS generations ${GENERATIONS_TABLE_DEFINITION};
 
   CREATE INDEX IF NOT EXISTS chapters_project_position_idx
     ON chapters(project_id, position);
@@ -76,21 +83,58 @@ export function migrate(database: DatabaseSync): void {
   try {
     database.exec(V1_SCHEMA);
     const generationColumns = database
-      .prepare("PRAGMA table_info(generations)")
-      .all() as Array<{ name: string }>;
+      .prepare("PRAGMA table_xinfo(generations)")
+      .all() as Array<{
+      cid: number;
+      name: string;
+      dflt_value: string | null;
+    }>;
+    const providerIdColumn = generationColumns.find(
+      ({ name }) => name === "provider_id",
+    );
+    const requiresCanonicalGenerationTable =
+      !providerIdColumn ||
+      providerIdColumn.cid !== 3 ||
+      providerIdColumn.dflt_value !== null;
 
-    if (!generationColumns.some(({ name }) => name === "provider_id")) {
-      database.exec(
-        "ALTER TABLE generations ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'custom'",
-      );
-      database.exec(
-        `UPDATE generations
-         SET provider_id = CASE
-           WHEN provider = 'openai-compatible' THEN 'custom'
-           ELSE provider
-         END`,
-      );
+    if (requiresCanonicalGenerationTable) {
+      const providerIdExpression = providerIdColumn
+        ? "provider_id"
+        : `CASE
+            WHEN provider = 'openai-compatible' THEN 'custom'
+            ELSE provider
+          END`;
+      database.exec(`
+        DROP INDEX IF EXISTS generations_chapter_created_idx;
+        ALTER TABLE generations RENAME TO generations_legacy_v1;
+        CREATE TABLE generations ${GENERATIONS_TABLE_DEFINITION};
+        INSERT INTO generations (
+          id, chapter_id, base_revision, provider_id, provider, model,
+          operation, instruction, context_json, candidate, status, usage_json,
+          error_code, error_message, created_at, accepted_at
+        )
+        SELECT
+          id, chapter_id, base_revision,
+          ${providerIdExpression},
+          provider, model, operation, instruction, context_json, candidate,
+          status, usage_json, error_code, error_message, created_at, accepted_at
+        FROM generations_legacy_v1;
+        DROP TABLE generations_legacy_v1;
+        CREATE INDEX generations_chapter_created_idx
+          ON generations(chapter_id, created_at DESC);
+      `);
     }
+    database
+      .prepare(
+        `UPDATE generations
+         SET error_message = ?
+         WHERE error_code = 'UPSTREAM_UNAVAILABLE'
+           AND error_message = ?`,
+      )
+      .run(
+        publicProviderErrorMessage("UPSTREAM_UNAVAILABLE"),
+        LEGACY_EMPTY_OUTPUT_ERROR_MESSAGE,
+      );
     database
       .prepare(
         `INSERT INTO app_meta (key, value)

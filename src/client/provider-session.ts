@@ -1,3 +1,5 @@
+// Browser-only session state. Desktop renderer code must use the IPC transport
+// and must never read or write this module for provider credentials.
 import { z } from "zod";
 
 import {

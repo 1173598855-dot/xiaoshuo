@@ -23,6 +23,9 @@
     "e2e",
     "vite.config.ts",
     "vitest.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "tsup.desktop.config.ts",
+    "playwright.desktop.config.ts",
+    "playwright.packaged.config.ts"
   ]
 }

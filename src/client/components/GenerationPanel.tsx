@@ -15,9 +15,11 @@ import type {
   Chapter,
   Generation,
   GenerationOperation,
+  ProviderConfig,
   ProviderCatalogEntry,
 } from "../../shared/contracts";
 import { apiClient, ApiRequestError } from "../api/client";
+import type { ClientProviderSettings } from "../api/transport";
 import type { SaveStatus } from "../hooks/use-autosave";
 import {
   resolveProviderSettings,
@@ -26,7 +28,7 @@ import {
 
 interface GenerationPanelProps {
   providers: readonly ProviderCatalogEntry[];
-  providerSettings: SessionProviderSettings | null;
+  providerSettings: ClientProviderSettings | SessionProviderSettings | null;
   chapter: Chapter;
   draftContent: string;
   saveStatus: SaveStatus;
@@ -83,7 +85,7 @@ export function GenerationPanel({
   const mountedRef = useRef(false);
   chapterIdRef.current = chapter.id;
   const resolvedProvider = useMemo(
-    () => resolveProviderSettings(providerSettings, providers),
+    () => resolveClientProvider(providerSettings, providers),
     [providerSettings, providers],
   );
   const generation = generations[chapter.id] ?? null;
@@ -153,15 +155,25 @@ export function GenerationPanel({
     abortRef.current = { chapterId: sourceChapterId, controller };
 
     try {
+      const generationInput =
+        resolvedProvider.platform === "desktop"
+          ? {
+              chapterId: sourceChapter.id,
+              expectedRevision: sourceChapter.revision,
+              operation,
+              instruction: instruction.trim(),
+              providerId: resolvedProvider.entry.id,
+            }
+          : {
+              chapterId: sourceChapter.id,
+              expectedRevision: sourceChapter.revision,
+              operation,
+              instruction: instruction.trim(),
+              providerId: resolvedProvider.entry.id,
+              provider: resolvedProvider.config,
+            };
       const nextGeneration = await apiClient.generate(
-        {
-          chapterId: sourceChapter.id,
-          expectedRevision: sourceChapter.revision,
-          operation,
-          instruction: instruction.trim(),
-          providerId: resolvedProvider.entry.id,
-          provider: resolvedProvider.config,
-        },
+        generationInput,
         controller.signal,
       );
       if (!controller.signal.aborted) {
@@ -367,7 +379,7 @@ export function GenerationPanel({
         <Bot size={16} />
         <span>
           {resolvedProvider
-            ? `${resolvedProvider.entry.name} · ${resolvedProvider.config.model}`
+            ? `${resolvedProvider.entry.name} · ${resolvedProvider.model}`
             : providers.length > 0
               ? "尚未配置模型"
               : "尚未读取模型入口"}
@@ -425,4 +437,62 @@ function isAuthenticationFailure(error: unknown): boolean {
       error.status === 403 ||
       error.code === "AUTHENTICATION_FAILED")
   );
+}
+
+type ResolvedClientProvider =
+  | {
+      platform: "web";
+      entry: ProviderCatalogEntry;
+      config: ProviderConfig;
+      model: string;
+    }
+  | {
+      platform: "desktop";
+      entry: ProviderCatalogEntry;
+      model: string;
+    };
+
+function resolveClientProvider(
+  settings: ClientProviderSettings | SessionProviderSettings | null,
+  providers: readonly ProviderCatalogEntry[],
+): ResolvedClientProvider | null {
+  if (!settings) return null;
+  const entry = providers.find(({ id }) => id === settings.providerId);
+  if (!entry || !settings.model.trim()) return null;
+
+  if (isDesktopProviderSettings(settings)) {
+    if (entry.requiresApiKey && !settings.hasApiKey) return null;
+    return {
+      platform: "desktop",
+      entry,
+      model: settings.model.trim(),
+    };
+  }
+
+  const sessionSettings: SessionProviderSettings =
+    "platform" in settings
+      ? {
+          providerId: settings.providerId,
+          model: settings.model,
+          apiKey: (settings as Extract<ClientProviderSettings, { platform: "web" }>).apiKey,
+          ...((settings as Extract<ClientProviderSettings, { platform: "web" }>).baseUrl !== undefined
+            ? { baseUrl: (settings as Extract<ClientProviderSettings, { platform: "web" }>).baseUrl }
+            : {}),
+        }
+      : settings;
+  const resolved = resolveProviderSettings(sessionSettings, providers);
+  return resolved
+    ? {
+        platform: "web",
+        entry: resolved.entry,
+        config: resolved.config,
+        model: resolved.config.model,
+      }
+    : null;
+}
+
+function isDesktopProviderSettings(
+  settings: ClientProviderSettings | SessionProviderSettings,
+): settings is Extract<ClientProviderSettings, { platform: "desktop" }> {
+  return "platform" in settings && settings.platform === "desktop";
 }

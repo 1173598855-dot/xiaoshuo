@@ -24,6 +24,7 @@ export default defineConfig(
     languageOptions: {
       globals: {
         console: "readonly",
+        clearTimeout: "readonly",
         fetch: "readonly",
         process: "readonly",
         setTimeout: "readonly",

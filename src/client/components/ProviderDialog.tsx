@@ -1,24 +1,37 @@
 import {
   type KeyboardEvent,
+  useCallback,
   useEffect,
   useId,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { Check, Eye, EyeOff, X } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, RefreshCw, Trash2, X } from "lucide-react";
 
-import type { ProviderCatalogEntry } from "../../shared/contracts";
-import {
-  resolveProviderSettings,
-  type SessionProviderSettings,
-} from "../provider-session";
+import type {
+  ProviderCatalogEntry,
+  ProviderId,
+  ListProviderModelsInput,
+  ProviderModel,
+  SaveProviderSettingsInput,
+} from "../../shared/contracts";
+import { ApiRequestError, type ClientProviderSettings } from "../api/transport";
+import type { SessionProviderSettings } from "../provider-session";
+
+type ProviderDialogSettings = ClientProviderSettings | SessionProviderSettings;
 
 interface ProviderDialogProps {
   open: boolean;
   providers: readonly ProviderCatalogEntry[];
-  settings: SessionProviderSettings | null;
-  onSave: (settings: SessionProviderSettings) => void;
+  settings: ProviderDialogSettings | null;
+  platform?: "web" | "desktop";
+  onSave: (settings: SaveProviderSettingsInput) => void | Promise<void>;
+  onClearKey?: (providerId: ProviderId) => void | Promise<void>;
+  onListModels?: (
+    input: ListProviderModelsInput,
+    signal?: AbortSignal,
+  ) => Promise<readonly ProviderModel[]>;
   onClose: () => void;
 }
 
@@ -26,7 +39,10 @@ export function ProviderDialog({
   open,
   providers,
   settings,
+  platform = "web",
   onSave,
+  onClearKey,
+  onListModels,
   onClose,
 }: ProviderDialogProps) {
   const titleId = useId();
@@ -37,9 +53,25 @@ export function ProviderDialog({
   const [baseUrl, setBaseUrl] = useState("");
   const [keyVisible, setKeyVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dynamicModels, setDynamicModels] = useState<readonly ProviderModel[]>(
+    [],
+  );
+  const [modelListLoading, setModelListLoading] = useState(false);
+  const [modelListError, setModelListError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const providerSelectRef = useRef<HTMLSelectElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const modelListRequestRef = useRef(0);
+  const modelListAbortRef = useRef<AbortController | null>(null);
+
+  const invalidateModelList = useCallback(() => {
+    modelListAbortRef.current?.abort();
+    modelListAbortRef.current = null;
+    modelListRequestRef.current += 1;
+    setDynamicModels([]);
+    setModelListLoading(false);
+    setModelListError(null);
+  }, []);
 
   const selectedProvider = useMemo(
     () => providers.find(({ id }) => id === providerId) ?? null,
@@ -51,8 +83,16 @@ export function ProviderDialog({
     const entry =
       providers.find(({ id }) => id === settings?.providerId) ?? providers[0];
     setProviderId(entry?.id ?? "");
-    setModel(settings?.providerId === entry?.id ? settings.model : entry?.defaultModel ?? "");
-    setApiKey(settings?.providerId === entry?.id ? settings.apiKey : "");
+    setModel(
+      settings?.providerId === entry?.id
+        ? settings.model
+        : entry?.defaultModel ?? "",
+    );
+    setApiKey(
+      settings?.providerId === entry?.id && isWebSettings(settings)
+        ? settings.apiKey
+        : "",
+    );
     setBaseUrl(
       settings?.providerId === entry?.id
         ? settings.baseUrl ?? entry?.baseUrl ?? ""
@@ -60,7 +100,8 @@ export function ProviderDialog({
     );
     setKeyVisible(false);
     setError(null);
-  }, [open, providers, settings]);
+    invalidateModelList();
+  }, [invalidateModelList, open, providers, settings]);
 
   useEffect(() => {
     if (!open) {
@@ -70,7 +111,9 @@ export function ProviderDialog({
     }
 
     restoreFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     providerSelectRef.current?.focus();
   }, [open]);
 
@@ -83,39 +126,146 @@ export function ProviderDialog({
     setApiKey("");
     setBaseUrl(entry?.baseUrl ?? "");
     setError(null);
+    invalidateModelList();
   };
 
-  const submit = () => {
+  const clearEnteredKey = () => {
+    setApiKey("");
+    setKeyVisible(false);
+    setError(null);
+  };
+
+  const closeDialog = () => {
+    clearEnteredKey();
+    invalidateModelList();
+    onClose();
+  };
+
+  const loadModels = async () => {
+    if (
+      !selectedProvider ||
+      selectedProvider.kind !== "openai-compatible" ||
+      !onListModels
+    ) {
+      return;
+    }
+    if (selectedProvider.baseUrlEditable && !baseUrl.trim()) {
+      setModelListError("请输入服务地址后再拉取模型列表。");
+      return;
+    }
+
+    const input: ListProviderModelsInput = {
+      providerId: selectedProvider.id,
+      ...(selectedProvider.baseUrlEditable
+        ? { baseUrl: baseUrl.trim() }
+        : {}),
+      ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    };
+    const requestId = ++modelListRequestRef.current;
+    modelListAbortRef.current?.abort();
+    const controller = new AbortController();
+    modelListAbortRef.current = controller;
+    setModelListLoading(true);
+    setModelListError(null);
+    try {
+      const models = await onListModels(input, controller.signal);
+      if (modelListRequestRef.current === requestId) {
+        setDynamicModels(models);
+      }
+    } catch (requestError) {
+      if (modelListRequestRef.current !== requestId) return;
+      setModelListError(
+        requestError instanceof ApiRequestError &&
+          requestError.code === "REQUEST_INVALID"
+          ? "模型列表不可用，请确认服务地址包含正确的 API 前缀，常见为 /v1。"
+          : requestError instanceof Error && requestError.message
+            ? requestError.message
+            : "模型列表获取失败，请稍后重试。",
+      );
+    } finally {
+      if (modelListRequestRef.current === requestId) {
+        modelListAbortRef.current = null;
+        setModelListLoading(false);
+      }
+    }
+  };
+
+  const submit = async () => {
     if (!selectedProvider) {
       setError("请选择可用的模型服务商。");
       return;
     }
 
-    const nextSettings: SessionProviderSettings = {
-      providerId: selectedProvider.id,
-      model: model.trim(),
-      apiKey,
-      ...(selectedProvider.kind === "openai-compatible"
-        ? { baseUrl: baseUrl.trim() }
-        : {}),
-    };
-
-    if (!resolveProviderSettings(nextSettings, providers)) {
-      setError(
-        selectedProvider.requiresApiKey && !apiKey
-          ? "请输入 API Key。"
-          : "请检查模型 ID 和服务地址。",
-      );
+    const modelValue = model.trim();
+    if (!modelValue) {
+      setError("请输入模型 ID。");
       return;
     }
 
-    onSave(nextSettings);
+    if (
+      selectedProvider.kind === "openai-compatible" &&
+      selectedProvider.baseUrlEditable &&
+      !baseUrl.trim()
+    ) {
+      setError("请输入服务地址。");
+      return;
+    }
+
+    const hasReusableDesktopKey =
+      platform === "desktop" &&
+      settings?.providerId === selectedProvider.id &&
+      isDesktopSettings(settings) &&
+      settings.hasApiKey;
+    if (
+      selectedProvider.requiresApiKey &&
+      !apiKey.trim() &&
+      !hasReusableDesktopKey
+    ) {
+      setError("请输入 API Key。");
+      return;
+    }
+
+    const nextSettings: SaveProviderSettingsInput = {
+      providerId: selectedProvider.id,
+      model: modelValue,
+      ...(selectedProvider.kind === "openai-compatible" &&
+      selectedProvider.baseUrlEditable
+        ? { baseUrl: baseUrl.trim() }
+        : {}),
+      ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    };
+
+    try {
+      await onSave(nextSettings);
+      clearEnteredKey();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error && saveError.message
+          ? saveError.message
+          : "模型配置保存失败，请重试。",
+      );
+    }
+  };
+
+  const clearKey = async () => {
+    if (!onClearKey || !selectedProvider) return;
+    try {
+      await onClearKey(selectedProvider.id);
+      setApiKey("");
+      setError(null);
+    } catch (clearError) {
+      setError(
+        clearError instanceof Error && clearError.message
+          ? clearError.message
+          : "API Key 清除失败，请重试。",
+      );
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
+      closeDialog();
       return;
     }
 
@@ -140,8 +290,23 @@ export function ProviderDialog({
     }
   };
 
+  const hasCurrentKey = Boolean(
+    settings &&
+      settings.providerId === selectedProvider?.id &&
+      hasProviderKey(settings),
+  );
+  const keyStatusMessage =
+    platform === "desktop" ? "已安全保存" : "当前会话已保存";
+  const modelOptions = [
+    ...(selectedProvider?.models ?? []),
+    ...dynamicModels.map(({ id }) => ({ id, label: id })),
+  ].filter(
+    (candidate, index, values) =>
+      values.findIndex(({ id }) => id === candidate.id) === index,
+  );
+
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={closeDialog}>
       <section
         ref={dialogRef}
         className="provider-dialog"
@@ -161,7 +326,7 @@ export function ProviderDialog({
             type="button"
             aria-label="关闭模型配置"
             title="关闭"
-            onClick={onClose}
+            onClick={closeDialog}
           >
             <X size={18} />
           </button>
@@ -186,20 +351,48 @@ export function ProviderDialog({
 
           <label className="form-field">
             <span>模型 ID</span>
-            <input
-              aria-label="模型 ID"
-              value={model}
-              list={modelListId}
-              autoComplete="off"
-              onChange={(event) => setModel(event.target.value)}
-            />
+            <span className="model-input-row">
+              <input
+                aria-label="模型 ID"
+                value={model}
+                list={modelListId}
+                autoComplete="off"
+                onChange={(event) => setModel(event.target.value)}
+              />
+              {selectedProvider?.kind === "openai-compatible" && onListModels ? (
+                <button
+                  className="icon-button model-refresh-button"
+                  type="button"
+                  aria-label="拉取模型列表"
+                  title="拉取模型列表"
+                  disabled={modelListLoading}
+                  onClick={() => void loadModels()}
+                >
+                  <RefreshCw
+                    className={modelListLoading ? "is-spinning" : undefined}
+                    size={16}
+                    aria-hidden="true"
+                  />
+                </button>
+              ) : null}
+            </span>
             <datalist id={modelListId}>
-              {selectedProvider?.models.map((candidate) => (
+              {modelOptions.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
                   {candidate.label}
                 </option>
               ))}
             </datalist>
+            {modelListLoading ? (
+              <span className="model-list-status" role="status">
+                正在获取模型列表
+              </span>
+            ) : null}
+            {modelListError ? (
+              <span className="form-error model-list-error" role="alert">
+                {modelListError}
+              </span>
+            ) : null}
           </label>
 
           {selectedProvider?.kind === "openai-compatible" ? (
@@ -210,7 +403,10 @@ export function ProviderDialog({
                 aria-label="服务地址"
                 value={baseUrl}
                 readOnly={!selectedProvider.baseUrlEditable}
-                onChange={(event) => setBaseUrl(event.target.value)}
+                onChange={(event) => {
+                  invalidateModelList();
+                  setBaseUrl(event.target.value);
+                }}
               />
             </label>
           ) : null}
@@ -218,6 +414,12 @@ export function ProviderDialog({
           {selectedProvider?.requiresApiKey || selectedProvider?.apiKeyOptional ? (
             <label className="form-field">
               <span>API Key</span>
+              {hasCurrentKey ? (
+                <span className="provider-key-status" role="status">
+                  <KeyRound size={14} />
+                  <span>{keyStatusMessage}</span>
+                </span>
+              ) : null}
               <span className="secret-input">
                 <input
                   type={keyVisible ? "text" : "password"}
@@ -236,6 +438,17 @@ export function ProviderDialog({
                   {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </span>
+              {hasCurrentKey && onClearKey ? (
+                <button
+                  className="secondary-button danger-button provider-clear-key"
+                  type="button"
+                  aria-label="清除已保存的 API Key"
+                  onClick={() => void clearKey()}
+                >
+                  <Trash2 size={14} />
+                  <span>清除 API Key</span>
+                </button>
+              ) : null}
             </label>
           ) : null}
 
@@ -243,10 +456,10 @@ export function ProviderDialog({
         </div>
 
         <footer className="dialog-actions">
-          <button className="secondary-button" type="button" onClick={onClose}>
+          <button className="secondary-button" type="button" onClick={closeDialog}>
             取消
           </button>
-          <button className="primary-button" type="button" onClick={submit}>
+          <button className="primary-button" type="button" onClick={() => void submit()}>
             <Check size={16} />
             <span>保存模型配置</span>
           </button>
@@ -254,4 +467,22 @@ export function ProviderDialog({
       </section>
     </div>
   );
+}
+
+function isWebSettings(
+  settings: ProviderDialogSettings | null | undefined,
+): settings is Extract<ClientProviderSettings, { platform: "web" }> | SessionProviderSettings {
+  return Boolean(settings && (!("platform" in settings) || settings.platform === "web"));
+}
+
+function isDesktopSettings(
+  settings: ProviderDialogSettings | null | undefined,
+): settings is Extract<ClientProviderSettings, { platform: "desktop" }> {
+  return Boolean(settings && "platform" in settings && settings.platform === "desktop");
+}
+
+function hasProviderKey(settings: ProviderDialogSettings): boolean {
+  return isDesktopSettings(settings)
+    ? settings.hasApiKey
+    : isWebSettings(settings) && settings.apiKey.length > 0;
 }

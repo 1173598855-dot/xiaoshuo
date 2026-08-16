@@ -88,10 +88,10 @@ Preload 仅提供下列语义 API；channel 名称在 `src/desktop/ipc/channels.
 
 ### 数据库
 
-数据库位置固定为：
+数据库位置由 Electron 的每用户 `app.getPath("userData")` 决定（标准安装通常为）：
 
 ```text
-%APPDATA%\XiaoyiNovelWorkbench\xiaoyi.db
+%APPDATA%\小奕小说生成工具\xiaoyi.db
 ```
 
 主进程在启动时调用现有 `createDatabase(path)` 和 `migrate(database)`。数据库始终启用 WAL、外键和现有 revision/采纳事务，不允许 Renderer 直接读写文件。
@@ -193,3 +193,9 @@ webPreferences: {
 - 流式生成、全局正典/检索记忆和历史恢复 UI；
 - 自绘标题栏与复杂原生插件；
 - 默认静默自动更新。
+
+## 12. 实施状态与验证
+
+截至 2026-08-09，本设计对应的 Electron Main/Preload/Renderer 边界、共享运行时、Provider Vault、数据库备份与导入导出、原生菜单、更新检查、Electron E2E 和 NSIS x64 打包均已实现。自动化验证覆盖 BrowserWindow 安全选项、IPC Zod 校验与错误脱敏、Main-only 凭据、每日备份最近 20 份、维护失败回滚、浏览器兼容流程和版本化安装包产物。
+
+生成产物为 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。自动化发布门禁与具体证据记录在实施计划；干净 Windows 用户配置上的安装、卸载和无开发服务器验收仍作为独立人工发布门禁，不由自动化测试替代。

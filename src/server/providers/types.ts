@@ -1,4 +1,5 @@
 import type {
+  ProviderErrorCode,
   ProviderCatalogEntry,
   ProviderConfig,
   ProviderKind,
@@ -35,13 +36,7 @@ export type ProviderFactory = (
   config: ProviderConfig,
 ) => TextGenerationProvider;
 
-export type NormalizedProviderErrorCode =
-  | "AUTHENTICATION_FAILED"
-  | "RATE_LIMITED"
-  | "UPSTREAM_UNAVAILABLE"
-  | "REQUEST_INVALID"
-  | "REQUEST_ABORTED"
-  | "UNKNOWN_PROVIDER_ERROR";
+export type NormalizedProviderErrorCode = ProviderErrorCode;
 
 export class NormalizedProviderError extends Error {
   constructor(

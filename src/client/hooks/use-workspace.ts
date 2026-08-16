@@ -9,6 +9,7 @@ export function useWorkspace() {
     null,
   );
   const [draftContent, setDraftContent] = useState("");
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const activeLoadRef = useRef<AbortController | null>(null);
@@ -32,6 +33,7 @@ export function useWorkspace() {
       setWorkspace(nextWorkspace);
       setSelectedChapterId(selected?.id ?? null);
       setDraftContent(selected?.content ?? "");
+      setWorkspaceEpoch((current) => current + 1);
     } catch (loadError) {
       if (activeLoadRef.current !== controller || controller.signal.aborted) {
         return;
@@ -101,6 +103,7 @@ export function useWorkspace() {
 
   return {
     workspace,
+    workspaceEpoch,
     selectedChapter,
     draftContent,
     loading,

@@ -91,9 +91,9 @@ export function useAutosave({
       const promise = (async (): Promise<Chapter | undefined> => {
         try {
           const saved = await callbacks.save(targetContent, expectedRevision);
-          callbacks.onSaved(saved);
 
           if (identityRef.current === targetIdentity) {
+            callbacks.onSaved(saved);
             revisionRef.current = saved.revision;
             lastSavedContentRef.current = targetContent;
             blockedRef.current = false;

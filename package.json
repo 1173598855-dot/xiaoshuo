@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/desktop/main.cjs",
   "engines": {
     "node": ">=24"
   },
@@ -10,19 +11,64 @@
     "dev": "concurrently -k -n server,web -c green,cyan \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:web": "vite --host 127.0.0.1",
+    "build:client": "vite build",
+    "build:desktop": "tsup --config tsup.desktop.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest",
     "test:run": "vitest run",
     "build": "npm run typecheck && vite build && tsup src/server/index.ts --format esm --out-dir dist/server --sourcemap --clean && npm run smoke:server",
     "smoke:server": "node scripts/smoke-built-server.mjs",
+    "smoke:desktop": "npm run desktop:build && node scripts/smoke-desktop.mjs",
     "start": "node dist/server/index.js",
+    "desktop:build": "npm run typecheck && npm run build:client && npm run build:desktop",
+    "desktop:dev": "concurrently -k -n main,web,electron -c yellow,cyan,green \"npm:desktop:watch-main\" \"npm:dev:web\" \"npm:desktop:launch\"",
+    "desktop:watch-main": "tsup --config tsup.desktop.config.ts --watch",
+    "desktop:launch": "wait-on dist/desktop/main.cjs http://127.0.0.1:5173 && cross-env XIAOYI_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "desktop:test": "npm run desktop:build && playwright test -c playwright.desktop.config.ts",
+    "desktop:package:test": "node scripts/assert-desktop-artifact.mjs && playwright test -c playwright.packaged.config.ts",
+    "desktop:installed:test": "node scripts/assert-desktop-artifact.mjs && node scripts/installed-desktop-acceptance.mjs",
+    "desktop:artifact": "node scripts/assert-desktop-artifact.mjs",
+    "desktop:icon": "node scripts/create-desktop-icon.mjs",
+    "desktop:dist": "npm run desktop:icon && npm run desktop:build && electron-builder --win nsis --x64",
     "e2e": "playwright test"
+  },
+  "build": {
+    "appId": "com.xiaoyi.novelworkbench",
+    "productName": "小奕小说生成工具",
+    "artifactName": "XiaoyiNovelWorkbench-${version}-setup.exe",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/client/**",
+      "dist/desktop/**",
+      "package.json"
+    ],
+    "icon": "build/icon.ico",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@google/genai": "^2.15.0",
     "@hono/node-server": "^2.0.12",
+    "electron-updater": "^6.8.9",
     "hono": "^4.12.33",
     "lucide-react": "^1.28.0",
     "openai": "^7.3.0",
@@ -42,14 +88,19 @@
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^10.0.4",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^30.0.1",
+    "png-to-ico": "^3.0.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wait-on": "^9.1.0"
   }
 }

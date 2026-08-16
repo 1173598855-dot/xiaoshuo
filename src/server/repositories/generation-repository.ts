@@ -1,13 +1,21 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import type {
-  Chapter,
-  Generation,
-  GenerationOperation,
-  ProviderId,
-  ProviderKind,
+import {
+  MAX_CHAPTER_CONTENT_CHARACTERS,
+  GenerationSchema,
+  publicProviderErrorMessage,
+  type Chapter,
+  type Generation,
+  type GenerationContext,
+  type GenerationOperation,
+  type ProviderId,
+  type ProviderKind,
 } from "../../shared/contracts";
+import {
+  NormalizedProviderError,
+  type NormalizedProviderErrorCode,
+} from "../providers/types";
 import type { ProviderUsage } from "../providers/types";
 import {
   ChapterLockedError,
@@ -28,7 +36,7 @@ interface PendingGenerationInput {
   model: string;
   operation: GenerationOperation;
   instruction: string;
-  context: Record<string, unknown>;
+  context: GenerationContext;
 }
 
 interface GenerationRow {
@@ -43,7 +51,7 @@ interface GenerationRow {
   candidate: string | null;
   status: Generation["status"];
   usage_json: string | null;
-  error_code: string | null;
+  error_code: NormalizedProviderErrorCode | null;
   error_message: string | null;
   created_at: string;
   accepted_at: string | null;
@@ -75,6 +83,16 @@ export class GenerationStateError extends Error {
   ) {
     super(`Generation ${generationId} cannot transition from ${status}`);
     this.name = "GenerationStateError";
+  }
+}
+
+export class GenerationContentTooLargeError extends NormalizedProviderError {
+  constructor(readonly characters: number) {
+    super(
+      "CONTENT_TOO_LARGE",
+      publicProviderErrorMessage("CONTENT_TOO_LARGE"),
+    );
+    this.name = "GenerationContentTooLargeError";
   }
 }
 
@@ -124,6 +142,10 @@ export class GenerationRepository {
     candidate: string,
     usage: ProviderUsage | null,
   ): Generation {
+    if (candidate.length > MAX_CHAPTER_CONTENT_CHARACTERS) {
+      throw new GenerationContentTooLargeError(candidate.length);
+    }
+
     const result = this.database
       .prepare(
         `UPDATE generations
@@ -140,7 +162,11 @@ export class GenerationRepository {
     return this.get(generationId);
   }
 
-  fail(generationId: string, code: string, message: string): Generation {
+  fail(
+    generationId: string,
+    code: NormalizedProviderErrorCode,
+    message: string,
+  ): Generation {
     const result = this.database
       .prepare(
         `UPDATE generations
@@ -220,6 +246,9 @@ export class GenerationRepository {
         generation.candidate,
         generation.operation,
       );
+      if (nextContent.length > MAX_CHAPTER_CONTENT_CHARACTERS) {
+        throw new GenerationContentTooLargeError(nextContent.length);
+      }
 
       this.database
         .prepare(
@@ -316,7 +345,7 @@ function mergeCandidate(
 }
 
 function toGeneration(row: GenerationRow): Generation {
-  return {
+  return GenerationSchema.parse({
     id: row.id,
     chapterId: row.chapter_id,
     baseRevision: row.base_revision,
@@ -336,5 +365,5 @@ function toGeneration(row: GenerationRow): Generation {
         : null,
     createdAt: row.created_at,
     acceptedAt: row.accepted_at,
-  };
+  });
 }

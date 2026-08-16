@@ -1,36 +1,28 @@
-import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../src/server/app";
-import { createDatabase } from "../../src/server/db/database";
-import { migrate } from "../../src/server/db/migrations";
+import {
+  createServerRuntime,
+  type ServerRuntime,
+} from "../../src/server/bootstrap";
 import { getProviderCatalog } from "../../src/server/providers/catalog";
 import { normalizeProviderError } from "../../src/server/providers/normalize-error";
 import {
   NormalizedProviderError,
   type TextGenerationProvider,
 } from "../../src/server/providers/types";
-import { GenerationRepository } from "../../src/server/repositories/generation-repository";
-import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
-import { GenerationService } from "../../src/server/services/generation-service";
+import { MAX_CHAPTER_CONTENT_CHARACTERS } from "../../src/shared/contracts";
 
 const SENTINEL_API_KEY = "sk-route-secret-must-not-persist";
 
 describe("generation routes", () => {
-  let database: DatabaseSync;
-  let workspaceRepository: WorkspaceRepository;
-  let generationRepository: GenerationRepository;
+  let runtime: ServerRuntime | undefined;
+  let database: ServerRuntime["database"];
+  let workspaceRepository: ServerRuntime["workspaceRepository"];
   let generate: TextGenerationProvider["generate"];
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
-    database = createDatabase(":memory:");
-    migrate(database);
-    workspaceRepository = new WorkspaceRepository(database);
-    generationRepository = new GenerationRepository(
-      database,
-      workspaceRepository,
-    );
     generate = vi
       .fn<TextGenerationProvider["generate"]>()
       .mockResolvedValue({ text: "门外传来三声叩响。", usage: null });
@@ -38,7 +30,8 @@ describe("generation routes", () => {
   });
 
   afterEach(() => {
-    database.close();
+    runtime?.close();
+    runtime = undefined;
   });
 
   it("returns the public provider catalog without credentials", async () => {
@@ -97,6 +90,42 @@ describe("generation routes", () => {
     expect(workspaceRepository.getChapter(chapter.id).content).toBe(
       "门外传来三声叩响。",
     );
+  });
+
+  it("returns a bounded error when a provider candidate exceeds the chapter limit", async () => {
+    generate = vi
+      .fn<TextGenerationProvider["generate"]>()
+      .mockResolvedValue({
+        text: "x".repeat(MAX_CHAPTER_CONTENT_CHARACTERS + 1),
+        usage: null,
+      });
+    app = appWithProvider(generate);
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+
+    const response = await app.request("/api/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(requestBody(chapter.id, chapter.revision)),
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "CONTENT_TOO_LARGE",
+        message: "生成结果超过章节正文上限，请缩短正文或重新生成。",
+      },
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT candidate, status, error_code AS errorCode FROM generations LIMIT 1",
+        )
+        .get(),
+    ).toEqual({
+      candidate: null,
+      status: "failed",
+      errorCode: "CONTENT_TOO_LARGE",
+    });
   });
 
   it("supports no-key Ollama-compatible requests", async () => {
@@ -259,15 +288,17 @@ describe("generation routes", () => {
   });
 
   function appWithProvider(providerGenerate: TextGenerationProvider["generate"]) {
-    const generationService = new GenerationService({
-      workspaceRepository,
-      generationRepository,
+    runtime?.close();
+    runtime = createServerRuntime({
+      databasePath: ":memory:",
       providerResolver: {
         resolve: (config) => ({ kind: config.kind, generate: providerGenerate }),
       },
     });
+    database = runtime.database;
+    workspaceRepository = runtime.workspaceRepository;
 
-    return createApp({ workspaceRepository, generationService });
+    return createApp(runtime);
   }
 });
 

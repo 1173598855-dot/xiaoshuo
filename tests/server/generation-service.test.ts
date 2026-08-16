@@ -19,6 +19,8 @@ import {
   GenerationService,
   ProviderConfigMismatchError,
 } from "../../src/server/services/generation-service";
+import { buildGenerationContext } from "../../src/server/services/prompt-builder";
+import { MAX_CHAPTER_CONTENT_CHARACTERS } from "../../src/shared/contracts";
 
 const SENTINEL_API_KEY = "sk-must-never-be-persisted";
 
@@ -83,6 +85,38 @@ describe("GenerationService", () => {
     expect(JSON.stringify(stored)).not.toContain(SENTINEL_API_KEY);
   });
 
+  it("fails an oversized provider candidate without storing it", async () => {
+    const service = createService(
+      vi
+        .fn<TextGenerationProvider["generate"]>()
+        .mockResolvedValue({
+          text: "x".repeat(MAX_CHAPTER_CONTENT_CHARACTERS + 1),
+          usage: null,
+        }),
+    );
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+
+    await expect(service.generate(generationInput(chapter.id))).rejects.toMatchObject({
+      code: "CONTENT_TOO_LARGE",
+    });
+
+    expect(
+      database
+        .prepare(
+          `SELECT candidate, status, error_code AS errorCode
+           FROM generations
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        )
+        .get(),
+    ).toEqual({
+      candidate: null,
+      status: "failed",
+      errorCode: "CONTENT_TOO_LARGE",
+    });
+    expect(workspaceRepository.getChapter(chapter.id)).toEqual(chapter);
+  });
+
   it("accepts a completed candidate exactly once", async () => {
     const service = createService(
       vi
@@ -106,6 +140,48 @@ describe("GenerationService", () => {
     expect(workspaceRepository.getChapter(chapter.id).content).toBe(
       "风从城门外吹来。",
     );
+  });
+
+  it("rolls back a continuation that would exceed the author content limit", async () => {
+    const chapter = workspaceRepository.getWorkspace().chapters[0];
+    const edited = workspaceRepository.updateChapter(chapter.id, {
+      expectedRevision: chapter.revision,
+      content: "a".repeat(MAX_CHAPTER_CONTENT_CHARACTERS - 1),
+    });
+    const generation = generationRepository.createPending({
+      chapterId: edited.id,
+      baseRevision: edited.revision,
+      providerId: "openai",
+      provider: "openai",
+      model: "test-model",
+      operation: "continue",
+      instruction: "继续",
+      context: buildGenerationContext(edited),
+    });
+    generationRepository.complete(generation.id, "b", null);
+    const snapshotCount = database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM chapter_revisions WHERE chapter_id = ?",
+      )
+      .get(chapter.id) as { count: number };
+
+    let acceptanceError: unknown;
+    try {
+      generationRepository.accept(generation.id);
+    } catch (error) {
+      acceptanceError = error;
+    }
+    expect(acceptanceError).toMatchObject({ code: "CONTENT_TOO_LARGE" });
+
+    expect(workspaceRepository.getChapter(chapter.id)).toEqual(edited);
+    expect(generationRepository.get(generation.id).status).toBe("completed");
+    expect(
+      database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM chapter_revisions WHERE chapter_id = ?",
+        )
+        .get(chapter.id),
+    ).toEqual(snapshotCount);
   });
 
   it.each(["rewrite", "polish"] as const)(

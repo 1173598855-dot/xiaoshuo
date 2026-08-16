@@ -1,36 +1,53 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
 import {
   CompatibleBaseUrlSchema,
   CreateGenerationInputSchema,
   DesktopGenerationInputSchema,
+  ListProviderModelsInputSchema,
   ProviderConfigSchema,
   ProviderIdSchema,
   SaveProviderSettingsInputSchema,
   type CreateGenerationInput,
   type DesktopGenerationInput,
+  type ListProviderModelsInput,
   type ProviderId,
   type ProviderSettings,
   type SaveProviderSettingsInput,
 } from "../shared/contracts";
 import { getProviderCatalog } from "../server/providers/catalog";
+import {
+  resolveOpenAICompatibleModelListConfig,
+  type OpenAICompatibleModelListConfig,
+} from "../server/providers/openai-compatible-models";
 import { ProviderConfigMismatchError } from "../server/services/generation-service";
 import type { DesktopPaths } from "./paths";
 
-const VAULT_VERSION = 1;
+const CredentialIdSchema = z.string().uuid();
 
 interface PersistedSettings {
   providerId: ProviderId;
   model: string;
   baseUrl?: string;
+  credentialId?: string;
+  revokedCredentialIds?: readonly string[];
+  revokedProviderIds?: readonly ProviderId[];
 }
 
-interface PersistedVault {
-  version: number;
+interface PersistedVaultV1 {
+  version: 1;
   keys: Partial<Record<ProviderId, string>>;
 }
+
+interface PersistedVaultV2 {
+  version: 2;
+  credentials: Record<string, string>;
+}
+
+type PersistedVault = PersistedVaultV1 | PersistedVaultV2;
 
 export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
@@ -38,24 +55,53 @@ export interface SafeStorageLike {
   decryptString(value: Buffer): string;
 }
 
+export interface ProviderVaultOptions {
+  readonly renameFile?: (sourcePath: string, targetPath: string) => void;
+}
+
 export class ProviderVault {
-  private readonly sessionKeys = new Map<ProviderId, string>();
+  private readonly sessionKeys = new Map<string, string>();
 
   constructor(
     private readonly paths: DesktopPaths,
     private readonly safeStorage: SafeStorageLike,
+    private readonly options: ProviderVaultOptions = {},
   ) {}
 
   async getSettings(): Promise<ProviderSettings | null> {
     const settings = this.readSettings();
-    if (!settings) {
-      return null;
+    return settings ? this.toPublicSettings(settings) : null;
+  }
+
+  async resolveModelListing(
+    input: ListProviderModelsInput,
+  ): Promise<OpenAICompatibleModelListConfig> {
+    const parsed = ListProviderModelsInputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new ProviderConfigMismatchError();
     }
 
-    return {
-      ...settings,
-      hasApiKey: this.getKey(settings.providerId) !== undefined,
-    };
+    const entry = getProviderCatalog().find(
+      ({ id }) => id === parsed.data.providerId,
+    );
+    const settings = this.readSettings();
+    let fallbackApiKey: string | undefined;
+    if (entry?.kind === "openai-compatible" && settings) {
+      const requestedBaseUrl = entry.baseUrlEditable
+        ? parsed.data.baseUrl
+        : entry.baseUrl;
+      const savedBaseUrl = entry.baseUrlEditable
+        ? settings.baseUrl
+        : entry.baseUrl;
+      if (
+        settings.providerId === parsed.data.providerId &&
+        requestedBaseUrl === savedBaseUrl
+      ) {
+        fallbackApiKey = this.getKey(settings);
+      }
+    }
+
+    return resolveOpenAICompatibleModelListConfig(parsed.data, fallbackApiKey);
   }
 
   async saveSettings(
@@ -73,23 +119,38 @@ export class ProviderVault {
       throw new ProviderConfigMismatchError();
     }
 
-    const settings = this.toPersistedSettings(parsedInput.data, catalogEntry);
-    if (
-      settings.providerId === "custom" &&
-      this.readSettings()?.baseUrl !== settings.baseUrl &&
-      parsedInput.data.apiKey === undefined
-    ) {
-      this.clearStoredKey(settings.providerId);
-    }
-    if (parsedInput.data.apiKey !== undefined) {
-      this.saveKey(settings.providerId, parsedInput.data.apiKey);
-    }
-    this.writeSettings(settings);
-
-    return {
-      ...settings,
-      hasApiKey: this.getKey(settings.providerId) !== undefined,
+    const previousSettings = this.readSettings();
+    const baseSettings = this.toPersistedSettings(parsedInput.data, catalogEntry);
+    const credentialId = this.prepareCredential(
+      parsedInput.data,
+      baseSettings,
+      previousSettings,
+    );
+    const revokedCredentialIds = uniqueStrings([
+      ...(previousSettings?.revokedCredentialIds ?? []),
+      ...(previousSettings?.credentialId &&
+      previousSettings.credentialId !== credentialId
+        ? [previousSettings.credentialId]
+        : []),
+    ]);
+    const revokedProviderIds = uniqueProviderIds([
+      ...(previousSettings?.revokedProviderIds ?? []),
+      ...(previousSettings &&
+      !previousSettings.credentialId &&
+      previousSettings.providerId !== baseSettings.providerId
+        ? [previousSettings.providerId]
+        : []),
+    ]);
+    const nextSettings: PersistedSettings = {
+      ...baseSettings,
+      ...(credentialId ? { credentialId } : {}),
+      ...(revokedCredentialIds.length ? { revokedCredentialIds } : {}),
+      ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
     };
+
+    this.writeSettings(nextSettings);
+    this.pruneCredentialsBestEffort(nextSettings);
+    return this.toPublicSettings(nextSettings);
   }
 
   async clearKey(providerId: ProviderId): Promise<ProviderSettings | null> {
@@ -98,10 +159,29 @@ export class ProviderVault {
       return null;
     }
 
-    this.sessionKeys.delete(providerId);
-    this.clearStoredKey(providerId);
-
-    return { ...settings, hasApiKey: false };
+    const revokedCredentialIds = uniqueStrings([
+      ...(settings.revokedCredentialIds ?? []),
+      ...(settings.credentialId ? [settings.credentialId] : []),
+    ]);
+    const revokedProviderIds = settings.credentialId
+      ? settings.revokedProviderIds ?? []
+      : uniqueProviderIds([
+          ...(settings.revokedProviderIds ?? []),
+          providerId,
+        ]);
+    const nextSettings: PersistedSettings = {
+      ...settings,
+      ...(settings.credentialId ? {} : { credentialId: undefined }),
+      ...(revokedCredentialIds.length ? { revokedCredentialIds } : {}),
+      ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
+    };
+    delete nextSettings.credentialId;
+    this.writeSettings(nextSettings);
+    if (settings.credentialId) {
+      this.sessionKeys.delete(settings.credentialId);
+    }
+    this.pruneCredentialsBestEffort(nextSettings);
+    return this.toPublicSettings(nextSettings);
   }
 
   async resolveGeneration(
@@ -124,7 +204,7 @@ export class ProviderVault {
       throw new ProviderConfigMismatchError();
     }
 
-    const apiKey = this.getKey(settings.providerId) ?? "";
+    const apiKey = this.getKey(settings) ?? "";
     if (catalogEntry.requiresApiKey && !apiKey) {
       throw new ProviderConfigMismatchError();
     }
@@ -134,7 +214,11 @@ export class ProviderVault {
       model: settings.model,
       apiKey,
       ...(catalogEntry.kind === "openai-compatible"
-        ? { baseUrl: catalogEntry.baseUrlEditable ? settings.baseUrl : catalogEntry.baseUrl }
+        ? {
+            baseUrl: catalogEntry.baseUrlEditable
+              ? settings.baseUrl
+              : catalogEntry.baseUrl,
+          }
         : {}),
     });
     if (!provider.success) {
@@ -178,103 +262,216 @@ export class ProviderVault {
     return { providerId: input.providerId, model: input.model };
   }
 
+  private prepareCredential(
+    input: SaveProviderSettingsInput,
+    nextSettings: PersistedSettings,
+    previousSettings: PersistedSettings | null,
+  ): string | undefined {
+    const sameProvider = previousSettings?.providerId === nextSettings.providerId;
+    const sameEndpoint =
+      nextSettings.providerId !== "custom" ||
+      previousSettings?.baseUrl === nextSettings.baseUrl;
+    if (input.apiKey !== undefined) {
+      const credentialId = randomUUID();
+      this.saveCredential(credentialId, input.apiKey);
+      return credentialId;
+    }
+    if (!previousSettings || !sameProvider || !sameEndpoint) {
+      return undefined;
+    }
+    if (previousSettings.credentialId) {
+      return previousSettings.credentialId;
+    }
+    const legacyKey = this.getKey(previousSettings);
+    if (!legacyKey) {
+      return undefined;
+    }
+    const credentialId = randomUUID();
+    this.saveCredential(credentialId, legacyKey);
+    return credentialId;
+  }
+
   private readSettings(): PersistedSettings | null {
     try {
-      const parsed = JSON.parse(readFileSync(this.paths.settingsPath, "utf8")) as unknown;
+      const parsed = JSON.parse(
+        readFileSync(this.paths.settingsPath, "utf8"),
+      ) as unknown;
       if (!parsed || typeof parsed !== "object") {
         return null;
       }
-      const { providerId, model, baseUrl } = parsed as Record<string, unknown>;
-      const validProviderId = ProviderIdSchema.safeParse(providerId);
-      if (!validProviderId.success || typeof model !== "string") {
+      const values = parsed as Record<string, unknown>;
+      const validProviderId = ProviderIdSchema.safeParse(values.providerId);
+      if (!validProviderId.success || typeof values.model !== "string") {
         return null;
       }
-      const entry = getProviderCatalog().find(({ id }) => id === validProviderId.data);
+      const entry = getProviderCatalog().find(
+        ({ id }) => id === validProviderId.data,
+      );
       if (!entry) {
         return null;
       }
       if (
-        baseUrl !== undefined &&
-        !CompatibleBaseUrlSchema.safeParse(baseUrl).success
+        values.baseUrl !== undefined &&
+        !CompatibleBaseUrlSchema.safeParse(values.baseUrl).success
       ) {
         return null;
       }
-      return this.toPersistedSettings(
+      const settings = this.toPersistedSettings(
         {
           providerId: validProviderId.data,
-          model,
-          ...(typeof baseUrl === "string" ? { baseUrl } : {}),
+          model: values.model,
+          ...(typeof values.baseUrl === "string"
+            ? { baseUrl: values.baseUrl }
+            : {}),
         },
         entry,
       );
+      if (
+        values.credentialId !== undefined &&
+        !CredentialIdSchema.safeParse(values.credentialId).success
+      ) {
+        return null;
+      }
+      const revokedCredentialIds = parseCredentialIds(values.revokedCredentialIds);
+      const revokedProviderIds = parseProviderIds(values.revokedProviderIds);
+      if (
+        (values.revokedCredentialIds !== undefined && !revokedCredentialIds) ||
+        (values.revokedProviderIds !== undefined && !revokedProviderIds)
+      ) {
+        return null;
+      }
+      return {
+        ...settings,
+        ...(typeof values.credentialId === "string"
+          ? { credentialId: values.credentialId }
+          : {}),
+        ...(revokedCredentialIds ? { revokedCredentialIds } : {}),
+        ...(revokedProviderIds ? { revokedProviderIds } : {}),
+      };
     } catch {
       return null;
     }
+  }
+
+  private toPublicSettings(settings: PersistedSettings): ProviderSettings {
+    return {
+      providerId: settings.providerId,
+      model: settings.model,
+      ...(settings.baseUrl ? { baseUrl: settings.baseUrl } : {}),
+      hasApiKey: this.getKey(settings) !== undefined,
+    };
   }
 
   private writeSettings(settings: PersistedSettings): void {
     this.writeAtomically(this.paths.settingsPath, JSON.stringify(settings));
   }
 
-  private getKey(providerId: ProviderId): string | undefined {
+  private getKey(settings: PersistedSettings): string | undefined {
     if (!this.safeStorage.isEncryptionAvailable()) {
-      return this.sessionKeys.get(providerId);
+      return settings.credentialId &&
+        !settings.revokedCredentialIds?.includes(settings.credentialId)
+        ? this.sessionKeys.get(settings.credentialId)
+        : undefined;
     }
-    return this.readEncryptedVault().keys[providerId];
+    if (settings.credentialId) {
+      if (settings.revokedCredentialIds?.includes(settings.credentialId)) {
+        return undefined;
+      }
+      const vault = this.readEncryptedVault();
+      return vault.version === 2
+        ? vault.credentials[settings.credentialId]
+        : undefined;
+    }
+    if (settings.revokedProviderIds?.includes(settings.providerId)) {
+      return undefined;
+    }
+    const vault = this.readEncryptedVault();
+    return vault.version === 1 ? vault.keys[settings.providerId] : undefined;
   }
 
-  private saveKey(providerId: ProviderId, apiKey: string): void {
+  private saveCredential(credentialId: string, apiKey: string): void {
     if (!this.safeStorage.isEncryptionAvailable()) {
-      this.sessionKeys.set(providerId, apiKey);
+      this.sessionKeys.set(credentialId, apiKey);
       return;
     }
-
-    const vault = this.readEncryptedVault();
-    vault.keys[providerId] = apiKey;
-    this.writeEncryptedVault(vault);
+    const current = this.readEncryptedVault();
+    const credentials = current.version === 2 ? current.credentials : {};
+    this.writeEncryptedVault({
+      version: 2,
+      credentials: { ...credentials, [credentialId]: apiKey },
+    });
   }
 
-  private clearStoredKey(providerId: ProviderId): void {
-    this.sessionKeys.delete(providerId);
+  private pruneCredentialsBestEffort(settings: PersistedSettings): void {
     if (!this.safeStorage.isEncryptionAvailable()) {
       return;
     }
-
-    const vault = this.readEncryptedVault();
-    delete vault.keys[providerId];
-    this.writeEncryptedVault(vault);
+    try {
+      const vault = this.readEncryptedVault();
+      if (vault.version !== 2) {
+        return;
+      }
+      const credentials = Object.fromEntries(
+        Object.entries(vault.credentials).filter(
+          ([credentialId]) => credentialId === settings.credentialId,
+        ),
+      );
+      this.writeEncryptedVault({ version: 2, credentials });
+    } catch {
+      return;
+    }
   }
 
   private readEncryptedVault(): PersistedVault {
     try {
-      const decrypted = this.safeStorage.decryptString(readFileSync(this.paths.vaultPath));
+      const decrypted = this.safeStorage.decryptString(
+        readFileSync(this.paths.vaultPath),
+      );
       const parsed = JSON.parse(decrypted) as unknown;
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        (parsed as { version?: unknown }).version !== VAULT_VERSION ||
-        !(parsed as { keys?: unknown }).keys ||
-        typeof (parsed as { keys: unknown }).keys !== "object"
-      ) {
-        return { version: VAULT_VERSION, keys: {} };
+      if (!parsed || typeof parsed !== "object") {
+        return { version: 2, credentials: {} };
       }
-      const keys = Object.fromEntries(
-        Object.entries((parsed as { keys: Record<string, unknown> }).keys).flatMap(
-          ([providerId, apiKey]) => {
-            const id = ProviderIdSchema.safeParse(providerId);
-            return id.success && typeof apiKey === "string" && apiKey.length > 0
-              ? [[id.data, apiKey]]
-              : [];
-          },
-        ),
-      ) as Partial<Record<ProviderId, string>>;
-      return { version: VAULT_VERSION, keys };
+      const values = parsed as Record<string, unknown>;
+      if (values.version === 1 && values.keys && typeof values.keys === "object") {
+        return {
+          version: 1,
+          keys: Object.fromEntries(
+            Object.entries(values.keys).flatMap(([providerId, apiKey]) => {
+              const validProviderId = ProviderIdSchema.safeParse(providerId);
+              return validProviderId.success &&
+                typeof apiKey === "string" &&
+                apiKey.length > 0
+                ? [[validProviderId.data, apiKey]]
+                : [];
+            }),
+          ) as Partial<Record<ProviderId, string>>,
+        };
+      }
+      if (
+        values.version === 2 &&
+        values.credentials &&
+        typeof values.credentials === "object"
+      ) {
+        return {
+          version: 2,
+          credentials: Object.fromEntries(
+            Object.entries(values.credentials).flatMap(([credentialId, apiKey]) =>
+              CredentialIdSchema.safeParse(credentialId).success &&
+              typeof apiKey === "string" &&
+              apiKey.length > 0
+                ? [[credentialId, apiKey]]
+                : [],
+            ),
+          ),
+        };
+      }
+      return { version: 2, credentials: {} };
     } catch {
-      return { version: VAULT_VERSION, keys: {} };
+      return { version: 2, credentials: {} };
     }
   }
 
-  private writeEncryptedVault(vault: PersistedVault): void {
+  private writeEncryptedVault(vault: PersistedVaultV2): void {
     const encrypted = this.safeStorage.encryptString(JSON.stringify(vault));
     this.writeAtomically(this.paths.vaultPath, encrypted);
   }
@@ -283,6 +480,29 @@ export class ProviderVault {
     mkdirSync(dirname(targetPath), { recursive: true });
     const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
     writeFileSync(temporaryPath, contents, { mode: 0o600 });
-    renameSync(temporaryPath, targetPath);
+    (this.options.renameFile ?? renameSync)(temporaryPath, targetPath);
   }
+}
+
+function parseCredentialIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.every((item) => CredentialIdSchema.safeParse(item).success)
+    ? uniqueStrings(value)
+    : undefined;
+}
+
+function parseProviderIds(value: unknown): ProviderId[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parsed = value.map((item) => ProviderIdSchema.safeParse(item));
+  return parsed.every((item) => item.success)
+    ? uniqueProviderIds(parsed.map((item) => item.data))
+    : undefined;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function uniqueProviderIds(values: readonly ProviderId[]): ProviderId[] {
+  return [...new Set(values)];
 }

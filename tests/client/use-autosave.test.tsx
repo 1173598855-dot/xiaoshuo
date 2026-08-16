@@ -135,6 +135,38 @@ describe("useAutosave", () => {
 
     expect(save).toHaveBeenNthCalledWith(2, "第二章的新编辑", 3);
   });
+
+  it("does not apply an old save response after a same-chapter workspace reload", async () => {
+    const oldSave = deferred<Chapter>();
+    const onSaved = vi.fn();
+    const save = vi
+      .fn<(content: string, expectedRevision: number) => Promise<Chapter>>()
+      .mockReturnValueOnce(oldSave.promise)
+      .mockResolvedValueOnce({
+        ...chapter,
+        content: "重载后的本地编辑",
+        revision: 1,
+      });
+
+    render(<ReloadIdentityHarness save={save} onSaved={onSaved} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "重载正文" }), {
+      target: { value: "重载前的本地编辑" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.click(screen.getByRole("button", { name: "模拟工作区重载" }));
+
+    await act(async () => {
+      oldSave.resolve({ ...chapter, content: "stale response", revision: 1 });
+      await oldSave.promise;
+    });
+
+    expect(onSaved).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "重载正文" }), {
+      target: { value: "重载后的本地编辑" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(save).toHaveBeenNthCalledWith(2, "重载后的本地编辑", 0);
+  });
 });
 
 function Harness({
@@ -177,8 +209,10 @@ function Harness({
 
 function IdentityHarness({
   save,
+  onSaved = () => undefined,
 }: {
   save: (content: string, expectedRevision: number) => Promise<Chapter>;
+  onSaved?: (saved: Chapter) => void;
 }) {
   const secondChapter: Chapter = {
     ...chapter,
@@ -195,7 +229,7 @@ function IdentityHarness({
     revision: activeChapter.revision,
     delay: 800,
     save,
-    onSaved: () => undefined,
+    onSaved,
     onConflict: () => undefined,
   });
 
@@ -216,6 +250,46 @@ function IdentityHarness({
         切换身份
       </button>
       <span data-testid="identity-status">{status}</span>
+    </>
+  );
+}
+
+function ReloadIdentityHarness({
+  save,
+  onSaved,
+}: {
+  save: (content: string, expectedRevision: number) => Promise<Chapter>;
+  onSaved: (saved: Chapter) => void;
+}) {
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const [content, setContent] = useState(chapter.content);
+  const { status } = useAutosave({
+    identity: `${workspaceEpoch}:${chapter.id}`,
+    content,
+    revision: chapter.revision,
+    delay: 800,
+    save,
+    onSaved,
+    onConflict: () => undefined,
+  });
+
+  return (
+    <>
+      <textarea
+        aria-label="重载正文"
+        value={content}
+        onChange={(event) => setContent(event.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          setWorkspaceEpoch((current) => current + 1);
+          setContent("导入后的正文");
+        }}
+      >
+        模拟工作区重载
+      </button>
+      <span data-testid="reload-status">{status}</span>
     </>
   );
 }

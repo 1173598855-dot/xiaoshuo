@@ -1,19 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
+import { publicProviderErrorMessage } from "../../shared/contracts";
 import {
   NormalizedProviderError,
   type NormalizedProviderErrorCode,
 } from "./types";
-
-const PROVIDER_ERROR_MESSAGES: Record<NormalizedProviderErrorCode, string> = {
-  AUTHENTICATION_FAILED: "模型服务拒绝了当前凭据。",
-  RATE_LIMITED: "模型请求过于频繁，请稍后重试。",
-  UPSTREAM_UNAVAILABLE: "模型服务暂时不可用，请稍后重试。",
-  REQUEST_INVALID: "模型、端点或请求参数不受当前服务支持。",
-  REQUEST_ABORTED: "生成请求已取消。",
-  UNKNOWN_PROVIDER_ERROR: "模型服务返回了无法识别的错误。",
-};
 
 export function normalizeProviderError(
   error: unknown,
@@ -84,5 +76,5 @@ function statusOf(error: unknown): number | undefined {
 function normalized(
   code: NormalizedProviderErrorCode,
 ): NormalizedProviderError {
-  return new NormalizedProviderError(code, PROVIDER_ERROR_MESSAGES[code]);
+  return new NormalizedProviderError(code, publicProviderErrorMessage(code));
 }

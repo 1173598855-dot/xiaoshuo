@@ -1,119 +1,66 @@
+import type { DesktopApi } from "../../desktop/preload-api";
+import { createHttpTransport } from "./http-transport";
+import { createIpcTransport } from "./ipc-transport";
 import {
-  ApiErrorSchema,
-  ChapterSchema,
-  GenerationSchema,
-  ProviderCatalogEntrySchema,
-  WorkspaceSchema,
-  type Chapter,
-  type CreateGenerationInput,
-  type Generation,
-  type ProviderCatalogEntry,
-  type UpdateChapterInput,
-  type Workspace,
-} from "../../shared/contracts";
+  ApiRequestError,
+  type WorkbenchTransport,
+} from "./transport";
 
-export class ApiRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-    readonly fieldErrors?: Record<string, string[]>,
-  ) {
-    super(message);
-    this.name = "ApiRequestError";
-  }
+export { ApiRequestError };
+
+const bridge = typeof window !== "undefined" ? window.xiaoyi : undefined;
+if (bridge && !isCompleteDesktopApi(bridge)) {
+  throw new Error("The desktop bridge is incomplete");
 }
+const desktopApi = bridge;
 
-export const apiClient = {
-  async getWorkspace(signal?: AbortSignal): Promise<Workspace> {
-    return WorkspaceSchema.parse(
-      await requestJson("/api/workspace", { signal }),
-    );
-  },
+export const apiClient: WorkbenchTransport = desktopApi
+  ? createIpcTransport(desktopApi)
+  : createHttpTransport((input, init) => globalThis.fetch(input, init));
 
-  async getProviders(signal?: AbortSignal): Promise<readonly ProviderCatalogEntry[]> {
-    return ProviderCatalogEntrySchema.array().parse(
-      await requestJson("/api/providers", { signal }),
-    );
-  },
-
-  async createChapter(projectId: string, title: string): Promise<Chapter> {
-    return ChapterSchema.parse(
-      await requestJson(`/api/projects/${projectId}/chapters`, {
-        method: "POST",
-        body: JSON.stringify({ title }),
-      }),
-    );
-  },
-
-  async updateChapter(
-    chapterId: string,
-    input: UpdateChapterInput,
-  ): Promise<Chapter> {
-    return ChapterSchema.parse(
-      await requestJson(`/api/chapters/${chapterId}`, {
-        method: "PATCH",
-        body: JSON.stringify(input),
-      }),
-    );
-  },
-
-  async generate(
-    input: CreateGenerationInput,
-    signal?: AbortSignal,
-  ): Promise<Generation> {
-    return GenerationSchema.parse(
-      await requestJson("/api/generations", {
-        method: "POST",
-        body: JSON.stringify(input),
-        signal,
-      }),
-    );
-  },
-
-  async acceptGeneration(
-    generationId: string,
-  ): Promise<{ generation: Generation; chapter: Chapter }> {
-    const response = (await requestJson(
-      `/api/generations/${generationId}/accept`,
-      { method: "POST" },
-    )) as { generation: unknown; chapter: unknown };
-
-    return {
-      generation: GenerationSchema.parse(response.generation),
-      chapter: ChapterSchema.parse(response.chapter),
-    };
-  },
-
-  async discardGeneration(generationId: string): Promise<Generation> {
-    return GenerationSchema.parse(
-      await requestJson(`/api/generations/${generationId}/discard`, {
-        method: "POST",
-      }),
-    );
-  },
-};
-
-async function requestJson(path: string, init: RequestInit = {}): Promise<unknown> {
-  const headers = new Headers(init.headers);
-  if (init.body !== undefined) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(path, { ...init, headers });
-  const body: unknown = await response.json();
-
-  if (!response.ok) {
-    const parsedError = ApiErrorSchema.safeParse(body);
-    throw new ApiRequestError(
-      response.status,
-      parsedError.success ? parsedError.data.error.code : "UNKNOWN_ERROR",
-      parsedError.success
-        ? parsedError.data.error.message
-        : "本地服务无法完成请求。",
-      parsedError.success ? parsedError.data.error.fieldErrors : undefined,
-    );
-  }
-
-  return body;
+function isCompleteDesktopApi(value: DesktopApi | undefined): value is DesktopApi {
+  const candidate = value as
+    | {
+        platform?: unknown;
+        workspace?: { get?: unknown };
+        project?: { create?: unknown };
+        chapter?: { create?: unknown; update?: unknown };
+        provider?: {
+          list?: unknown;
+          listModels?: unknown;
+          getSettings?: unknown;
+          saveSettings?: unknown;
+          clearKey?: unknown;
+        };
+        generation?: {
+          create?: unknown;
+          cancel?: unknown;
+          accept?: unknown;
+          discard?: unknown;
+        };
+        database?: { status?: unknown; import?: unknown; export?: unknown };
+        lifecycle?: { resolveClose?: unknown; onCommand?: unknown };
+      }
+    | undefined;
+  return Boolean(
+    candidate?.platform === "desktop" &&
+      typeof candidate.workspace?.get === "function" &&
+      typeof candidate.project?.create === "function" &&
+      typeof candidate.chapter?.create === "function" &&
+      typeof candidate.chapter?.update === "function" &&
+      typeof candidate.provider?.list === "function" &&
+      typeof candidate.provider?.listModels === "function" &&
+      typeof candidate.provider?.getSettings === "function" &&
+      typeof candidate.provider?.saveSettings === "function" &&
+      typeof candidate.provider?.clearKey === "function" &&
+      typeof candidate.generation?.create === "function" &&
+      typeof candidate.generation?.cancel === "function" &&
+      typeof candidate.generation?.accept === "function" &&
+      typeof candidate.generation?.discard === "function" &&
+      typeof candidate.database?.status === "function" &&
+      typeof candidate.database?.import === "function" &&
+      typeof candidate.database?.export === "function" &&
+      typeof candidate.lifecycle?.resolveClose === "function" &&
+      typeof candidate.lifecycle?.onCommand === "function",
+  );
 }

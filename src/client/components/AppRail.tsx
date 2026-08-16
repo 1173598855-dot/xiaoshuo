@@ -1,6 +1,7 @@
 import {
   BookOpenText,
   Bot,
+  Database,
   Menu,
   ScrollText,
   Settings,
@@ -12,12 +13,14 @@ interface AppRailProps {
   onToggleChapters: () => void;
   onToggleGeneration: () => void;
   onConfigureProvider: () => void;
+  onManageData?: () => void;
 }
 
 export function AppRail({
   onToggleChapters,
   onToggleGeneration,
   onConfigureProvider,
+  onManageData,
 }: AppRailProps) {
   return (
     <nav className="app-rail" aria-label="工作区导航">
@@ -66,6 +69,17 @@ export function AppRail({
       >
         <Bot size={19} />
       </button>
+      {onManageData ? (
+        <button
+          className="rail-button"
+          type="button"
+          aria-label="数据管理"
+          title="数据管理"
+          onClick={onManageData}
+        >
+          <Database size={19} />
+        </button>
+      ) : null}
       <button className="rail-button" type="button" aria-label="设置" title="设置" disabled>
         <Settings size={19} />
       </button>

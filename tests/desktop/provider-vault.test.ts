@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -91,6 +97,58 @@ describe("desktop provider vault", () => {
     ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
   });
 
+  it("uses a temporary form key without persisting it", async () => {
+    const { vault, paths } = createVault();
+    await vault.saveSettings({
+      providerId: "custom",
+      model: "saved-model",
+      baseUrl: "https://saved.example.test/v1",
+      apiKey: "sk-saved",
+    });
+
+    await expect(
+      vault.resolveModelListing({
+        providerId: "custom",
+        baseUrl: "https://new.example.test/v1",
+        apiKey: "sk-form-only",
+      }),
+    ).resolves.toEqual({
+      providerId: "custom",
+      baseUrl: "https://new.example.test/v1",
+      apiKey: "sk-form-only",
+    });
+    expect(readFileSync(paths.settingsPath, "utf8")).not.toContain("sk-form-only");
+    expect(readFileSync(paths.vaultPath)).not.toContain(
+      Buffer.from("sk-form-only"),
+    );
+  });
+
+  it("reuses a saved key only for the same provider and effective endpoint", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "custom",
+      model: "saved-model",
+      baseUrl: "https://saved.example.test/v1",
+      apiKey: "sk-saved",
+    });
+
+    await expect(
+      vault.resolveModelListing({
+        providerId: "custom",
+        baseUrl: "https://saved.example.test/v1",
+      }),
+    ).resolves.toMatchObject({ apiKey: "sk-saved" });
+    await expect(
+      vault.resolveModelListing({
+        providerId: "custom",
+        baseUrl: "https://other.example.test/v1",
+      }),
+    ).resolves.toMatchObject({ apiKey: "" });
+    await expect(
+      vault.resolveModelListing({ providerId: "deepseek" }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
+  });
+
   it("keeps a key in Main memory only when OS encryption is unavailable", async () => {
     const temporaryDirectory = createTemporaryDirectory();
     const paths = getDesktopPaths(temporaryDirectory);
@@ -175,6 +233,115 @@ describe("desktop provider vault", () => {
     expect(JSON.stringify(await restartedVault.getSettings())).not.toContain(
       "sk-restart-secret",
     );
+  });
+
+  it("keeps a cleared key revoked when encryption is temporarily unavailable", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    let encryptionAvailable = true;
+    const storage = {
+      ...fakeSafeStorage,
+      isEncryptionAvailable: () => encryptionAvailable,
+    };
+    const firstVault = new ProviderVault(paths, storage);
+    await firstVault.saveSettings({
+      providerId: "openai",
+      model: "gpt-test",
+      apiKey: "sk-revocation-secret",
+    });
+
+    encryptionAvailable = false;
+    await expect(firstVault.clearKey("openai")).resolves.toMatchObject({
+      hasApiKey: false,
+    });
+
+    encryptionAvailable = true;
+    const restartedVault = new ProviderVault(paths, storage);
+    await expect(restartedVault.getSettings()).resolves.toMatchObject({
+      hasApiKey: false,
+    });
+    await expect(
+      restartedVault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "继续",
+        providerId: "openai",
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
+  });
+
+  it("migrates a version one vault on the next successful save", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    writeFileSync(
+      paths.settingsPath,
+      JSON.stringify({ providerId: "openai", model: "old-model" }),
+    );
+    writeFileSync(
+      paths.vaultPath,
+      fakeSafeStorage.encryptString(
+        JSON.stringify({ version: 1, keys: { openai: "sk-legacy-secret" } }),
+      ),
+    );
+    const vault = new ProviderVault(paths, fakeSafeStorage);
+
+    await expect(
+      vault.saveSettings({ providerId: "openai", model: "new-model" }),
+    ).resolves.toMatchObject({ hasApiKey: true });
+
+    const persistedSettings = JSON.parse(readFileSync(paths.settingsPath, "utf8")) as {
+      credentialId?: string;
+    };
+    const persistedVault = JSON.parse(
+      fakeSafeStorage.decryptString(readFileSync(paths.vaultPath)),
+    ) as { version: number; credentials?: Record<string, string> };
+    expect(persistedSettings.credentialId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(persistedVault.version).toBe(2);
+    expect(persistedVault.credentials?.[persistedSettings.credentialId!]).toBe(
+      "sk-legacy-secret",
+    );
+  });
+
+  it("keeps the old endpoint and key when settings commit fails", async () => {
+    const { vault: initialVault, paths } = createVault();
+    await initialVault.saveSettings({
+      providerId: "custom",
+      model: "old-model",
+      baseUrl: "https://old.example.test/v1",
+      apiKey: "sk-old-endpoint-secret",
+    });
+    const vault = new ProviderVault(paths, fakeSafeStorage, {
+      renameFile: (source, target) => {
+        if (target === paths.settingsPath) {
+          throw new Error("settings commit failed");
+        }
+        renameFile(source, target);
+      },
+    });
+    await expect(
+      vault.saveSettings({
+        providerId: "custom",
+        model: "new-model",
+        baseUrl: "https://new.example.test/v1",
+        apiKey: "sk-new-endpoint-secret",
+      }),
+    ).rejects.toThrow("settings commit failed");
+
+    await expect(
+      vault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "继续",
+        providerId: "custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        baseUrl: "https://old.example.test/v1",
+        apiKey: "sk-old-endpoint-secret",
+      },
+    });
   });
 
   it("allows custom and Ollama providers to resolve without API keys", async () => {
@@ -305,6 +472,10 @@ function createVault(): {
   const temporaryDirectory = createTemporaryDirectory();
   const paths = getDesktopPaths(temporaryDirectory);
   return { vault: new ProviderVault(paths, fakeSafeStorage), paths };
+}
+
+function renameFile(source: string, target: string): void {
+  renameSync(source, target);
 }
 
 function createTemporaryDirectory(): string {

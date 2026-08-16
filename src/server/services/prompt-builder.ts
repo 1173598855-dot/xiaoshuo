@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
-import type { Chapter, GenerationOperation } from "../../shared/contracts";
+import type {
+  Chapter,
+  GenerationContext,
+  GenerationOperation,
+} from "../../shared/contracts";
 
 const OPERATION_LABELS: Record<GenerationOperation, string> = {
   continue: "从现有结尾自然续写",
@@ -32,7 +36,7 @@ export function buildGenerationPrompt(
   };
 }
 
-export function buildGenerationContext(chapter: Chapter) {
+export function buildGenerationContext(chapter: Chapter): GenerationContext {
   return {
     chapterId: chapter.id,
     revision: chapter.revision,

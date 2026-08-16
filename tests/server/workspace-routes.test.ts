@@ -1,25 +1,22 @@
-import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../src/server/app";
-import { createDatabase } from "../../src/server/db/database";
-import { migrate } from "../../src/server/db/migrations";
-import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
+import {
+  createServerRuntime,
+  type ServerRuntime,
+} from "../../src/server/bootstrap";
 
 describe("workspace routes", () => {
-  let database: DatabaseSync;
-  let repository: WorkspaceRepository;
+  let runtime: ServerRuntime;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
-    database = createDatabase(":memory:");
-    migrate(database);
-    repository = new WorkspaceRepository(database);
-    app = createApp({ workspaceRepository: repository });
+    runtime = createServerRuntime({ databasePath: ":memory:" });
+    app = createApp(runtime);
   });
 
   afterEach(() => {
-    database.close();
+    runtime.close();
   });
 
   it("reports a healthy local service", async () => {
@@ -70,7 +67,7 @@ describe("workspace routes", () => {
   });
 
   it("returns field errors for invalid chapter input", async () => {
-    const chapter = repository.getWorkspace().chapters[0];
+    const chapter = runtime.workspaceRepository.getWorkspace().chapters[0];
     const response = await app.request(`/api/chapters/${chapter.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -90,8 +87,8 @@ describe("workspace routes", () => {
   });
 
   it("maps a stale update to a stable 409 error", async () => {
-    const chapter = repository.getWorkspace().chapters[0];
-    repository.updateChapter(chapter.id, {
+    const chapter = runtime.workspaceRepository.getWorkspace().chapters[0];
+    runtime.workspaceRepository.updateChapter(chapter.id, {
       expectedRevision: chapter.revision,
       content: "服务端已有更新",
     });
@@ -112,6 +109,8 @@ describe("workspace routes", () => {
         message: "章节已在其他位置更新，请重新加载后再保存。",
       },
     });
-    expect(repository.getChapter(chapter.id).content).toBe("服务端已有更新");
+    expect(runtime.workspaceRepository.getChapter(chapter.id).content).toBe(
+      "服务端已有更新",
+    );
   });
 });

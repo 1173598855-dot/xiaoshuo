@@ -5,34 +5,28 @@ import {
   CreateChapterInputSchema,
   CreateGenerationInputSchema,
   CreateProjectInputSchema,
+  ListProviderModelsInputSchema,
   UpdateChapterInputSchema,
 } from "../shared/contracts";
+import { publicErrorStatus, toPublicError } from "./public-error";
 import { getProviderCatalog } from "./providers/catalog";
-import { NormalizedProviderError } from "./providers/types";
 import {
-  GenerationNotFoundError,
-  GenerationStateError,
-} from "./repositories/generation-repository";
-import {
-  ChapterLockedError,
-  EntityNotFoundError,
-  RevisionConflictError,
-  type WorkspaceRepository,
-} from "./repositories/workspace-repository";
-import {
-  ContextTooLargeError,
-  ProviderConfigMismatchError,
-  type GenerationService,
-} from "./services/generation-service";
+  listOpenAICompatibleModels,
+  resolveOpenAICompatibleModelListConfig,
+} from "./providers/openai-compatible-models";
+import type { WorkspaceRepository } from "./repositories/workspace-repository";
+import type { GenerationService } from "./services/generation-service";
 
 export interface AppDependencies {
   workspaceRepository: WorkspaceRepository;
   generationService?: GenerationService;
+  providerModelLister?: typeof listOpenAICompatibleModels;
 }
 
 export function createApp({
   workspaceRepository,
   generationService,
+  providerModelLister = listOpenAICompatibleModels,
 }: AppDependencies) {
   const app = new Hono();
 
@@ -43,6 +37,19 @@ export function createApp({
   );
 
   app.get("/api/providers", (context) => context.json(getProviderCatalog()));
+
+  app.post("/api/providers/models", async (context) => {
+    const parsed = await parseJson(
+      context.req.raw,
+      ListProviderModelsInputSchema,
+    );
+    if (!parsed.success) return context.json(parsed.error, 400);
+
+    const config = resolveOpenAICompatibleModelListConfig(parsed.data);
+    return context.json(
+      await providerModelLister(config, context.req.raw.signal),
+    );
+  });
 
   app.post("/api/projects", async (context) => {
     const parsed = await parseJson(context.req.raw, CreateProjectInputSchema);
@@ -143,100 +150,13 @@ export function createApp({
   );
 
   app.onError((error, context) => {
-    if (error instanceof RevisionConflictError) {
-      return context.json(
-        apiError(
-          "REVISION_CONFLICT",
-          "章节已在其他位置更新，请重新加载后再保存。",
-        ),
-        409,
-      );
-    }
-
-    if (error instanceof ChapterLockedError) {
-      return context.json(
-        apiError("CHAPTER_LOCKED", "章节已锁定，请先解锁再修改。"),
-        409,
-      );
-    }
-
-    if (error instanceof EntityNotFoundError) {
-      return context.json(
-        apiError("NOT_FOUND", "请求的项目或章节不存在。"),
-        404,
-      );
-    }
-
-    if (error instanceof GenerationNotFoundError) {
-      return context.json(
-        apiError("NOT_FOUND", "请求的生成记录不存在。"),
-        404,
-      );
-    }
-
-    if (error instanceof GenerationStateError) {
-      return context.json(
-        apiError(
-          "GENERATION_STATE_INVALID",
-          "该候选已经处理，不能重复操作。",
-        ),
-        409,
-      );
-    }
-
-    if (error instanceof ContextTooLargeError) {
-      return context.json(
-        apiError(
-          "CONTEXT_TOO_LARGE",
-          "当前章节过长，请缩小正文范围后再生成。",
-        ),
-        413,
-      );
-    }
-
-    if (error instanceof ProviderConfigMismatchError) {
-      return context.json(
-        apiError(
-          "PROVIDER_CONFIG_INVALID",
-          "模型入口与适配器配置不匹配。",
-        ),
-        400,
-      );
-    }
-
-    if (error instanceof NormalizedProviderError) {
-      return context.json(
-        apiError(error.code, error.message),
-        providerErrorStatus(error.code),
-      );
-    }
-
     return context.json(
-      apiError("INTERNAL_ERROR", "本地服务暂时无法完成请求。"),
-      500,
+      { error: toPublicError(error) },
+      publicErrorStatus(error),
     );
   });
 
   return app;
-}
-
-function providerErrorStatus(
-  code: NormalizedProviderError["code"],
-): 400 | 401 | 408 | 429 | 502 | 503 {
-  switch (code) {
-    case "AUTHENTICATION_FAILED":
-      return 401;
-    case "RATE_LIMITED":
-      return 429;
-    case "REQUEST_INVALID":
-      return 400;
-    case "REQUEST_ABORTED":
-      return 408;
-    case "UPSTREAM_UNAVAILABLE":
-      return 503;
-    case "UNKNOWN_PROVIDER_ERROR":
-      return 502;
-  }
 }
 
 type ParseResult<T> =

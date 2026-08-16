@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../src/client/App";
+import { apiClient } from "../../src/client/api/client";
 import { GenerationPanel } from "../../src/client/components/GenerationPanel";
 import type { Chapter } from "../../src/shared/contracts";
 
@@ -105,6 +106,7 @@ describe("generation workflow", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     sessionStorage.clear();
     localStorage.clear();
@@ -131,8 +133,29 @@ describe("generation workflow", () => {
       apiKey: API_KEY,
     });
     expect(localStorage).toHaveLength(0);
-    expect(screen.queryByRole("dialog", { name: "模型配置" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "模型配置" }),
+      ).not.toBeInTheDocument();
+    });
     expect(screen.getByText("OpenAI · gpt-test-custom")).toBeInTheDocument();
+  });
+
+  it("keeps provider settings open when browser session persistence fails", async () => {
+    vi.spyOn(apiClient, "saveProviderSettings").mockRejectedValue(
+      new Error("会话存储不可用"),
+    );
+    render(<App />);
+    await screen.findByText("雾都来信");
+
+    fireEvent.click(screen.getByRole("button", { name: "配置模型" }));
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: API_KEY },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("会话存储不可用");
+    expect(screen.getByRole("dialog", { name: "模型配置" })).toBeInTheDocument();
   });
 
   it("renders a candidate separately and discards it without editing the chapter", async () => {
@@ -250,9 +273,17 @@ describe("generation workflow", () => {
     );
   });
 
-  it("clears session credentials after authentication fails", async () => {
+  it("keeps a replacement session key after an earlier request fails authentication", async () => {
     configureProvider();
-    vi.stubGlobal("fetch", createFetchMock({ authenticationFailure: true }));
+    const generationResponse = deferred<Response>();
+    const fallbackFetch = createFetchMock();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/api/generations") && init?.method === "POST") {
+        return generationResponse.promise;
+      }
+      return fallbackFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<App />);
     await screen.findByRole("textbox", { name: "章节正文" });
 
@@ -261,9 +292,43 @@ describe("generation workflow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "生成候选" }));
 
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) =>
+            String(url).endsWith("/api/generations") && options?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "配置模型" }));
+    await screen.findByRole("dialog", { name: "模型配置" });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "sk-replacement-session-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型配置" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "模型配置" })).not.toBeInTheDocument();
+    });
+
+    generationResponse.resolve(
+      jsonResponse(
+        {
+          error: {
+            code: "AUTHENTICATION_FAILED",
+            message: "模型服务拒绝了当前凭据。",
+          },
+        },
+        401,
+      ),
+    );
+
     expect(await screen.findByRole("dialog", { name: "模型配置" })).toBeInTheDocument();
-    expect(sessionStorage.getItem(PROVIDER_SESSION_KEY)).toBeNull();
-    expect(await screen.findByLabelText("API Key")).toHaveValue("");
+    expect(JSON.parse(sessionStorage.getItem(PROVIDER_SESSION_KEY) ?? "null")).toMatchObject({
+      apiKey: "sk-replacement-session-key",
+    });
+    expect(await screen.findByLabelText("API Key")).toHaveValue(
+      "sk-replacement-session-key",
+    );
   });
 
   it("allows a custom compatible endpoint without an API key", async () => {
@@ -289,7 +354,9 @@ describe("generation workflow", () => {
       apiKey: "",
       baseUrl: "http://127.0.0.1:9000/v1",
     });
-    expect(screen.getByText("自定义兼容端点 · local-model")).toBeInTheDocument();
+    expect(
+      await screen.findByText("自定义兼容端点 · local-model"),
+    ).toBeInTheDocument();
   });
 
   it("does not generate for an old chapter after its dirty flush resolves", async () => {

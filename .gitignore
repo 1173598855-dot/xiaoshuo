@@ -5,6 +5,12 @@ coverage/
 playwright-report/
 test-results/
 output/
+.acceptance/
+.playwright-cli/
+release/
+output/desktop/
+desktop-user-data/
+.tmp-desktop/
 data/*.db
 data/*.db-shm
 data/*.db-wal
