@@ -1,553 +1,243 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
-  Chapter,
-  ChapterStatus,
-  DatabaseStatus,
   DesktopCommand,
   ListProviderModelsInput,
   ProviderCatalogEntry,
+  ProviderConfig,
   SaveProviderSettingsInput,
 } from "../shared/contracts";
+import type { Book, BookDetails, StoryDirection } from "../shared/auto-novel";
 import { apiClient, ApiRequestError } from "./api/client";
 import type { ClientProviderSettings } from "./api/transport";
-import { AppRail } from "./components/AppRail";
-import { ChapterSpine } from "./components/ChapterSpine";
-import { DataManagementDialog } from "./components/DataManagementDialog";
-import { EditorPane } from "./components/EditorPane";
-import { GenerationPanel } from "./components/GenerationPanel";
+import { createAutoNovelApi } from "./auto-novel-api";
+import { CreativeHome } from "./components/CreativeHome";
+import { DirectionPicker } from "./components/DirectionPicker";
+import { ProductionRoom } from "./components/ProductionRoom";
+import { ManuscriptView } from "./components/ManuscriptView";
+import { ChapterReview } from "./components/ChapterReview";
 import { ProviderDialog } from "./components/ProviderDialog";
-import { useAutosave } from "./hooks/use-autosave";
-import { useWorkspace } from "./hooks/use-workspace";
+import { resolveProviderSettings } from "./provider-session";
+import { useProductionRun } from "./hooks/use-production-run";
 
-type UpdateNotice = {
-  kind: "available" | "error";
-  message: string;
-};
-
-type ActiveDialog = "provider" | "data" | null;
+type Page = "home" | "directions" | "production" | "manuscript";
 
 export function App() {
-  const {
-    workspace,
-    workspaceEpoch,
-    selectedChapter,
-    draftContent,
-    loading,
-    error,
-    setDraftContent,
-    selectChapter,
-    replaceChapter,
-    createChapter,
-    reload,
-  } = useWorkspace();
-  const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>(
+  const autoApi = useMemo(
+    () => createAutoNovelApi((input, init) => globalThis.fetch(input, init)),
     [],
   );
-  const [conflict, setConflict] = useState(false);
-  const [chaptersOpen, setChaptersOpen] = useState(false);
-  const [generationOpen, setGenerationOpen] = useState(false);
-  const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
-  const [updateNotice, setUpdateNotice] = useState<UpdateNotice | null>(null);
-  const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus | null>(
-    null,
-  );
-  const [statusUpdating, setStatusUpdating] = useState(false);
-  const [creatingChapter, setCreatingChapter] = useState(false);
-  const [chapterActionError, setChapterActionError] = useState<string | null>(
-    null,
-  );
-  const selectedChapterIdRef = useRef(selectedChapter?.id ?? null);
-  const statusMutationLockRef = useRef(false);
-  const chapterCreationLockRef = useRef(false);
-  const [providerSettings, setProviderSettings] =
-    useState<ClientProviderSettings | null>(null);
+  const [page, setPage] = useState<Page>("home");
+  const [books, setBooks] = useState<readonly Book[]>([]);
+  const [bookDetails, setBookDetails] = useState<BookDetails | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>([]);
+  const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
+  const [providerOpen, setProviderOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const providerConfig = useMemo<ProviderConfig | null>(() => {
+    if (!providerSettings || providerSettings.platform !== "web") return null;
+    return resolveProviderSettings(providerSettings, providers)?.config ?? null;
+  }, [providerSettings, providers]);
+  const runState = useProductionRun(autoApi, runId);
 
-  selectedChapterIdRef.current = selectedChapter?.id ?? null;
-
-  const openProviderDialog = useCallback(() => {
-    setActiveDialog((current) => current ?? "provider");
-  }, []);
-
-  const openDataDialog = useCallback(() => {
-    setActiveDialog((current) => current ?? "data");
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void apiClient
-      .getProviders(controller.signal)
-      .then((nextProviders) => {
-        if (!controller.signal.aborted) setProviders(nextProviders);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setProviders([]);
-      });
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void apiClient
-      .getProviderSettings()
-      .then((settings) => {
-        if (active) setProviderSettings(settings);
-      })
-      .catch(() => {
-        if (active) setProviderSettings(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void apiClient
-      .getDatabaseStatus()
-      .then((status) => {
-        if (!active) return;
-        setDatabaseStatus(status);
-        if (status.isDesktop && status.isFirstRun) {
-          openDataDialog();
-        }
-      })
-      .catch(() => {
-        if (active) setDatabaseStatus(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [openDataDialog]);
-
-  const save = useCallback(
-    (content: string, expectedRevision: number) => {
-      if (!selectedChapter) {
-        return Promise.reject(new Error("No chapter selected"));
-      }
-      return apiClient.updateChapter(selectedChapter.id, {
-        expectedRevision,
-        content,
-      });
-    },
-    [selectedChapter],
-  );
-
-  const saveChapterId = selectedChapter?.id ?? null;
-  const saveIdentity = `${workspaceEpoch}:${saveChapterId ?? "none"}`;
-  const onConflict = useCallback(() => {
-    if (selectedChapterIdRef.current === saveChapterId) {
-      setConflict(true);
-    }
-  }, [saveChapterId]);
-
-  const { status: saveStatus, flush } = useAutosave({
-    identity: saveIdentity,
-    content: draftContent,
-    revision: selectedChapter?.revision ?? 0,
-    enabled: Boolean(selectedChapter) && !loading,
-    save,
-    onSaved: replaceChapter,
-    onConflict,
-  });
-
-  const flushBeforeMutation = useCallback(async (): Promise<Chapter | undefined> => {
-    if (!selectedChapter) return undefined;
-    if (saveStatus === "conflict" || saveStatus === "error") return undefined;
-    if (
-      draftContent === selectedChapter.content &&
-      saveStatus !== "saving"
-    ) {
-      return selectedChapter;
-    }
-    return flush();
-  }, [draftContent, flush, saveStatus, selectedChapter]);
-
-  const onBeforeDataOperation = useCallback(async () => {
-    if (!selectedChapter) return true;
-    return (await flushBeforeMutation()) !== undefined;
-  }, [flushBeforeMutation, selectedChapter]);
-
-  const finishChapterSelection = (chapterId: string) => {
-    selectChapter(chapterId);
-    setConflict(false);
-    setChapterActionError(null);
-    setChaptersOpen(false);
-  };
-
-  const handleSelectChapter = (chapterId: string) => {
-    if (statusMutationLockRef.current || chapterCreationLockRef.current) return;
-    if (saveStatus === "conflict" || saveStatus === "error") return;
-    if (chapterId === selectedChapter?.id) {
-      setChaptersOpen(false);
-      return;
-    }
-    if (
-      draftContent === selectedChapter?.content &&
-      saveStatus !== "saving"
-    ) {
-      finishChapterSelection(chapterId);
-      return;
-    }
-
-    void (async () => {
-      if (await flushBeforeMutation()) finishChapterSelection(chapterId);
-    })();
-  };
-
-  const handleCreateChapter = async () => {
-    if (statusMutationLockRef.current || chapterCreationLockRef.current) return;
-
-    chapterCreationLockRef.current = true;
-    setCreatingChapter(true);
-    setChapterActionError(null);
+  const loadLibrary = useCallback(async () => {
     try {
-      if (selectedChapter && !(await flushBeforeMutation())) return;
-      await createChapter();
-      setConflict(false);
-      setChaptersOpen(false);
-    } catch (createError) {
-      setChapterActionError(chapterCreationErrorMessage(createError));
+      const [nextBooks, nextProviders, nextSettings] = await Promise.all([
+        autoApi.listBooks(),
+        apiClient.getProviders(),
+        apiClient.getProviderSettings(),
+      ]);
+      setBooks(nextBooks);
+      setProviders(nextProviders);
+      setProviderSettings(nextSettings);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
     } finally {
-      chapterCreationLockRef.current = false;
-      setCreatingChapter(false);
+      setLoading(false);
     }
-  };
+  }, [autoApi]);
 
-  const handleStatusChange = async (status: ChapterStatus) => {
-    if (
-      !selectedChapter ||
-      status === selectedChapter.status ||
-      statusMutationLockRef.current ||
-      chapterCreationLockRef.current
-    ) {
-      return;
-    }
-
-    const sourceChapterId = selectedChapter.id;
-    statusMutationLockRef.current = true;
-    setStatusUpdating(true);
-    try {
-      const chapter = await flushBeforeMutation();
-      if (!chapter || chapter.id !== sourceChapterId) return;
-
-      const updated = await apiClient.updateChapter(chapter.id, {
-        expectedRevision: chapter.revision,
-        status,
-      });
-      replaceChapter(updated);
-      if (selectedChapterIdRef.current === sourceChapterId) {
-        setConflict(false);
-      }
-    } catch (updateError) {
-      if (
-        updateError instanceof ApiRequestError &&
-        updateError.code === "REVISION_CONFLICT"
-      ) {
-        if (selectedChapterIdRef.current === sourceChapterId) {
-          setConflict(true);
-        }
-      }
-    } finally {
-      statusMutationLockRef.current = false;
-      setStatusUpdating(false);
-    }
-  };
-
-  const handleReload = async () => {
-    await reload();
-    setConflict(false);
-  };
-
-  const handleProviderSave = async (input: SaveProviderSettingsInput) => {
-    const settings = await apiClient.saveProviderSettings(input);
-    setProviderSettings(settings);
-    setActiveDialog((current) => (current === "provider" ? null : current));
-  };
-
-  const handleListProviderModels = useCallback(
-    (input: ListProviderModelsInput, signal?: AbortSignal) =>
-      apiClient.listProviderModels(input, signal),
-    [],
-  );
-
-  const handleClearProviderKey = async (providerId: SaveProviderSettingsInput["providerId"]) => {
-    const settings = await apiClient.clearProviderKey(providerId, {
-      preserveSettings: true,
-    });
-    setProviderSettings(settings);
-  };
-
-  const handleAuthenticationFailure = () => {
-    openProviderDialog();
-  };
-
-  const handleDataImported = async () => {
-    await reload();
-    setConflict(false);
-  };
-
-  const handleShutdownRequested = async (requestId: string) => {
-    let canClose = false;
-    try {
-      if (!selectedChapter) {
-        canClose = Boolean(workspace && workspace.chapters.length === 0);
-      } else {
-        const chapter = await flushBeforeMutation();
-        canClose = chapter !== undefined;
-      }
-    } catch {
-      // Keep the default false decision when the draft flush fails unexpectedly.
-    }
-    try {
-      await apiClient.resolveClose({ requestId, canClose });
-    } catch {
-      // Main falls back to the close-handshake timeout when IPC is unavailable.
-    }
-  };
-
-  const commandHandlersRef = useRef<{
-    handleCreateChapter: () => Promise<void>;
-    handleDataImport: () => void;
-    handleDataExport: () => void;
-    handleProviderSettings: () => void;
-    handleShutdownRequested: (requestId: string) => Promise<void>;
-    flush: () => Promise<Chapter | undefined>;
-  } | null>(null);
-  commandHandlersRef.current = {
-    handleCreateChapter,
-    handleDataImport: openDataDialog,
-    handleDataExport: openDataDialog,
-    handleProviderSettings: openProviderDialog,
-    handleShutdownRequested,
-    flush,
-  };
+  useEffect(() => {
+    void loadLibrary();
+  }, [loadLibrary]);
 
   useEffect(() => {
     return apiClient.onDesktopCommand((command: DesktopCommand) => {
-      const handlers = commandHandlersRef.current;
-      if (!handlers) return;
-      switch (command.type) {
-        case "save":
-          void handlers.flush();
-          break;
-        case "new-chapter":
-          void handlers.handleCreateChapter();
-          break;
-        case "import":
-          handlers.handleDataImport();
-          break;
-        case "export":
-          handlers.handleDataExport();
-          break;
-        case "provider-settings":
-          handlers.handleProviderSettings();
-          break;
-        case "shutdown-requested":
-          void handlers.handleShutdownRequested(command.requestId);
-          break;
-        case "update-available":
-          setUpdateNotice({
-            kind: "available",
-            message: "发现可用更新，请从发布渠道下载最新版本。",
-          });
-          break;
-        case "update-failed":
-          setUpdateNotice({
-            kind: "error",
-            message: "更新检查失败，请稍后重试。",
-          });
-          break;
-        default:
-          break;
+      if (command.type === "provider-settings") setProviderOpen(true);
+      if (command.type === "shutdown-requested") {
+        void apiClient.resolveClose({ requestId: command.requestId, canClose: true });
       }
     });
   }, []);
 
-  const handleAcceptedChapter = (chapter: typeof selectedChapter) => {
-    if (!chapter) return;
-    replaceChapter(chapter);
-    if (selectedChapterIdRef.current === chapter.id) {
-      setDraftContent(chapter.content);
-      setConflict(false);
+  const requireProvider = () => {
+    if (providerConfig) return providerConfig;
+    setProviderOpen(true);
+    setError("请先配置一个模型，之后只需要输入故事想法。" );
+    return null;
+  };
+
+  const createIdea = async (idea: string) => {
+    const config = requireProvider();
+    if (!config) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await autoApi.createBook({ idea }, config, makeId());
+      const details: BookDetails = {
+        book: result.book,
+        directions: [...result.directions],
+        foundation: null,
+        chapterPlans: [],
+        run: null,
+      };
+      setBooks((current) => [result.book, ...current]);
+      setBookDetails(details);
+      setRunId(null);
+      setPage("directions");
+    } catch (createError) {
+      setError(errorMessage(createError));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const providerDialog = (
-    <ProviderDialog
-      open={activeDialog === "provider"}
-      providers={providers}
-      settings={providerSettings}
-      platform={apiClient.platform}
-      onSave={handleProviderSave}
-      onListModels={handleListProviderModels}
-      onClearKey={
-        apiClient.platform === "desktop" || providerSettings?.platform === "web"
-          ? handleClearProviderKey
-          : undefined
-      }
-      onClose={() =>
-        setActiveDialog((current) => (current === "provider" ? null : current))
-      }
-    />
-  );
-  const dataDialog = databaseStatus?.isDesktop ? (
-    <DataManagementDialog
-      open={activeDialog === "data"}
-      onClose={() =>
-        setActiveDialog((current) => (current === "data" ? null : current))
-      }
-      onBeforeOperation={onBeforeDataOperation}
-      onImported={handleDataImported}
-    />
-  ) : null;
+  const openBook = async (book: Book) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const details = await autoApi.getBook(book.id);
+      setBookDetails(details);
+      setRunId(details.run?.id ?? null);
+      setPage(details.book.selectedDirectionId ? "production" : "directions");
+    } catch (openError) {
+      setError(errorMessage(openError));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  if (loading && !workspace) {
-    return (
-      <div className="app-loading" role="status">
-        <span className="loading-mark">奕</span>
-        <span>正在打开本地项目</span>
-      </div>
-    );
+  const selectDirection = async (direction: StoryDirection) => {
+    const config = requireProvider();
+    if (!config || !bookDetails) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await autoApi.selectDirection(
+        bookDetails.book.id,
+        direction.id,
+        bookDetails.book.revision,
+        config,
+      );
+      setBookDetails(next);
+      setPage("production");
+    } catch (selectError) {
+      setError(errorMessage(selectError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startProduction = async () => {
+    const config = requireProvider();
+    if (!config || !bookDetails) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const run = await autoApi.startProduction(bookDetails.book.id, config, makeId());
+      setRunId(run.id);
+    } catch (startError) {
+      setError(errorMessage(startError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pauseRun = async () => {
+    if (!runId) return;
+    setBusy(true);
+    try {
+      await autoApi.pauseRun(runId);
+      await runState.refresh();
+    } catch (pauseError) {
+      setError(errorMessage(pauseError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resumeRun = async () => {
+    const config = requireProvider();
+    if (!config || !runId) return;
+    setBusy(true);
+    try {
+      await autoApi.resumeRun(runId, config);
+      await runState.refresh();
+    } catch (resumeError) {
+      setError(errorMessage(resumeError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelRun = async () => {
+    if (!runId) return;
+    setBusy(true);
+    try {
+      await autoApi.cancelRun(runId);
+      await runState.refresh();
+    } catch (cancelError) {
+      setError(errorMessage(cancelError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleProviderSave = async (input: SaveProviderSettingsInput) => {
+    const next = await apiClient.saveProviderSettings(input);
+    setProviderSettings(next);
+    setProviderOpen(false);
+    setError(null);
+  };
+
+  if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
+  if (page === "home") {
+    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(idea) => void createIdea(idea)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-
-  if (error || !workspace) {
-    return (
-      <div className="app-error" role="alert">
-        <strong>项目无法打开</strong>
-        <span>{error ?? "当前项目没有可编辑章节。"}</span>
-        <button type="button" onClick={() => void reload()}>
-          重试
-        </button>
-      </div>
-    );
+  if (!bookDetails) return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
+  if (page === "directions") {
+    return <><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onBack={() => setPage("home")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-
-  if (!selectedChapter) {
-    return (
-      <>
-        <div className="app-shell">
-        <AppRail
-          onToggleChapters={() => setChaptersOpen((open) => !open)}
-          onToggleGeneration={() => undefined}
-          onConfigureProvider={openProviderDialog}
-          onManageData={
-            apiClient.platform === "desktop" ? openDataDialog : undefined
-          }
-        />
-        <ChapterSpine
-          project={workspace.project}
-          chapters={workspace.chapters}
-          selectedChapterId={null}
-          open={chaptersOpen}
-          creating={creatingChapter}
-          actionError={chapterActionError}
-          onSelect={handleSelectChapter}
-          onCreate={() => void handleCreateChapter()}
-          onClose={() => setChaptersOpen(false)}
-        />
-        <main className="empty-workspace" aria-label="空章节工作区">
-          <button
-            className="new-chapter-button"
-            type="button"
-            disabled={creatingChapter}
-            onClick={() => void handleCreateChapter()}
-          >
-            新建章节
-          </button>
-        </main>
-        </div>
-        {providerDialog}
-        {dataDialog}
-      </>
-    );
+  if (page === "manuscript") {
+    return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-
-  return (
-    <>
-      <div
-        className="app-shell"
-        aria-hidden={activeDialog ? "true" : undefined}
-      >
-      <AppRail
-        onToggleChapters={() => {
-          setChaptersOpen((open) => !open);
-          setGenerationOpen(false);
-        }}
-        onToggleGeneration={() => {
-          setGenerationOpen((open) => !open);
-          setChaptersOpen(false);
-        }}
-        onConfigureProvider={openProviderDialog}
-        onManageData={
-          apiClient.platform === "desktop"
-            ? openDataDialog
-            : undefined
-        }
-      />
-      <ChapterSpine
-        project={workspace.project}
-        chapters={workspace.chapters}
-        selectedChapterId={selectedChapter.id}
-        open={chaptersOpen}
-        creating={creatingChapter}
-        actionError={chapterActionError}
-        onSelect={handleSelectChapter}
-        onCreate={() => void handleCreateChapter()}
-        onClose={() => setChaptersOpen(false)}
-      />
-      <EditorPane
-        chapter={selectedChapter}
-        content={draftContent}
-        saveStatus={saveStatus}
-        conflict={conflict}
-        statusUpdating={statusUpdating || creatingChapter}
-        onChange={setDraftContent}
-        onStatusChange={(status) => void handleStatusChange(status)}
-        onReload={() => void handleReload()}
-      />
-      <GenerationPanel
-        key={workspaceEpoch}
-        providers={providers}
-        providerSettings={providerSettings}
-        chapter={selectedChapter}
-        draftContent={draftContent}
-        saveStatus={saveStatus}
-        open={generationOpen}
-        flushDraft={flush}
-        onChapterAccepted={handleAcceptedChapter}
-        onAuthenticationFailure={handleAuthenticationFailure}
-        onConfigureProvider={openProviderDialog}
-        onClose={() => setGenerationOpen(false)}
-      />
-      {updateNotice ? (
-        <div
-          className={`update-notice update-notice-${updateNotice.kind}`}
-          role={updateNotice.kind === "error" ? "alert" : "status"}
-          aria-label="更新状态"
-          aria-live={updateNotice.kind === "error" ? "assertive" : "polite"}
-          aria-atomic="true"
-        >
-          <span>{updateNotice.message}</span>
-          <button
-            className="update-notice-dismiss"
-            type="button"
-            aria-label="关闭更新通知"
-            onClick={() => setUpdateNotice(null)}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-      </div>
-      {providerDialog}
-      {dataDialog}
-    </>
-  );
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} /><ChapterReview details={runState.details} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
 }
 
-function chapterCreationErrorMessage(error: unknown): string {
+function providerDialog(
+  providers: readonly ProviderCatalogEntry[],
+  settings: ClientProviderSettings | null,
+  open: boolean,
+  onSave: (input: SaveProviderSettingsInput) => Promise<void>,
+  onClose: (open: boolean) => void,
+) {
+  return <ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onClearKey={(providerId) => apiClient.clearProviderKey(providerId, { preserveSettings: true }).then(() => undefined)} onClose={() => onClose(false)} />;
+}
+
+function errorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
-  return "新建章节失败，请稍后重试。";
+  return error instanceof Error ? error.message : "操作失败，请稍后重试。";
 }
+
+function makeId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  return `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+
+
+
