@@ -33,7 +33,7 @@ import {
 import { createDatabase } from "../server/db/database";
 import { migrate } from "../server/db/migrations";
 import { NormalizedProviderError } from "../server/providers/types";
-import type { ProviderResolver } from "../server/services/generation-service";
+import type { ProviderResolver } from "../server/providers/resolver";
 import { createAutoNovelServices, type AutoNovelServices } from "./auto-novel-access";
 import {
   assertCanonicalDatabaseSchema,
@@ -1467,4 +1467,5 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
+
 

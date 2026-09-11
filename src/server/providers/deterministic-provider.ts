@@ -1,5 +1,5 @@
 import type { ProviderConfig } from "../../shared/contracts";
-import type { ProviderResolver } from "../services/generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import type { TextGenerationProvider } from "./types";
 
 const E2E_CANDIDATE = "门外传来三声叩响。";
@@ -21,3 +21,4 @@ export class DeterministicProviderResolver implements ProviderResolver {
     };
   }
 }
+

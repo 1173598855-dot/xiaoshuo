@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { createDatabase } from "./db/database";
 import { migrate } from "./db/migrations";
 import { ProviderRegistry } from "./providers/provider-registry";
-import type { ProviderResolver } from "./services/generation-service";
+import type { ProviderResolver } from "./providers/resolver";
 import { BookRepository } from "./repositories/book-repository";
 import { ProductionRepository } from "./repositories/production-repository";
 import { DirectorService } from "./services/director-service";
@@ -54,3 +54,4 @@ export function createAutoNovelRuntime(
     throw error;
   }
 }
+

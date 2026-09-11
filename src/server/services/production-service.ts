@@ -13,7 +13,7 @@ import {
   type ProductionRunDetailsSnapshot,
 } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
-import type { ProviderResolver } from "./generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import { parseStructuredProviderResult } from "./auto-novel-prompts";
 
 const ReviewOutputSchema = z
@@ -311,6 +311,7 @@ function isKnownErrorCode(
     typeof error.code === "string"
   );
 }
+
 
 
 

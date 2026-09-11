@@ -1,5 +1,5 @@
 import type { ProviderConfig } from "../../shared/contracts";
-import type { ProviderResolver } from "../services/generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import type { TextGenerationProvider } from "./types";
 
 export class AutoNovelDeterministicProviderResolver implements ProviderResolver {
@@ -73,3 +73,4 @@ export class AutoNovelDeterministicProviderResolver implements ProviderResolver 
     };
   }
 }
+

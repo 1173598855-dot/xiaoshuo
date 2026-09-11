@@ -1,5 +1,5 @@
 import type { ProviderConfig } from "../../shared/contracts";
-import type { ProviderResolver } from "../services/generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import { AnthropicAdapter } from "./anthropic-adapter";
 import { GoogleAdapter } from "./google-adapter";
 import { OpenAIAdapter } from "./openai-adapter";
@@ -20,3 +20,4 @@ export class ProviderRegistry implements ProviderResolver {
     }
   }
 }
+

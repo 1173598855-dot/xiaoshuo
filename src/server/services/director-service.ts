@@ -4,7 +4,7 @@ import type {
 import {
   type DirectionDraft,
 } from "../repositories/book-repository";
-import type { ProviderResolver } from "./generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import {
   buildDirectorPrompt,
   DirectorModelOutputSchema,
@@ -88,3 +88,4 @@ export class DirectorService {
     );
   }
 }
+

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { ProviderResolver } from "../server/services/generation-service";
+import type { ProviderResolver } from "../server/providers/resolver";
 import { BookRepository } from "../server/repositories/book-repository";
 import { ProductionRepository } from "../server/repositories/production-repository";
 import { DirectorService } from "../server/services/director-service";
@@ -35,3 +35,4 @@ export function createAutoNovelServices(
     productionService: new ProductionService(shared),
   };
 }
+

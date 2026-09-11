@@ -7,7 +7,7 @@ import {
   type ProviderId,
   type ProviderModel,
 } from "../../shared/contracts";
-import { ProviderConfigMismatchError } from "../services/generation-service";
+import { ProviderConfigMismatchError } from "../providers/resolver";
 import { getProviderCatalog } from "./catalog";
 import { normalizeProviderError } from "./normalize-error";
 import { NormalizedProviderError } from "./types";
@@ -108,3 +108,4 @@ function invalidModelResponse(): NormalizedProviderError {
     publicProviderErrorMessage("REQUEST_INVALID"),
   );
 }
+

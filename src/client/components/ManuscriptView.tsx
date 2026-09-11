@@ -23,7 +23,7 @@ export function ManuscriptView({ book, chapters, api, onBack }: ManuscriptViewPr
     URL.revokeObjectURL(url);
   };
   return (
-    <main className="manuscript-page">
+    <main className="manuscript-page" aria-label="正式正文">
       <header className="page-topbar">
         <button className="text-button" type="button" onClick={onBack}><ArrowLeft size={15} /> 返回生产室</button>
         <div className="manuscript-actions"><button className="secondary-button" type="button" onClick={() => void exportBook("markdown")}><Download size={15} /> 导出 Markdown</button><button className="secondary-button" type="button" onClick={() => void exportBook("txt")}><Download size={15} /> 导出 TXT</button></div>
@@ -35,3 +35,4 @@ export function ManuscriptView({ book, chapters, api, onBack }: ManuscriptViewPr
     </main>
   );
 }
+

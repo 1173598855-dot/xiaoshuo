@@ -13,7 +13,7 @@ import path from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 
 import type { DesktopCommand } from "../shared/contracts";
-import { DeterministicProviderResolver } from "../server/providers/deterministic-provider";
+import { AutoNovelDeterministicProviderResolver } from "../server/providers/auto-novel-deterministic";
 import {
   registerDesktopIpcHandlers,
   type DesktopDialogAdapter,
@@ -139,7 +139,7 @@ async function bootstrap(): Promise<void> {
   const userDataDirectory = runtimeConfig.userDataDirectory;
   const providerResolver =
     runtimeConfig.useFakeProvider
-      ? new DeterministicProviderResolver()
+      ? new AutoNovelDeterministicProviderResolver()
       : undefined;
   databaseManager = new DesktopDatabaseManager(userDataDirectory, {
     providerResolver,
@@ -423,6 +423,7 @@ async function requestRendererClose(): Promise<void> {
 function beginFinalShutdown(exitCode = 0): void {
   void finalShutdown.request(exitCode);
 }
+
 
 
 

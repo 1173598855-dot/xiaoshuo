@@ -1,6 +1,6 @@
 import type { ProviderConfig } from "../../shared/contracts";
 import type { BookFoundation, ChapterPlan } from "../../shared/auto-novel";
-import type { ProviderResolver } from "./generation-service";
+import type { ProviderResolver } from "../providers/resolver";
 import type { BookRepository } from "../repositories/book-repository";
 import {
   buildFoundationPrompt,
@@ -75,3 +75,4 @@ export class FoundationService {
     return { foundation, chapterPlans };
   }
 }
+
