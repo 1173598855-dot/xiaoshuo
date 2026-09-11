@@ -1,0 +1,87 @@
+import type { DesktopIpcRenderer } from "./preload-api";
+import { AUTO_NOVEL_CHANNELS } from "./ipc/auto-novel-channels";
+import type { ProviderConfig } from "../shared/contracts";
+import type {
+  Book,
+  BookDetails,
+  CreateBookInput,
+  ProductionRun,
+  StoryDirection,
+} from "../shared/auto-novel";
+import type { Chapter } from "../shared/contracts";
+import type { AutoNovelRunDetails } from "../client/auto-novel-api";
+import type { DesktopResult } from "../shared/contracts";
+
+export interface AutoNovelDesktopApi {
+  readonly books: {
+    list(): Promise<DesktopResult<readonly Book[]>>;
+    create(input: {
+      input: CreateBookInput;
+      provider: ProviderConfig;
+      idempotencyKey: string;
+    }): Promise<DesktopResult<{ book: Book; directions: readonly StoryDirection[] }>>;
+    get(bookId: string): Promise<DesktopResult<BookDetails>>;
+    export(input: {
+      bookId: string;
+      format: "markdown" | "txt" | "docx";
+    }): Promise<DesktopResult<{ format: string; content: string }>>;
+  };
+  readonly directions: {
+    select(input: {
+      bookId: string;
+      directionId: string;
+      expectedBookRevision: number;
+      provider: ProviderConfig;
+    }): Promise<DesktopResult<BookDetails>>;
+  };
+  readonly production: {
+    start(input: {
+      bookId: string;
+      provider: ProviderConfig;
+      idempotencyKey: string;
+    }): Promise<DesktopResult<ProductionRun>>;
+    get(runId: string): Promise<DesktopResult<AutoNovelRunDetails>>;
+    pause(runId: string): Promise<DesktopResult<ProductionRun>>;
+    resume(input: { runId: string; provider: ProviderConfig }): Promise<DesktopResult<ProductionRun>>;
+    cancel(runId: string): Promise<DesktopResult<ProductionRun>>;
+  };
+  readonly candidates: {
+    accept(input: { candidateId: string; expectedRevision: number }): Promise<DesktopResult<{ candidate: unknown; chapter: Chapter; run: ProductionRun }>>;
+    discard(candidateId: string): Promise<DesktopResult<unknown>>;
+  };
+}
+
+export function createAutoNovelPreloadApi(
+  ipcRenderer: DesktopIpcRenderer,
+): AutoNovelDesktopApi {
+  return {
+    books: {
+      list: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksList),
+      create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
+      get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
+      export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),
+    },
+    directions: {
+      select: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.directionsSelect, input),
+    },
+    production: {
+      start: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionStart, input),
+      get: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionGet, { runId }),
+      pause: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionPause, { runId }),
+      resume: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionResume, input),
+      cancel: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionCancel, { runId }),
+    },
+    candidates: {
+      accept: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateAccept, input),
+      discard: (candidateId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateDiscard, { candidateId }),
+    },
+  };
+}
+
+function invoke<T>(
+  ipcRenderer: DesktopIpcRenderer,
+  channel: string,
+  input?: unknown,
+): Promise<DesktopResult<T>> {
+  return ipcRenderer.invoke(channel, input) as Promise<DesktopResult<T>>;
+}

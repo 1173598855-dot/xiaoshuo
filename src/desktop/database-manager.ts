@@ -34,6 +34,7 @@ import { createDatabase } from "../server/db/database";
 import { migrate } from "../server/db/migrations";
 import { NormalizedProviderError } from "../server/providers/types";
 import type { ProviderResolver } from "../server/services/generation-service";
+import { createAutoNovelServices, type AutoNovelServices } from "./auto-novel-access";
 import {
   assertCanonicalDatabaseSchema,
   assertSupportedDatabaseSchemaBeforeMigration,
@@ -273,6 +274,10 @@ export class DesktopDatabaseManager {
     };
   }
 
+getAutoNovelServices(): AutoNovelServices {
+    const runtime = this.getReadableRuntime();
+    return createAutoNovelServices(runtime.database, this.providerResolver);
+  }
   async runWrite<T>(
     operation: (runtime: ServerRuntime) => Promise<T> | T,
   ): Promise<T> {
@@ -1462,3 +1467,4 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
+

@@ -19,6 +19,7 @@ import {
   type DesktopDialogAdapter,
 } from "./ipc/handlers";
 import { DESKTOP_CHANNELS } from "./ipc/channels";
+import { registerAutoNovelIpcHandlers } from "./ipc/auto-novel-handlers";
 import { DesktopDatabaseManager } from "./database-manager";
 import { createFinalShutdownCoordinator } from "./final-shutdown";
 import { getDesktopPaths } from "./paths";
@@ -45,6 +46,7 @@ import {
 let mainWindow: BrowserWindow | undefined;
 let databaseManager: DesktopDatabaseManager | undefined;
 let unregisterIpcHandlers: (() => void) | undefined;
+let unregisterAutoNovelIpcHandlers: (() => void) | undefined;
 let closeRequestInFlight = false;
 let applicationQuitRequested = false;
 const closeDecisionCoordinator = createCloseDecisionCoordinator();
@@ -68,6 +70,8 @@ const finalShutdown = createFinalShutdownCoordinator({
     updateController = undefined;
     unregisterIpcHandlers?.();
     unregisterIpcHandlers = undefined;
+    unregisterAutoNovelIpcHandlers?.();
+    unregisterAutoNovelIpcHandlers = undefined;
     await databaseManager?.close();
   },
   exit: (exitCode) => app.exit(exitCode),
@@ -154,6 +158,20 @@ async function bootstrap(): Promise<void> {
     resolveClose: (input) => {
       closeDecisionCoordinator.resolve(input);
     },
+    isTrustedSender: (event) =>
+      isTrustedDesktopIpcSender(
+        event as {
+          sender?: unknown;
+          senderFrame?: { url: string } | null;
+        },
+        mainWindow,
+        runtimeConfig.renderer,
+      ),
+  });
+  unregisterAutoNovelIpcHandlers = registerAutoNovelIpcHandlers({
+    ipcMain,
+    getServices: () => databaseManager!.getAutoNovelServices(),
+    providerVault,
     isTrustedSender: (event) =>
       isTrustedDesktopIpcSender(
         event as {
@@ -405,3 +423,6 @@ async function requestRendererClose(): Promise<void> {
 function beginFinalShutdown(exitCode = 0): void {
   void finalShutdown.request(exitCode);
 }
+
+
+

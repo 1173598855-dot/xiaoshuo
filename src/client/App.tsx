@@ -10,7 +10,9 @@ import type {
 import type { Book, BookDetails, StoryDirection } from "../shared/auto-novel";
 import { apiClient, ApiRequestError } from "./api/client";
 import type { ClientProviderSettings } from "./api/transport";
-import { createAutoNovelApi } from "./auto-novel-api";
+import { createAutoNovelApi, type AutoNovelProviderInput } from "./auto-novel-api";
+import { createAutoNovelIpcApi } from "./auto-novel-ipc-api";
+import type { AutoNovelDesktopApiV2 } from "../desktop/auto-novel-preload-api-v2";
 import { CreativeHome } from "./components/CreativeHome";
 import { DirectionPicker } from "./components/DirectionPicker";
 import { ProductionRoom } from "./components/ProductionRoom";
@@ -23,10 +25,12 @@ import { useProductionRun } from "./hooks/use-production-run";
 type Page = "home" | "directions" | "production" | "manuscript";
 
 export function App() {
-  const autoApi = useMemo(
-    () => createAutoNovelApi((input, init) => globalThis.fetch(input, init)),
-    [],
-  );
+  const autoApi = useMemo(() => {
+    const bridge = (window as Window & { xiaoyi?: { autoNovel?: AutoNovelDesktopApiV2 } }).xiaoyi?.autoNovel;
+    return bridge
+      ? createAutoNovelIpcApi(bridge)
+      : createAutoNovelApi((input, init) => globalThis.fetch(input, init));
+  }, []);
   const [page, setPage] = useState<Page>("home");
   const [books, setBooks] = useState<readonly Book[]>([]);
   const [bookDetails, setBookDetails] = useState<BookDetails | null>(null);
@@ -41,6 +45,14 @@ export function App() {
     if (!providerSettings || providerSettings.platform !== "web") return null;
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
   }, [providerSettings, providers]);
+  const providerInput = useMemo<AutoNovelProviderInput | null>(() => {
+    if (apiClient.platform === "desktop") {
+      return providerSettings?.providerId
+        ? { providerId: providerSettings.providerId }
+        : null;
+    }
+    return providerConfig;
+  }, [providerConfig, providerSettings]);
   const runState = useProductionRun(autoApi, runId);
 
   const loadLibrary = useCallback(async () => {
@@ -75,7 +87,7 @@ export function App() {
   }, []);
 
   const requireProvider = () => {
-    if (providerConfig) return providerConfig;
+    if (providerInput) return providerInput;
     setProviderOpen(true);
     setError("请先配置一个模型，之后只需要输入故事想法。" );
     return null;
@@ -237,6 +249,8 @@ function makeId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+
 
 
 
