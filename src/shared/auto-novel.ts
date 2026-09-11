@@ -200,6 +200,7 @@ export const ChapterCandidateSchema = z
   .object({
     id: UuidSchema,
     bookId: UuidSchema,
+    runId: UuidSchema.nullable(),
     chapterId: UuidSchema,
     baseRevision: z.number().int().nonnegative(),
     context: ChapterCandidateContextSchema,

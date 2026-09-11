@@ -108,6 +108,7 @@ export class ProductionService {
         const contextHash = hashContext(chapter.content);
         let candidate =
           this.dependencies.productionRepository.findReusableCandidate(
+            run.id,
             run.bookId,
             chapter.id,
             chapter.revision,
@@ -126,6 +127,7 @@ export class ProductionService {
           const stoppedAfterDraft = this.getStoppedRun(runId, signal);
           if (stoppedAfterDraft) return stoppedAfterDraft;
           candidate = this.dependencies.productionRepository.createCandidate({
+            runId,
             bookId: run.bookId,
             chapterId: chapter.id,
             baseRevision: chapter.revision,

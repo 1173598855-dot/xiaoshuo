@@ -93,6 +93,7 @@ const AUTO_NOVEL_SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS chapter_candidates (
     id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES production_runs(id) ON DELETE CASCADE,
     book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
     chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
@@ -124,6 +125,11 @@ const AUTO_NOVEL_SCHEMA = `
 
 export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database.exec(AUTO_NOVEL_SCHEMA);
+  const candidateColumns = database.prepare("PRAGMA table_xinfo(chapter_candidates)").all() as Array<{ name: string }>;
+  if (!candidateColumns.some(({ name }) => name === "run_id")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN run_id TEXT REFERENCES production_runs(id) ON DELETE CASCADE");
+  }
+  database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
   if (!columns.some(({ name }) => name === "director_idempotency_key")) {
     database.exec("ALTER TABLE books ADD COLUMN director_idempotency_key TEXT");

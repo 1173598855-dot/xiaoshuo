@@ -10,31 +10,42 @@ export function useProductionRun(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!runId) {
-      setDetails(null);
-      return;
-    }
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    setLoading(true);
-    try {
-      const next = await api.getRun(runId, controller.signal);
-      if (requestRef.current === controller && !controller.signal.aborted) {
-        setDetails(next);
-        setError(null);
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    const task = (async () => {
+      if (!runId) {
+        setDetails(null);
+        return;
       }
-    } catch (requestError) {
-      if (requestRef.current === controller && !controller.signal.aborted) {
-        setError(requestError instanceof Error ? requestError.message : "无法读取生产进度。");
-      }
-    } finally {
-      if (requestRef.current === controller) {
-        requestRef.current = null;
+      const controller = new AbortController();
+      requestRef.current = controller;
+      setLoading(true);
+      try {
+        const next = await api.getRun(runId, controller.signal);
+        if (!controller.signal.aborted) {
+          setDetails(next);
+          setError(null);
+        }
+      } catch (requestError) {
+        if (!controller.signal.aborted) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "无法读取生产进度。",
+          );
+        }
+      } finally {
+        if (requestRef.current === controller) requestRef.current = null;
         setLoading(false);
       }
+    })();
+    refreshPromiseRef.current = task;
+    try {
+      await task;
+    } finally {
+      if (refreshPromiseRef.current === task) refreshPromiseRef.current = null;
     }
   }, [api, runId]);
 

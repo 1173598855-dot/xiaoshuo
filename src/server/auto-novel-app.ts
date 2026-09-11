@@ -14,6 +14,7 @@ import { ListProviderModelsInputSchema, ProviderConfigSchema } from "../shared/c
 import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
+import { UnsupportedExportFormatError } from "./export-errors";
 import type { BookRepository } from "./repositories/book-repository";
 import type { ProductionRepository } from "./repositories/production-repository";
 import type { DirectorService } from "./services/director-service";
@@ -195,13 +196,15 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/production-runs/:runId/resume", async (context) => {
     const parsed = await parseJson(context.req.raw, ResumeRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
-    return context.json(
-      await dependencies.productionService.resume(
-        context.req.param("runId"),
+    const run = dependencies.productionRepository.getRun(context.req.param("runId"));
+    void Promise.resolve()
+      .then(() => dependencies.productionService.resume(
+        run.id,
         parsed.data.provider,
         context.req.raw.signal,
-      ),
-    );
+      ))
+      .catch(() => undefined);
+    return context.json(run, 202);
   });
 
   app.post("/api/production-runs/:runId/cancel", async (context) => {
@@ -236,7 +239,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     if (!parsed.success) return context.json(parsed.error, 400);
     return context.json({
       format: parsed.data.format,
-      content: buildMarkdownExport(dependencies, context.req.param("bookId")),
+      content: buildExport(dependencies, context.req.param("bookId"), parsed.data.format),
     });
   });
 
@@ -317,23 +320,29 @@ function apiError(
   };
 }
 
-function buildMarkdownExport(
+function buildExport(
   dependencies: AutoNovelAppDependencies,
   bookId: string,
+  format: "markdown" | "txt" | "docx",
 ): string {
+  if (format === "docx") throw new UnsupportedExportFormatError();
   const details = dependencies.bookRepository.getBook(bookId);
   const chapters = dependencies.productionRepository.getChapters(bookId);
+  if (format === "markdown") {
+    return [
+      "# " + details.book.title,
+      "",
+      ...chapters.flatMap((chapter) => [
+        "## " + chapter.title,
+        "",
+        chapter.content,
+        "",
+      ]),
+    ].join("\n");
+  }
   return [
-    `# ${details.book.title}`,
+    details.book.title,
     "",
-    ...chapters.flatMap((chapter) => [
-      `## ${chapter.title}`,
-      "",
-      chapter.content,
-      "",
-    ]),
+    ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
   ].join("\n");
 }
-
-
-

@@ -9,6 +9,7 @@ const AUTO_MESSAGES: Record<string, string> = {
   CANDIDATE_STALE: "该章节候选已经过期，请重新生成。",
   CANDIDATE_REVIEW_REQUIRED: "候选还没有通过审核。",
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
+  UNSUPPORTED_EXPORT_FORMAT: "DOCX 导出尚未实现，请先使用 Markdown 或 TXT。",
 };
 
 export function toAutoNovelPublicError(error: unknown): ApiError["error"] {

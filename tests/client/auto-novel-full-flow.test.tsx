@@ -106,6 +106,7 @@ describe("auto-novel full client flow", () => {
     const candidate = {
       id: "e2fcea89-9d4e-4f45-84d2-a0e40d86f706",
       bookId: baseBook.id,
+      runId: run.id,
       chapterId,
       baseRevision: 0,
       context: { revision: 0, hash: "a".repeat(64) },

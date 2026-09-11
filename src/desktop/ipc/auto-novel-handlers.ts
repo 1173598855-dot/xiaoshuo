@@ -9,6 +9,7 @@ import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../share
 import type { ProviderVault } from "../provider-vault";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
+import { UnsupportedExportFormatError } from "../../server/export-errors";
 import { AUTO_NOVEL_CHANNELS, type AutoNovelDesktopChannel } from "./auto-novel-channels";
 import type { DesktopIpcMain } from "./handlers";
 
@@ -86,9 +87,17 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.productionPause, RunRequestSchema, ({ runId }) =>
     dependencies.getServices().productionService.pause(runId),
   );
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionResume, ResumeRequestSchema, async ({ runId, providerId }) =>
-    dependencies.getServices().productionService.resume(runId, await resolveProvider(dependencies.providerVault, providerId)),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionResume, ResumeRequestSchema, async ({ runId, providerId }) => {
+    const services = dependencies.getServices();
+    const run = services.productionRepository.getRun(runId);
+    void Promise.resolve()
+      .then(async () => services.productionService.resume(
+        runId,
+        await resolveProvider(dependencies.providerVault, providerId),
+      ))
+      .catch(() => undefined);
+    return run;
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionCancel, RunRequestSchema, ({ runId }) =>
     dependencies.getServices().productionService.cancel(runId),
   );
@@ -100,7 +109,7 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
     format,
-    content: buildMarkdownExport(dependencies.getServices(), bookId),
+    content: buildExport(dependencies.getServices(), bookId, format),
   }));
 
   return () => {
@@ -144,14 +153,29 @@ function failure(code: string, message: string): DesktopResult<never> {
   return { ok: false, error: { code, message } satisfies ApiError["error"] };
 }
 
-function buildMarkdownExport(services: AutoNovelServices, bookId: string): string {
+function buildExport(
+  services: AutoNovelServices,
+  bookId: string,
+  format: "markdown" | "txt" | "docx",
+): string {
+  if (format === "docx") throw new UnsupportedExportFormatError();
   const details = services.bookRepository.getBook(bookId);
   const chapters = services.productionRepository.getChapters(bookId);
+  if (format === "markdown") {
+    return [
+      "# " + details.book.title,
+      "",
+      ...chapters.flatMap((chapter) => [
+        "## " + chapter.title,
+        "",
+        chapter.content,
+        "",
+      ]),
+    ].join("\n");
+  }
   return [
-    `# ${details.book.title}`,
+    details.book.title,
     "",
-    ...chapters.flatMap((chapter) => [`## ${chapter.title}`, "", chapter.content, ""]),
+    ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
   ].join("\n");
 }
-
-

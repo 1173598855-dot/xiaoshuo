@@ -52,6 +52,7 @@ interface CheckpointRow {
 
 interface CandidateRow {
   id: string;
+  run_id: string | null;
   book_id: string;
   chapter_id: string;
   base_revision: number;
@@ -78,6 +79,7 @@ interface ChapterRow {
 }
 
 export interface CreateCandidateInput {
+  runId: string;
   bookId: string;
   chapterId: string;
   baseRevision: number;
@@ -214,12 +216,12 @@ export class ProductionRepository {
       .all(runId) as unknown as CheckpointRow[];
     const candidateRows = this.database
       .prepare(
-        `SELECT id, book_id, chapter_id, base_revision, context_revision,
+        `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
-         FROM chapter_candidates WHERE book_id = ? ORDER BY created_at, id`,
+         FROM chapter_candidates WHERE book_id = ? AND run_id = ? ORDER BY created_at, id`,
       )
-      .all(run.bookId) as unknown as CandidateRow[];
+      .all(run.bookId, run.id) as unknown as CandidateRow[];
     return {
       run,
       checkpoints: checkpointRows.map(toCheckpoint),
@@ -319,13 +321,14 @@ export class ProductionRepository {
     this.database
       .prepare(
         `INSERT INTO chapter_candidates (
-           id, book_id, chapter_id, base_revision, context_revision,
+           id, run_id, book_id, chapter_id, base_revision, context_revision,
            context_hash, candidate_text, status, review_json, repair_count,
            created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, NULL)`,
       )
       .run(
         id,
+        input.runId,
         input.bookId,
         input.chapterId,
         input.baseRevision,
@@ -342,7 +345,7 @@ export class ProductionRepository {
   getCandidate(candidateId: string): ChapterCandidate {
     const row = this.database
       .prepare(
-        `SELECT id, book_id, chapter_id, base_revision, context_revision,
+        `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE id = ?`,
@@ -384,6 +387,7 @@ export class ProductionRepository {
   }
 
   findReusableCandidate(
+    runId: string,
     bookId: string,
     chapterId: string,
     baseRevision: number,
@@ -391,15 +395,15 @@ export class ProductionRepository {
   ): ChapterCandidate | null {
     const row = this.database
       .prepare(
-        `SELECT id, book_id, chapter_id, base_revision, context_revision,
+        `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates
-         WHERE book_id = ? AND chapter_id = ? AND status = ?
+         WHERE run_id = ? AND book_id = ? AND chapter_id = ? AND status = ?
            AND base_revision = ? AND context_hash = ?
          ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
-      .get(bookId, chapterId, "completed", baseRevision, contextHash) as unknown as
+      .get(runId, bookId, chapterId, "completed", baseRevision, contextHash) as unknown as
       | CandidateRow
       | undefined;
     return row ? toCandidate(row) : null;
@@ -604,6 +608,7 @@ function toCandidate(row: CandidateRow): ChapterCandidate {
   return ChapterCandidateSchema.parse({
     id: row.id,
     bookId: row.book_id,
+    runId: row.run_id,
     chapterId: row.chapter_id,
     baseRevision: row.base_revision,
     context: {
