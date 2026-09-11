@@ -2,16 +2,10 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import type { ProviderConfig } from "../../shared/contracts";
-import type {
-  ChapterPlan,
-  ProductionRun,
-} from "../../shared/auto-novel";
+import type { ChapterPlan, ProductionRun } from "../../shared/auto-novel";
 import { NormalizedProviderError } from "../providers/types";
-import type {
-  ProductionRepository} from "../repositories/production-repository";
-import {
-  type ProductionRunDetailsSnapshot,
-} from "../repositories/production-repository";
+import type { ProductionRepository } from "../repositories/production-repository";
+import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProviderResolver } from "../providers/resolver";
 import { parseStructuredProviderResult } from "./auto-novel-prompts";
@@ -31,13 +25,39 @@ export interface ProductionServiceDependencies {
   readonly providerResolver: ProviderResolver;
 }
 
+interface ActiveRun {
+  readonly controller: AbortController;
+  readonly promise: Promise<ProductionRun>;
+}
+
 export class ProductionService {
+  private readonly activeRuns = new Map<string, ActiveRun>();
+
   constructor(private readonly dependencies: ProductionServiceDependencies) {}
 
-  async start(
+  start(
     runId: string,
     providerConfig: ProviderConfig,
     signal?: AbortSignal,
+  ): Promise<ProductionRun> {
+    const existing = this.activeRuns.get(runId);
+    if (existing) return existing.promise;
+
+    const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(signal, controller);
+    const promise = this.run(runId, providerConfig, controller.signal).finally(() => {
+      unlinkAbort();
+      if (this.activeRuns.get(runId)?.promise === promise) this.activeRuns.delete(runId);
+    });
+    const activeRun: ActiveRun = { controller, promise };
+    this.activeRuns.set(runId, activeRun);
+    return promise;
+  }
+
+  private async run(
+    runId: string,
+    providerConfig: ProviderConfig,
+    signal: AbortSignal,
   ): Promise<ProductionRun> {
     let run = this.dependencies.productionRepository.getRun(runId);
     if (run.status === "completed") return run;
@@ -55,14 +75,19 @@ export class ProductionService {
 
     try {
       while (true) {
-        throwIfAborted(signal);
-        run = this.dependencies.productionRepository.getRun(runId);
-        if (run.status === "paused") return run;
-        if (run.status === "cancelled") return run;
+        const stopped = this.getStoppedRun(runId, signal);
+        if (stopped) return stopped;
 
+        run = this.dependencies.productionRepository.getRun(runId);
         const bookDetails = this.dependencies.bookRepository.getBook(run.bookId);
         const plan = this.dependencies.bookRepository.getNextChapterPlan(run.bookId);
         if (!plan) {
+          if (bookDetails.chapterPlans.length === 0) {
+            throw new NormalizedProviderError(
+              "REQUEST_INVALID",
+              "章节规划尚未完成，不能开始正文生产。",
+            );
+          }
           return this.dependencies.productionRepository.updateRun(runId, {
             status: "completed",
             stage: "accept",
@@ -81,32 +106,83 @@ export class ProductionService {
           plan.chapterNumber - 1,
         );
         const contextHash = hashContext(chapter.content);
-        let candidate = this.dependencies.productionRepository.createCandidate({
-          bookId: run.bookId,
-          chapterId: chapter.id,
-          baseRevision: chapter.revision,
-          contextHash,
-          candidateText: await generateDraft(
+        let candidate =
+          this.dependencies.productionRepository.findReusableCandidate(
+            run.bookId,
+            chapter.id,
+            chapter.revision,
+            contextHash,
+          );
+
+        if (!candidate) {
+          const candidateText = await generateDraft(
             provider,
             providerConfig.model,
             bookDetails.book.idea,
             plan,
             chapter.content,
             signal,
-          ),
-        });
-        this.dependencies.productionRepository.appendCheckpoint({
-          runId,
-          stage: "draft",
-          inputHash: contextHash,
-          outputId: candidate.id,
-        });
+          );
+          const stoppedAfterDraft = this.getStoppedRun(runId, signal);
+          if (stoppedAfterDraft) return stoppedAfterDraft;
+          candidate = this.dependencies.productionRepository.createCandidate({
+            bookId: run.bookId,
+            chapterId: chapter.id,
+            baseRevision: chapter.revision,
+            contextHash,
+            candidateText,
+          });
+          this.dependencies.productionRepository.appendCheckpoint({
+            runId,
+            stage: "draft",
+            inputHash: contextHash,
+            outputId: candidate.id,
+          });
+        }
 
-        for (let attempt = 0; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
-          throwIfAborted(signal);
+        let repairAttempt = candidate.repairCount;
+        if (candidate.review.status === "failed") repairAttempt += 1;
+        while (candidate.review.status !== "passed") {
+          const stoppedBeforeReview = this.getStoppedRun(runId, signal);
+          if (stoppedBeforeReview) return stoppedBeforeReview;
+
+          if (candidate.review.status === "failed") {
+            if (repairAttempt > MAX_REPAIR_ATTEMPTS) {
+              throw new NormalizedProviderError(
+                "REQUEST_INVALID",
+                "章节连续审核未通过，请调整方向后重试。",
+              );
+            }
+            run = this.dependencies.productionRepository.updateRun(runId, {
+              status: "running",
+              stage: "repair",
+              currentChapterNumber: plan.chapterNumber,
+            });
+            const repaired = await repairDraft(
+              provider,
+              providerConfig.model,
+              candidate.candidateText,
+              candidate.review.findings,
+              signal,
+            );
+            const stoppedAfterRepair = this.getStoppedRun(runId, signal);
+            if (stoppedAfterRepair) return stoppedAfterRepair;
+            candidate = this.dependencies.productionRepository.updateCandidateText(
+              candidate.id,
+              repaired,
+              repairAttempt,
+            );
+            this.dependencies.productionRepository.appendCheckpoint({
+              runId,
+              stage: "repair",
+              inputHash: hashContext(candidate.candidateText),
+              outputId: candidate.id,
+            });
+          }
+
           run = this.dependencies.productionRepository.updateRun(runId, {
             status: "running",
-            stage: attempt === 0 ? "review" : "repair",
+            stage: "review",
             currentChapterNumber: plan.chapterNumber,
           });
           const review = await reviewDraft(
@@ -117,37 +193,23 @@ export class ProductionService {
             candidate.candidateText,
             signal,
           );
+          const stoppedAfterReview = this.getStoppedRun(runId, signal);
+          if (stoppedAfterReview) return stoppedAfterReview;
           candidate = this.dependencies.productionRepository.updateCandidateReview(
             candidate.id,
             review,
           );
           this.dependencies.productionRepository.appendCheckpoint({
             runId,
-            stage: attempt === 0 ? "review" : "repair",
+            stage: "review",
             inputHash: hashContext(candidate.candidateText),
             outputId: candidate.id,
           });
-          if (review.status === "passed") break;
-          if (attempt === MAX_REPAIR_ATTEMPTS) {
-            throw new NormalizedProviderError(
-              "REQUEST_INVALID",
-              "章节连续审核未通过，请调整方向后重试。",
-            );
-          }
-          const repaired = await repairDraft(
-            provider,
-            providerConfig.model,
-            candidate.candidateText,
-            review.findings,
-            signal,
-          );
-          candidate = this.dependencies.productionRepository.updateCandidateText(
-            candidate.id,
-            repaired,
-            attempt + 1,
-          );
+          if (review.status === "failed") repairAttempt += 1;
         }
 
+        const stoppedBeforeAccept = this.getStoppedRun(runId, signal);
+        if (stoppedBeforeAccept) return stoppedBeforeAccept;
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
           stage: "accept",
@@ -165,7 +227,9 @@ export class ProductionService {
         });
       }
     } catch (error) {
-      if (isAbortError(error) || signal?.aborted) {
+      if (isAbortError(error) || signal.aborted) {
+        const current = this.dependencies.productionRepository.getRun(runId);
+        if (current.status === "cancelled" || current.status === "paused") return current;
         return this.dependencies.productionRepository.updateRun(runId, {
           status: "paused",
         });
@@ -180,6 +244,9 @@ export class ProductionService {
   }
 
   pause(runId: string): ProductionRun {
+    const current = this.dependencies.productionRepository.getRun(runId);
+    if (["completed", "cancelled", "failed"].includes(current.status)) return current;
+    this.activeRuns.get(runId)?.controller.abort();
     return this.dependencies.productionRepository.updateRun(runId, {
       status: "paused",
     });
@@ -194,13 +261,32 @@ export class ProductionService {
   }
 
   cancel(runId: string): ProductionRun {
+    const current = this.dependencies.productionRepository.getRun(runId);
+    if (["completed", "cancelled"].includes(current.status)) return current;
+    this.activeRuns.get(runId)?.controller.abort();
     return this.dependencies.productionRepository.updateRun(runId, {
       status: "cancelled",
     });
   }
 
+  async cancelActiveRuns(): Promise<void> {
+    const activeRuns = [...this.activeRuns.values()];
+    for (const activeRun of activeRuns) activeRun.controller.abort();
+    await Promise.allSettled(activeRuns.map(({ promise }) => promise));
+  }
+
   getDetails(runId: string): ProductionRunDetailsSnapshot {
     return this.dependencies.productionRepository.getRunDetails(runId);
+  }
+
+  private getStoppedRun(
+    runId: string,
+    signal: AbortSignal,
+  ): ProductionRun | null {
+    const current = this.dependencies.productionRepository.getRun(runId);
+    if (current.status === "paused" || current.status === "cancelled") return current;
+    throwIfAborted(signal);
+    return null;
   }
 }
 
@@ -297,13 +383,33 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Production was aborted", "AbortError");
 }
 
+function linkAbortSignal(
+  source: AbortSignal | undefined,
+  target: AbortController,
+): () => void {
+  if (!source) return () => undefined;
+  const abort = () => target.abort(source.reason);
+  if (source.aborted) abort();
+  else source.addEventListener("abort", abort, { once: true });
+  return () => source.removeEventListener("abort", abort);
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
 function isKnownErrorCode(
   error: unknown,
-): error is { code: "AUTHENTICATION_FAILED" | "RATE_LIMITED" | "UPSTREAM_UNAVAILABLE" | "REQUEST_INVALID" | "REQUEST_ABORTED" | "CONTENT_TOO_LARGE" | "UNKNOWN_PROVIDER_ERROR" } {
+): error is {
+  code:
+    | "AUTHENTICATION_FAILED"
+    | "RATE_LIMITED"
+    | "UPSTREAM_UNAVAILABLE"
+    | "REQUEST_INVALID"
+    | "REQUEST_ABORTED"
+    | "CONTENT_TOO_LARGE"
+    | "UNKNOWN_PROVIDER_ERROR";
+} {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -311,7 +417,3 @@ function isKnownErrorCode(
     typeof error.code === "string"
   );
 }
-
-
-
-

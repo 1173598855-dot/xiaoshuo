@@ -60,7 +60,7 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, providerId, idempotencyKey }) => {
     const services = dependencies.getServices();
-    const book = services.bookRepository.createBook(input);
+    const book = services.bookRepository.createBook(input, idempotencyKey);
     const provider = await resolveProvider(dependencies.providerVault, providerId);
     const directions = await services.directorService.generateDirections(book.id, provider, idempotencyKey);
     return { book: services.bookRepository.getBook(book.id).book, directions };

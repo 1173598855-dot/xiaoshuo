@@ -383,6 +383,28 @@ export class ProductionRepository {
     return this.getCandidate(candidateId);
   }
 
+  findReusableCandidate(
+    bookId: string,
+    chapterId: string,
+    baseRevision: number,
+    contextHash: string,
+  ): ChapterCandidate | null {
+    const row = this.database
+      .prepare(
+        `SELECT id, book_id, chapter_id, base_revision, context_revision,
+                context_hash, candidate_text, status, review_json,
+                repair_count, created_at, accepted_at
+         FROM chapter_candidates
+         WHERE book_id = ? AND chapter_id = ? AND status = ?
+           AND base_revision = ? AND context_hash = ?
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+      )
+      .get(bookId, chapterId, "completed", baseRevision, contextHash) as unknown as
+      | CandidateRow
+      | undefined;
+    return row ? toCandidate(row) : null;
+  }
+
   async acceptCandidate(
     candidateId: string,
     expectedRevision: number,
@@ -456,9 +478,9 @@ export class ProductionRepository {
         .prepare(
           `SELECT id, book_id, kind, status, stage, current_chapter_number,
                   version, idempotency_key, error_code, created_at, updated_at
-           FROM production_runs WHERE book_id = ? ORDER BY updated_at DESC, id LIMIT 1`,
+           FROM production_runs WHERE book_id = ? AND kind = ? ORDER BY updated_at DESC, id LIMIT 1`,
         )
-        .get(candidate.bookId) as unknown as RunRow | undefined;
+        .get(candidate.bookId, "production") as unknown as RunRow | undefined;
       if (!runRow) throw new Error("Production run is missing");
       void bookDetails;
       void projectId;

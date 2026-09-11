@@ -39,6 +39,7 @@ interface BookRow {
   id: string;
   project_id: string;
   title: string;
+  director_idempotency_key: string | null;
   idea: string;
   genre: string;
   target_chapters: number;
@@ -160,8 +161,14 @@ export class BookRepository {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
-  createBook(input: CreateBookInput): Book {
+  createBook(input: CreateBookInput, idempotencyKey?: string): Book {
     return this.withTransaction(() => {
+      if (idempotencyKey) {
+        const existing = this.database
+          .prepare("SELECT id, project_id, title, idea, genre, target_chapters, target_chapter_characters, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
+          .get(idempotencyKey) as unknown as BookRow | undefined;
+        if (existing) return toBook(existing);
+      }
       const id = this.createId();
       const projectId = this.createId();
       const timestamp = this.now();
@@ -179,16 +186,18 @@ export class BookRepository {
       this.database
         .prepare(
           `INSERT INTO books (
-             id, project_id, title, idea, genre, target_chapters,
+             id, project_id, title, idea, director_idempotency_key, genre,
+             target_chapters,
              target_chapter_characters, status, revision,
              selected_direction_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
         )
         .run(
           id,
           projectId,
           title,
           input.idea,
+          idempotencyKey ?? null,
           genre,
           targetChapters,
           targetChapterCharacters,
@@ -203,7 +212,7 @@ export class BookRepository {
   listBooks(): readonly Book[] {
     const rows = this.database
       .prepare(
-        `SELECT id, project_id, title, idea, genre, target_chapters,
+        `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
                 target_chapter_characters, status, revision,
                 selected_direction_id, created_at, updated_at
          FROM books
@@ -237,10 +246,10 @@ export class BookRepository {
       .prepare(
         `SELECT id, book_id, kind, status, stage, current_chapter_number,
                 version, idempotency_key, error_code, created_at, updated_at
-         FROM production_runs WHERE book_id = ?
+         FROM production_runs WHERE book_id = ? AND kind = ?
          ORDER BY updated_at DESC, id LIMIT 1`,
       )
-      .get(bookId) as RunRow | undefined;
+      .get(bookId, "production") as RunRow | undefined;
 
     return BookDetailsSchema.parse({
       book,
@@ -288,6 +297,9 @@ export class BookRepository {
             timestamp,
           );
       }
+      this.database
+        .prepare("UPDATE books SET status = ? , updated_at = ? WHERE id = ?")
+        .run("directions-ready", timestamp, bookId);
       return this.getDirections(bookId);
     });
   }
@@ -493,7 +505,7 @@ export class BookRepository {
   private requireBookRow(bookId: string): BookRow {
     const row = this.database
       .prepare(
-        `SELECT id, project_id, title, idea, genre, target_chapters,
+        `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
                 target_chapter_characters, status, revision,
                 selected_direction_id, created_at, updated_at
          FROM books WHERE id = ?`,

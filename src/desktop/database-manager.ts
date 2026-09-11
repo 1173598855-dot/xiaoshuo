@@ -163,6 +163,7 @@ export class DesktopDatabaseManager {
   private status: DatabaseStatus | undefined;
   private isFirstRun: boolean | undefined;
   private writeQueue: Promise<void> = Promise.resolve();
+  private autoNovelServices: { runtime: ServerRuntime; services: AutoNovelServices } | undefined;
   private maintenance = false;
   private maintenanceDone: Promise<void> | undefined;
   private resolveMaintenance: (() => void) | undefined;
@@ -266,7 +267,13 @@ export class DesktopDatabaseManager {
 
 getAutoNovelServices(): AutoNovelServices {
     const runtime = this.getReadableRuntime();
-    return createAutoNovelServices(runtime.database, this.providerResolver);
+    if (this.autoNovelServices?.runtime !== runtime) {
+      this.autoNovelServices = {
+        runtime,
+        services: createAutoNovelServices(runtime.database, this.providerResolver),
+      };
+    }
+    return this.autoNovelServices.services;
   }
   async runWrite<T>(
     operation: (runtime: ServerRuntime) => Promise<T> | T,
@@ -285,6 +292,11 @@ getAutoNovelServices(): AutoNovelServices {
   }
 
   async cancelAllGenerations(): Promise<void> {
+    const cached = this.autoNovelServices;
+    const productionService = cached !== undefined && cached.runtime === this.runtime
+      ? cached.services.productionService
+      : undefined;
+    if (productionService) await productionService.cancelActiveRuns();
     await this.writeQueue;
   }
 

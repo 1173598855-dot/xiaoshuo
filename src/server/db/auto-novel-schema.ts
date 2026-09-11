@@ -5,6 +5,7 @@ const AUTO_NOVEL_SCHEMA = `
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
+    director_idempotency_key TEXT UNIQUE,
     idea TEXT NOT NULL,
     genre TEXT NOT NULL DEFAULT '',
     target_chapters INTEGER NOT NULL DEFAULT 12 CHECK (target_chapters BETWEEN 1 AND 500),
@@ -123,6 +124,11 @@ const AUTO_NOVEL_SCHEMA = `
 
 export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database.exec(AUTO_NOVEL_SCHEMA);
+  const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
+  if (!columns.some(({ name }) => name === "director_idempotency_key")) {
+    database.exec("ALTER TABLE books ADD COLUMN director_idempotency_key TEXT");
+  }
+  database.exec("CREATE UNIQUE INDEX IF NOT EXISTS books_director_idempotency_idx ON books(director_idempotency_key) WHERE director_idempotency_key IS NOT NULL");
   database
     .prepare(
       `INSERT INTO app_meta (key, value)

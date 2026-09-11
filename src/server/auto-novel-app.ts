@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -65,19 +66,48 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const parsed = await parseJson(context.req.raw, CreateBookRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
 
-    const book = dependencies.bookRepository.createBook(parsed.data);
-    const directions = await dependencies.directorService.generateDirections(
+    const book = dependencies.bookRepository.createBook(parsed.data, parsed.data.idempotencyKey);
+    const run = dependencies.productionRepository.createRun(
       book.id,
-      parsed.data.provider,
+      "director",
       parsed.data.idempotencyKey,
-      context.req.raw.signal,
     );
-    return context.json(
-      { book: dependencies.bookRepository.getBook(book.id).book, directions },
-      201,
-    );
+    if (run.status === "completed") {
+      const details = dependencies.bookRepository.getBook(book.id);
+      return context.json(
+        { book: details.book, directions: details.directions },
+        201,
+      );
+    }
+    try {
+      const directions = await dependencies.directorService.generateDirections(
+        book.id,
+        parsed.data.provider,
+        parsed.data.idempotencyKey,
+        context.req.raw.signal,
+      );
+      dependencies.productionRepository.appendCheckpoint({
+        runId: run.id,
+        stage: "directions",
+        inputHash: hashStageInput(book.idea),
+        outputId: null,
+      });
+      dependencies.productionRepository.updateRun(run.id, {
+        status: "completed",
+        stage: "directions",
+      });
+      return context.json(
+        { book: dependencies.bookRepository.getBook(book.id).book, directions },
+        201,
+      );
+    } catch (error) {
+      dependencies.productionRepository.updateRun(run.id, {
+        status: "failed",
+        errorCode: errorCodeOf(error),
+      });
+      throw error;
+    }
   });
-
   app.get("/api/books/:bookId", (context) =>
     context.json(dependencies.bookRepository.getBook(context.req.param("bookId"))),
   );
@@ -93,14 +123,44 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       context.req.param("directionId"),
       parsed.data.expectedBookRevision,
     );
-    await dependencies.foundationService.generate(
+    const run = dependencies.productionRepository.createRun(
       book.id,
-      parsed.data.provider,
-      context.req.raw.signal,
+      "foundation",
+      "foundation:" + context.req.param("directionId"),
     );
-    return context.json(dependencies.bookRepository.getBook(book.id));
+    if (run.status === "completed") return context.json(dependencies.bookRepository.getBook(book.id));
+    try {
+      await dependencies.foundationService.generate(
+        book.id,
+        parsed.data.provider,
+        context.req.raw.signal,
+      );
+      const inputHash = hashStageInput(book.id + ":" + context.req.param("directionId"));
+      dependencies.productionRepository.appendCheckpoint({
+        runId: run.id,
+        stage: "foundation",
+        inputHash,
+        outputId: null,
+      });
+      dependencies.productionRepository.appendCheckpoint({
+        runId: run.id,
+        stage: "outline",
+        inputHash,
+        outputId: null,
+      });
+      dependencies.productionRepository.updateRun(run.id, {
+        status: "completed",
+        stage: "outline",
+      });
+      return context.json(dependencies.bookRepository.getBook(book.id));
+    } catch (error) {
+      dependencies.productionRepository.updateRun(run.id, {
+        status: "failed",
+        errorCode: errorCodeOf(error),
+      });
+      throw error;
+    }
   });
-
   app.post("/api/books/:bookId/production", async (context) => {
     const parsed = await parseJson(
       context.req.raw,
@@ -203,6 +263,14 @@ async function parseCommand(
   return parsed;
 }
 
+function hashStageInput(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function errorCodeOf(error: unknown): "AUTHENTICATION_FAILED" | "RATE_LIMITED" | "UPSTREAM_UNAVAILABLE" | "REQUEST_INVALID" | "REQUEST_ABORTED" | "CONTENT_TOO_LARGE" | "UNKNOWN_PROVIDER_ERROR" {
+  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code as ReturnType<typeof errorCodeOf>;
+  return "UNKNOWN_PROVIDER_ERROR";
+}
 type ParseResult<T> =
   | { success: true; data: T }
   | { success: false; error: ReturnType<typeof apiError> };
