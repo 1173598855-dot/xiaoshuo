@@ -1,6 +1,7 @@
 import type { ProviderConfig } from "../../shared/contracts";
+import type {
+  BookRepository} from "../repositories/book-repository";
 import {
-  BookRepository,
   type DirectionDraft,
 } from "../repositories/book-repository";
 import type { ProviderResolver } from "./generation-service";

@@ -10,13 +10,13 @@ import {
   StartProductionInputSchema,
 } from "../shared/auto-novel";
 import { ProviderConfigSchema } from "../shared/contracts";
-import { toPublicError, publicErrorStatus } from "./public-error";
+import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
-import { BookRepository } from "./repositories/book-repository";
-import { ProductionRepository } from "./repositories/production-repository";
-import { DirectorService } from "./services/director-service";
-import { FoundationService } from "./services/foundation-service";
-import { ProductionService } from "./services/production-service";
+import type { BookRepository } from "./repositories/book-repository";
+import type { ProductionRepository } from "./repositories/production-repository";
+import type { DirectorService } from "./services/director-service";
+import type { FoundationService } from "./services/foundation-service";
+import type { ProductionService } from "./services/production-service";
 
 const CreateBookRequestSchema = CreateBookInputSchema.extend({
   provider: ProviderConfigSchema,
@@ -105,7 +105,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       parsed.data.idempotencyKey,
     );
     void dependencies.productionService
-      .start(run.id, parsed.data.provider, context.req.raw.signal)
+      .start(run.id, parsed.data.provider)
       .catch(() => undefined);
     return context.json(run, 202);
   });
@@ -176,7 +176,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     context.json(apiError("NOT_FOUND", "请求的资源不存在。"), 404),
   );
   app.onError((error, context) =>
-    context.json({ error: toPublicError(error) }, publicErrorStatus(error)),
+    context.json({ error: toAutoNovelPublicError(error) }, autoNovelErrorStatus(error)),
   );
   return app;
 }
@@ -258,3 +258,5 @@ function buildMarkdownExport(
     ]),
   ].join("\n");
 }
+
+

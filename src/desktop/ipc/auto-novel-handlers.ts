@@ -8,7 +8,7 @@ import {
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
 import type { ProviderVault } from "../provider-vault";
 import type { AutoNovelServices } from "../auto-novel-access";
-import { toPublicError } from "../../server/public-error";
+import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
 import { AUTO_NOVEL_CHANNELS, type AutoNovelDesktopChannel } from "./auto-novel-channels";
 import type { DesktopIpcMain } from "./handlers";
 
@@ -135,7 +135,7 @@ function register<T extends z.ZodType>(
     try {
       return { ok: true, data: await action(parsed.data) } satisfies DesktopResult<unknown>;
     } catch (error) {
-      return { ok: false, error: toPublicError(error) } satisfies DesktopResult<never>;
+      return { ok: false, error: toAutoNovelPublicError(error) } satisfies DesktopResult<never>;
     }
   });
 }
@@ -153,4 +153,5 @@ function buildMarkdownExport(services: AutoNovelServices, bookId: string): strin
     ...chapters.flatMap((chapter) => [`## ${chapter.title}`, "", chapter.content, ""]),
   ].join("\n");
 }
+
 

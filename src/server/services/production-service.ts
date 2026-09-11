@@ -7,11 +7,12 @@ import type {
   ProductionRun,
 } from "../../shared/auto-novel";
 import { NormalizedProviderError } from "../providers/types";
+import type {
+  ProductionRepository} from "../repositories/production-repository";
 import {
-  ProductionRepository,
   type ProductionRunDetailsSnapshot,
 } from "../repositories/production-repository";
-import { BookRepository } from "../repositories/book-repository";
+import type { BookRepository } from "../repositories/book-repository";
 import type { ProviderResolver } from "./generation-service";
 import { parseStructuredProviderResult } from "./auto-novel-prompts";
 
@@ -47,7 +48,7 @@ export class ProductionService {
       );
     }
 
-    run = this.dependencies.productionRepository.updateRun(runId, {
+    this.dependencies.productionRepository.updateRun(runId, {
       status: "running",
     });
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
@@ -94,6 +95,12 @@ export class ProductionService {
             signal,
           ),
         });
+        this.dependencies.productionRepository.appendCheckpoint({
+          runId,
+          stage: "draft",
+          inputHash: contextHash,
+          outputId: candidate.id,
+        });
 
         for (let attempt = 0; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
           throwIfAborted(signal);
@@ -114,6 +121,12 @@ export class ProductionService {
             candidate.id,
             review,
           );
+          this.dependencies.productionRepository.appendCheckpoint({
+            runId,
+            stage: attempt === 0 ? "review" : "repair",
+            inputHash: hashContext(candidate.candidateText),
+            outputId: candidate.id,
+          });
           if (review.status === "passed") break;
           if (attempt === MAX_REPAIR_ATTEMPTS) {
             throw new NormalizedProviderError(
@@ -144,7 +157,12 @@ export class ProductionService {
           candidate.id,
           chapter.revision,
         );
-        void run;
+        this.dependencies.productionRepository.appendCheckpoint({
+          runId,
+          stage: "accept",
+          inputHash: hashContext(candidate.candidateText),
+          outputId: candidate.id,
+        });
       }
     } catch (error) {
       if (isAbortError(error) || signal?.aborted) {
@@ -293,3 +311,6 @@ function isKnownErrorCode(
     typeof error.code === "string"
   );
 }
+
+
+

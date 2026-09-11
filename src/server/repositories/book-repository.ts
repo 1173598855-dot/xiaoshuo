@@ -254,8 +254,9 @@ export class BookRepository {
   saveDirections(
     bookId: string,
     drafts: readonly DirectionDraft[],
-    _idempotencyKey: string,
+    idempotencyKey: string,
   ): readonly StoryDirection[] {
+    void idempotencyKey;
     return this.withTransaction(() => {
       this.requireBookRow(bookId);
       const existing = this.getDirections(bookId);
@@ -396,8 +397,9 @@ export class BookRepository {
   saveChapterPlans(
     bookId: string,
     plans: readonly ChapterPlanDraft[],
-    _expectedFoundationRevision?: number,
+    expectedFoundationRevision?: number,
   ): readonly ChapterPlan[] {
+    void expectedFoundationRevision;
     return this.withTransaction(() => {
       this.requireBookRow(bookId);
       const timestamp = this.now();
@@ -598,4 +600,6 @@ function toRun(row: RunRow) {
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
+
+
 
