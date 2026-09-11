@@ -9,7 +9,8 @@ import {
   SelectDirectionInputSchema,
   StartProductionInputSchema,
 } from "../shared/auto-novel";
-import { ProviderConfigSchema } from "../shared/contracts";
+import { ListProviderModelsInputSchema, ProviderConfigSchema } from "../shared/contracts";
+import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
 import type { BookRepository } from "./repositories/book-repository";
@@ -48,6 +49,13 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
 
   app.get("/api/health", (context) => context.json({ status: "ok" }));
   app.get("/api/providers", (context) => context.json(getProviderCatalog()));
+
+  app.post("/api/providers/models", async (context) => {
+    const parsed = await parseJson(context.req.raw, ListProviderModelsInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    const config = resolveOpenAICompatibleModelListConfig(parsed.data);
+    return context.json(await listOpenAICompatibleModels(config, context.req.raw.signal));
+  });
 
   app.get("/api/books", (context) =>
     context.json(dependencies.bookRepository.listBooks()),
@@ -258,5 +266,6 @@ function buildMarkdownExport(
     ]),
   ].join("\n");
 }
+
 
 

@@ -2,10 +2,8 @@ import {
   ChapterSchema,
   DatabaseOperationResultSchema,
   DatabaseStatusSchema,
-  DesktopGenerationInputSchema,
   ListProviderModelsInputSchema,
   type DesktopResult,
-  GenerationSchema,
   ProviderCatalogEntrySchema,
   ProviderModelListSchema,
   ProviderSettingsSchema,
@@ -72,43 +70,6 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
         ProviderSettingsSchema.nullable(),
       );
       return settings ? { ...settings, platform: "desktop" as const } : null;
-    },
-    async generate(input, signal) {
-      const desktopInput = DesktopGenerationInputSchema.parse(input);
-      const requestId = createRequestId();
-      let cancelled = false;
-      const cancel = () => {
-        if (cancelled) return;
-        cancelled = true;
-        void api.generation.cancel(requestId).catch(() => undefined);
-      };
-      if (signal?.aborted) {
-        cancel();
-        throw new ApiRequestError(408, "REQUEST_ABORTED", "生成请求已取消。");
-      }
-      signal?.addEventListener("abort", cancel, { once: true });
-      try {
-        return parseResult(
-          await api.generation.create({
-            requestId,
-            input: desktopInput,
-          }),
-          GenerationSchema,
-        );
-      } finally {
-        signal?.removeEventListener("abort", cancel);
-      }
-    },
-    async acceptGeneration(id) {
-      const result = await api.generation.accept(id);
-      if (!result.ok) throw toApiError(result.error);
-      return {
-        generation: GenerationSchema.parse(result.data.generation),
-        chapter: ChapterSchema.parse(result.data.chapter),
-      };
-    },
-    async discardGeneration(id) {
-      return parseResult(await api.generation.discard(id), GenerationSchema);
     },
     async getDatabaseStatus() {
       return parseResult(await api.database.status(), DatabaseStatusSchema);
@@ -186,16 +147,3 @@ function statusForCode(code: string): number {
   return 500;
 }
 
-function createRequestId(): string {
-  const cryptoApi = globalThis.crypto as Crypto & {
-    randomUUID?: () => string;
-  };
-  if (typeof cryptoApi?.randomUUID === "function") {
-    return cryptoApi.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const value = Math.floor(Math.random() * 16);
-    const nibble = char === "x" ? value : (value & 3) | 8;
-    return nibble.toString(16);
-  });
-}

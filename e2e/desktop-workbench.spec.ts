@@ -6,7 +6,7 @@ import { expect, test, _electron as electron } from "@playwright/test";
 
 import { resolveElectronTestLaunchArgs } from "../scripts/electron-test-runtime.mjs";
 
-test("runs the idea director and production room in Electron", async () => {
+test("runs the full idea director and production room in Electron", async () => {
   const userDataDirectory = await mkdtemp(join(tmpdir(), "xiaoyi-auto-desktop-"));
   const env = {
     ...process.env,
@@ -33,6 +33,10 @@ test("runs the idea director and production room in Electron", async () => {
     await expect(window.getByText("自动方向 1")).toBeVisible();
     await window.getByRole("button", { name: /选择这条路/ }).first().click();
     await expect(window.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+    await window.getByRole("button", { name: "开始整本生产" }).click();
+    await expect(window.getByText("这本书已经写完了")).toBeVisible({ timeout: 30_000 });
+    await window.getByRole("button", { name: "打开正式正文" }).click();
+    await expect(window.getByRole("main", { name: "正式正文" })).toBeVisible();
   } finally {
     await electronApp?.close().catch(() => undefined);
     await rm(userDataDirectory, { recursive: true, force: true });

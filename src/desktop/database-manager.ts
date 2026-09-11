@@ -16,13 +16,10 @@ import { isDeepStrictEqual } from "node:util";
 
 import {
   MAX_CHAPTER_CONTENT_CHARACTERS,
-  PersistedGenerationSchema,
   WorkspaceSchema,
 } from "../shared/contracts";
 import type {
-  CreateGenerationInput,
   DatabaseStatus,
-  Generation,
   Workspace,
 } from "../shared/contracts";
 import {
@@ -32,7 +29,6 @@ import {
 } from "../server/bootstrap";
 import { createDatabase } from "../server/db/database";
 import { migrate } from "../server/db/migrations";
-import { NormalizedProviderError } from "../server/providers/types";
 import type { ProviderResolver } from "../server/providers/resolver";
 import { createAutoNovelServices, type AutoNovelServices } from "./auto-novel-access";
 import {
@@ -74,11 +70,6 @@ export interface DesktopRuntimeReader {
     getWorkspace(): Workspace;
     getChapter(chapterId: string): Workspace["chapters"][number];
   };
-}
-
-interface ActiveGeneration {
-  readonly controller: AbortController;
-  readonly promise: Promise<Generation>;
 }
 
 interface BackupFile {
@@ -172,7 +163,6 @@ export class DesktopDatabaseManager {
   private status: DatabaseStatus | undefined;
   private isFirstRun: boolean | undefined;
   private writeQueue: Promise<void> = Promise.resolve();
-  private readonly activeGenerations = new Map<string, ActiveGeneration>();
   private maintenance = false;
   private maintenanceDone: Promise<void> | undefined;
   private resolveMaintenance: (() => void) | undefined;
@@ -294,84 +284,8 @@ getAutoNovelServices(): AutoNovelServices {
     return result;
   }
 
-  async runGeneration(
-    input: CreateGenerationInput,
-    requestKey: string,
-  ): Promise<Generation> {
-    this.assertMutationAllowed();
-    if (this.activeGenerations.has(requestKey)) {
-      throw new Error("A generation already uses this request key");
-    }
-
-    const controller = new AbortController();
-    let phase: "queued" | "started" | "settled" = "queued";
-    let resolveGeneration!: (generation: Generation) => void;
-    let rejectGeneration!: (error: unknown) => void;
-    const result = new Promise<Generation>((resolveGenerationPromise, reject) => {
-      resolveGeneration = resolveGenerationPromise;
-      rejectGeneration = reject;
-    });
-    const tracked = result.finally(() => {
-      phase = "settled";
-      if (this.activeGenerations.get(requestKey)?.controller === controller) {
-        this.activeGenerations.delete(requestKey);
-      }
-    });
-    this.activeGenerations.set(requestKey, { controller, promise: tracked });
-
-    controller.signal.addEventListener(
-      "abort",
-      () => {
-        if (phase === "queued") {
-          phase = "settled";
-          rejectGeneration(
-            new NormalizedProviderError(
-              "REQUEST_ABORTED",
-              "Generation request was aborted",
-            ),
-          );
-        }
-      },
-      { once: true },
-    );
-
-    const start = this.writeQueue.then(async () => {
-      if (phase !== "queued") {
-        return;
-      }
-
-      try {
-        await this.backupBeforeDailyWrite();
-        if (phase !== "queued" || controller.signal.aborted) {
-          return;
-        }
-
-        phase = "started";
-        void this.getMutableRuntime()
-          .generationService.generate(input, controller.signal)
-          .then(resolveGeneration, rejectGeneration);
-      } catch (error) {
-        phase = "settled";
-        rejectGeneration(error);
-      }
-    });
-    this.writeQueue = start.then(
-      () => undefined,
-      () => undefined,
-    );
-    return tracked;
-  }
-
-  cancelGeneration(requestKey: string): void {
-    this.activeGenerations.get(requestKey)?.controller.abort();
-  }
-
   async cancelAllGenerations(): Promise<void> {
-    const active = [...this.activeGenerations.values()];
-    for (const generation of active) {
-      generation.controller.abort();
-    }
-    await Promise.allSettled(active.map((generation) => generation.promise));
+    await this.writeQueue;
   }
 
   async importDatabase(sourcePath: string): Promise<Workspace> {
@@ -1075,7 +989,6 @@ getAutoNovelServices(): AutoNovelServices {
   private verifyRuntime(runtime: ServerRuntime): Workspace {
     this.assertIntegrity(runtime.database);
     assertCanonicalDatabaseSchema(runtime.database);
-    this.assertPersistedGenerationRecords(runtime.database);
     const workspace = WorkspaceSchema.safeParse(
       runtime.workspaceRepository.getWorkspace(),
     );
@@ -1127,52 +1040,6 @@ getAutoNovelServices(): AutoNovelServices {
       );
     if (oversizedText) {
       throw new DatabaseSchemaError();
-    }
-  }
-
-  private assertPersistedGenerationRecords(database: DatabaseSyncType): void {
-    const generations = database
-      .prepare(
-        `SELECT id, chapter_id AS chapterId, base_revision AS baseRevision,
-                provider_id AS providerId, provider, model, operation, instruction,
-                context_json AS contextJson, candidate, status, usage_json AS usageJson,
-                error_code AS errorCode, error_message AS errorMessage,
-                created_at AS createdAt, accepted_at AS acceptedAt
-         FROM generations`,
-      )
-      .iterate() as Iterable<Record<string, unknown>>;
-
-    for (const generation of generations) {
-      const error =
-        generation.errorCode === null && generation.errorMessage === null
-          ? null
-          : {
-              code: generation.errorCode,
-              message: generation.errorMessage,
-            };
-      const parsed = PersistedGenerationSchema.safeParse({
-        id: generation.id,
-        chapterId: generation.chapterId,
-        baseRevision: generation.baseRevision,
-        providerId: generation.providerId,
-        provider: generation.provider,
-        model: generation.model,
-        operation: generation.operation,
-        instruction: generation.instruction,
-        context: parseStoredJson(generation.contextJson),
-        candidate: generation.candidate,
-        status: generation.status,
-        usage:
-          generation.usageJson === null
-            ? null
-            : parseStoredJson(generation.usageJson),
-        error,
-        createdAt: generation.createdAt,
-        acceptedAt: generation.acceptedAt,
-      });
-      if (!parsed.success) {
-        throw new DatabaseSchemaError();
-      }
     }
   }
 
@@ -1395,17 +1262,6 @@ function createDatabaseLineage(): number {
   return (lineage & 0x7fff_ffff) || 1;
 }
 
-function parseStoredJson(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
 function samePath(
   left: string,
   right: string,
@@ -1467,5 +1323,7 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
+
+
 
 
