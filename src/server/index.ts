@@ -1,17 +1,17 @@
 import { serve } from "@hono/node-server";
 
-import { createApp } from "./app";
-import { createServerRuntime } from "./bootstrap";
-import { DeterministicProviderResolver } from "./providers/deterministic-provider";
+import { createAutoNovelApp } from "../server/auto-novel-app";
+import { createAutoNovelRuntime } from "../server/auto-novel-bootstrap";
+import { AutoNovelDeterministicProviderResolver } from "./providers/auto-novel-deterministic";
 
-const runtime = createServerRuntime({
+const runtime = createAutoNovelRuntime({
   databasePath: process.env.XIAOYI_DATABASE_PATH,
   providerResolver:
     process.env.XIAOYI_FAKE_PROVIDER === "1"
-      ? new DeterministicProviderResolver()
+      ? new AutoNovelDeterministicProviderResolver()
       : undefined,
 });
-const app = createApp(runtime);
+const app = createAutoNovelApp(runtime);
 const configuredPort = Number.parseInt(process.env.PORT ?? "4310", 10);
 const port = Number.isFinite(configuredPort) ? configuredPort : 4310;
 
@@ -21,7 +21,7 @@ const server = serve({
   port,
 });
 
-console.log(`Xiaoyi local service listening on http://127.0.0.1:${port}`);
+console.log(`Xiaoyi auto-novel service listening on http://127.0.0.1:${port}`);
 
 function shutdown(): void {
   server.close(() => {
