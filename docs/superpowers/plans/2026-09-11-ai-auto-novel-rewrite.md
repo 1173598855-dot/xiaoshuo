@@ -532,9 +532,17 @@ git add -- docs/superpowers/plans/2026-09-11-ai-auto-novel-rewrite.md README.md
 git commit -m "docs: record auto-novel rewrite verification"
 ~~~
 
+## 执行状态
+
+- [x] 清理旧章节续写 UI、generation API、generation repository/service、旧客户端/桌面测试。
+- [x] 输入想法后生成三套方向，方向选择后自动生成基础设定和章节规划。
+- [x] 逐章生成、审核、修复、原子采纳，并持久化生产检查点。
+- [x] 浏览器、Electron 和打包版主流程验证通过。
+- [x] 保留 Electron 窗口安全、IPC 白名单、Main-only Vault 和数据库维护底座。
 ## 计划自审结果
 
 - 规格覆盖：Task 2 覆盖契约和数据库；Task 3–5 覆盖导演、规划、生产、审核、恢复和 accept；Task 6 覆盖 API 和导出；Task 7 覆盖客户端；Task 8 覆盖桌面安全；Task 9 覆盖清理；Task 10 覆盖全部门禁。
 - 占位符检查：没有 TBD、TODO、FIXME 或“稍后补充”等空洞步骤；每个代码任务都给出文件、接口、测试和命令。
 - 类型一致性：后续 repository、service、route、transport 和 UI 使用 Task 2 定义的 Book、StoryDirection、ProductionRun、ProductionCheckpoint 和 ChapterCandidate。
 - 范围检查：业务层全量重写，平台安全和数据维护底座保留，不引入云同步、账号、多用户或第二套运行时。
+
