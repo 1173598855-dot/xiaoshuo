@@ -5,7 +5,7 @@ import {
   resolveOpenAICompatibleModelListConfig,
 } from "../../src/server/providers/openai-compatible-models";
 import { publicProviderErrorMessage } from "../../src/shared/contracts";
-import { ProviderConfigMismatchError } from "../../src/server/services/generation-service";
+import { ProviderConfigMismatchError } from "../../src/server/providers/resolver";
 
 describe("OpenAI-compatible model discovery", () => {
   it("resolves editable and fixed compatible endpoints", () => {
@@ -218,3 +218,4 @@ describe("OpenAI-compatible model discovery", () => {
     expect(String((error as Error).message)).not.toContain("sk-upstream-secret");
   });
 });
+

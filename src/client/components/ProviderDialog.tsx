@@ -50,6 +50,8 @@ export function ProviderDialog({
   const [providerId, setProviderId] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyLoadedFromSettings, setApiKeyLoadedFromSettings] =
+    useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [keyVisible, setKeyVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +95,9 @@ export function ProviderDialog({
         ? settings.apiKey
         : "",
     );
+    setApiKeyLoadedFromSettings(
+      settings?.providerId === entry?.id && isWebSettings(settings),
+    );
     setBaseUrl(
       settings?.providerId === entry?.id
         ? settings.baseUrl ?? entry?.baseUrl ?? ""
@@ -124,6 +129,7 @@ export function ProviderDialog({
     setProviderId(nextProviderId);
     setModel(entry?.defaultModel ?? "");
     setApiKey("");
+    setApiKeyLoadedFromSettings(false);
     setBaseUrl(entry?.baseUrl ?? "");
     setError(null);
     invalidateModelList();
@@ -131,6 +137,7 @@ export function ProviderDialog({
 
   const clearEnteredKey = () => {
     setApiKey("");
+    setApiKeyLoadedFromSettings(false);
     setKeyVisible(false);
     setError(null);
   };
@@ -405,6 +412,15 @@ export function ProviderDialog({
                 readOnly={!selectedProvider.baseUrlEditable}
                 onChange={(event) => {
                   invalidateModelList();
+                  if (
+                    apiKeyLoadedFromSettings &&
+                    isWebSettings(settings) &&
+                    settings.providerId === selectedProvider.id &&
+                    settings.baseUrl !== event.target.value
+                  ) {
+                    setApiKey("");
+                    setApiKeyLoadedFromSettings(false);
+                  }
                   setBaseUrl(event.target.value);
                 }}
               />
@@ -426,7 +442,10 @@ export function ProviderDialog({
                   aria-label="API Key"
                   value={apiKey}
                   autoComplete="new-password"
-                  onChange={(event) => setApiKey(event.target.value)}
+                  onChange={(event) => {
+                    setApiKey(event.target.value);
+                    setApiKeyLoadedFromSettings(false);
+                  }}
                 />
                 <button
                   className="icon-button"

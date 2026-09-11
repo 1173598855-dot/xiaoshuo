@@ -1,11 +1,8 @@
 import type {
   Chapter,
-  CreateGenerationInput,
   DatabaseOperationResult,
   DatabaseStatus,
   DesktopCommand,
-  DesktopGenerationInput,
-  Generation,
   ListProviderModelsInput,
   ProviderCatalogEntry,
   ProviderId,
@@ -58,17 +55,10 @@ export interface WorkbenchTransport {
     providerId: ProviderId,
     options?: ClearProviderKeyOptions,
   ): Promise<ClientProviderSettings | null>;
-  generate(
-    input: CreateGenerationInput | DesktopGenerationInput,
-    signal?: AbortSignal,
-  ): Promise<Generation>;
-  acceptGeneration(
-    id: string,
-  ): Promise<{ generation: Generation; chapter: Chapter }>;
-  discardGeneration(id: string): Promise<Generation>;
   getDatabaseStatus(): Promise<DatabaseStatus>;
   importDatabase(): Promise<DatabaseOperationResult>;
   exportDatabase(): Promise<DatabaseOperationResult>;
   onDesktopCommand(listener: (command: DesktopCommand) => void): () => void;
   resolveClose(result: { requestId: string; canClose: boolean }): Promise<void>;
 }
+

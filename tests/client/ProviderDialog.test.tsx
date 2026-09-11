@@ -201,7 +201,7 @@ describe("ProviderDialog", () => {
   });
 
   it("keeps a desktop key blank while showing only its saved status", async () => {
-    const onSave = vi.fn();
+    const onSave = vi.fn(async () => undefined);
     render(
       <ProviderDialog
         open
@@ -254,6 +254,54 @@ describe("ProviderDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除已保存的 API Key" }));
 
     await waitFor(() => expect(onClearKey).toHaveBeenCalledWith("custom"));
+  });
+
+  it("does not submit a loaded web key after changing a custom endpoint", async () => {
+    const onSave = vi.fn();
+    render(
+      <ProviderDialog
+        open
+        platform="web"
+        providers={[optionalKeyProvider]}
+        settings={{
+          platform: "web",
+          providerId: "custom",
+          model: "custom-model",
+          baseUrl: "https://models.example.test/v1",
+          hasApiKey: true,
+          apiKey: "sk-session-key",
+        }}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("服务地址"), {
+      target: { value: "https://other.example.test/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        providerId: "custom",
+        model: "custom-model",
+        baseUrl: "https://other.example.test/v1",
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "sk-new-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenLastCalledWith({
+        providerId: "custom",
+        model: "custom-model",
+        baseUrl: "https://other.example.test/v1",
+        apiKey: "sk-new-key",
+      }),
+    );
   });
 
   it("erases a newly typed desktop key after a successful save", async () => {

@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 
@@ -23,7 +29,7 @@ import {
   resolveOpenAICompatibleModelListConfig,
   type OpenAICompatibleModelListConfig,
 } from "../server/providers/openai-compatible-models";
-import { ProviderConfigMismatchError } from "../server/services/generation-service";
+import { ProviderConfigMismatchError } from "../server/providers/resolver";
 import type { DesktopPaths } from "./paths";
 
 const CredentialIdSchema = z.string().uuid();
@@ -48,6 +54,10 @@ interface PersistedVaultV2 {
 }
 
 type PersistedVault = PersistedVaultV1 | PersistedVaultV2;
+
+interface PersistedVaultSnapshot {
+  readonly payload: Buffer | null;
+}
 
 export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
@@ -120,12 +130,14 @@ export class ProviderVault {
     }
 
     const previousSettings = this.readSettings();
+    const vaultSnapshot = this.captureVaultSnapshot();
     const baseSettings = this.toPersistedSettings(parsedInput.data, catalogEntry);
-    const credentialId = this.prepareCredential(
+    const preparedCredential = this.prepareCredential(
       parsedInput.data,
       baseSettings,
       previousSettings,
     );
+    const credentialId = preparedCredential.credentialId;
     const revokedCredentialIds = uniqueStrings([
       ...(previousSettings?.revokedCredentialIds ?? []),
       ...(previousSettings?.credentialId &&
@@ -140,6 +152,7 @@ export class ProviderVault {
       previousSettings.providerId !== baseSettings.providerId
         ? [previousSettings.providerId]
         : []),
+      ...(credentialId ? [] : [baseSettings.providerId]),
     ]);
     const nextSettings: PersistedSettings = {
       ...baseSettings,
@@ -148,7 +161,25 @@ export class ProviderVault {
       ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
     };
 
-    this.writeSettings(nextSettings);
+    try {
+      this.writeSettings(nextSettings);
+    } catch (commitError) {
+      if (preparedCredential.wroteCredential) {
+        try {
+          this.restoreCredentialState(
+            vaultSnapshot,
+            preparedCredential.credentialId,
+          );
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [commitError, rollbackError],
+            "Provider settings commit failed and credential rollback failed",
+            { cause: rollbackError },
+          );
+        }
+      }
+      throw commitError;
+    }
     this.pruneCredentialsBestEffort(nextSettings);
     return this.toPublicSettings(nextSettings);
   }
@@ -266,7 +297,7 @@ export class ProviderVault {
     input: SaveProviderSettingsInput,
     nextSettings: PersistedSettings,
     previousSettings: PersistedSettings | null,
-  ): string | undefined {
+  ): { credentialId?: string; wroteCredential: boolean } {
     const sameProvider = previousSettings?.providerId === nextSettings.providerId;
     const sameEndpoint =
       nextSettings.providerId !== "custom" ||
@@ -274,21 +305,24 @@ export class ProviderVault {
     if (input.apiKey !== undefined) {
       const credentialId = randomUUID();
       this.saveCredential(credentialId, input.apiKey);
-      return credentialId;
+      return { credentialId, wroteCredential: true };
     }
     if (!previousSettings || !sameProvider || !sameEndpoint) {
-      return undefined;
+      return { wroteCredential: false };
     }
     if (previousSettings.credentialId) {
-      return previousSettings.credentialId;
+      return {
+        credentialId: previousSettings.credentialId,
+        wroteCredential: false,
+      };
     }
     const legacyKey = this.getKey(previousSettings);
     if (!legacyKey) {
-      return undefined;
+      return { wroteCredential: false };
     }
     const credentialId = randomUUID();
     this.saveCredential(credentialId, legacyKey);
-    return credentialId;
+    return { credentialId, wroteCredential: true };
   }
 
   private readSettings(): PersistedSettings | null {
@@ -471,6 +505,37 @@ export class ProviderVault {
     }
   }
 
+  private captureVaultSnapshot(): PersistedVaultSnapshot | undefined {
+    if (!this.safeStorage.isEncryptionAvailable()) {
+      return undefined;
+    }
+    try {
+      return { payload: readFileSync(this.paths.vaultPath) };
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return { payload: null };
+      }
+      throw error;
+    }
+  }
+
+  private restoreCredentialState(
+    snapshot: PersistedVaultSnapshot | undefined,
+    credentialId: string | undefined,
+  ): void {
+    if (!snapshot) {
+      if (credentialId) {
+        this.sessionKeys.delete(credentialId);
+      }
+      return;
+    }
+    if (snapshot.payload === null) {
+      rmSync(this.paths.vaultPath, { force: true });
+      return;
+    }
+    this.writeAtomically(this.paths.vaultPath, snapshot.payload);
+  }
+
   private writeEncryptedVault(vault: PersistedVaultV2): void {
     const encrypted = this.safeStorage.encryptString(JSON.stringify(vault));
     this.writeAtomically(this.paths.vaultPath, encrypted);
@@ -506,3 +571,13 @@ function uniqueStrings(values: readonly string[]): string[] {
 function uniqueProviderIds(values: readonly ProviderId[]): ProviderId[] {
   return [...new Set(values)];
 }
+
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
+

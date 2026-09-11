@@ -15,7 +15,7 @@ import {
   ProviderVault,
   type SafeStorageLike,
 } from "../../src/desktop/provider-vault";
-import { ProviderConfigMismatchError } from "../../src/server/services/generation-service";
+import { ProviderConfigMismatchError } from "../../src/server/providers/resolver";
 
 const temporaryDirectories: string[] = [];
 const chapterId = "7f2ced6d-5744-4db5-975b-f236c3b96b68";
@@ -303,6 +303,192 @@ describe("desktop provider vault", () => {
     );
   });
 
+  it("keeps a version one credential when settings migration commit fails", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    writeFileSync(
+      paths.settingsPath,
+      JSON.stringify({
+        providerId: "custom",
+        model: "old-model",
+        baseUrl: "https://old.example.test/v1",
+      }),
+    );
+    writeFileSync(
+      paths.vaultPath,
+      fakeSafeStorage.encryptString(
+        JSON.stringify({ version: 1, keys: { custom: "sk-legacy-secret" } }),
+      ),
+    );
+    const vault = new ProviderVault(paths, fakeSafeStorage, {
+      renameFile: (source, target) => {
+        if (target === paths.settingsPath) {
+          throw new Error("settings migration commit failed");
+        }
+        renameFile(source, target);
+      },
+    });
+
+    await expect(
+      vault.saveSettings({
+        providerId: "custom",
+        model: "new-model",
+        baseUrl: "https://old.example.test/v1",
+      }),
+    ).rejects.toThrow("settings migration commit failed");
+
+    await expect(
+      vault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "缁х画",
+        providerId: "custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        model: "old-model",
+        baseUrl: "https://old.example.test/v1",
+        apiKey: "sk-legacy-secret",
+      },
+    });
+
+    const restartedVault = new ProviderVault(paths, fakeSafeStorage);
+    await expect(
+      restartedVault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "缁х画",
+        providerId: "custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        model: "old-model",
+        baseUrl: "https://old.example.test/v1",
+        apiKey: "sk-legacy-secret",
+      },
+    });
+  });
+
+  it("does not rewrite a version one vault when no credential migration occurred", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    writeFileSync(
+      paths.settingsPath,
+      JSON.stringify({
+        providerId: "custom",
+        model: "old-model",
+        baseUrl: "https://old.example.test/v1",
+      }),
+    );
+    writeFileSync(
+      paths.vaultPath,
+      fakeSafeStorage.encryptString(
+        JSON.stringify({ version: 1, keys: { custom: "sk-legacy-secret" } }),
+      ),
+    );
+    const renameTargets: string[] = [];
+    const vault = new ProviderVault(paths, fakeSafeStorage, {
+      renameFile: (source, target) => {
+        renameTargets.push(target);
+        if (target === paths.settingsPath) {
+          throw new Error("settings commit failed");
+        }
+        renameFile(source, target);
+      },
+    });
+
+    await expect(
+      vault.saveSettings({
+        providerId: "custom",
+        model: "new-model",
+        baseUrl: "https://new.example.test/v1",
+      }),
+    ).rejects.toThrow("settings commit failed");
+
+    expect(renameTargets).toEqual([paths.settingsPath]);
+  });
+
+  it("does not reuse a version one custom key after its endpoint changes", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    writeFileSync(
+      paths.settingsPath,
+      JSON.stringify({
+        providerId: "custom",
+        model: "old-model",
+        baseUrl: "https://old.example.test/v1",
+      }),
+    );
+    writeFileSync(
+      paths.vaultPath,
+      fakeSafeStorage.encryptString(
+        JSON.stringify({ version: 1, keys: { custom: "sk-legacy-secret" } }),
+      ),
+    );
+    const vault = new ProviderVault(paths, fakeSafeStorage);
+
+    await vault.saveSettings({
+      providerId: "custom",
+      model: "new-model",
+      baseUrl: "https://new.example.test/v1",
+    });
+
+    await expect(
+      vault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "继续",
+        providerId: "custom",
+      }),
+    ).resolves.toMatchObject({
+      provider: {
+        baseUrl: "https://new.example.test/v1",
+        apiKey: "",
+      },
+    });
+    await expect(new ProviderVault(paths, fakeSafeStorage).getSettings()).resolves.toMatchObject({
+      hasApiKey: false,
+    });
+  });
+
+  it("does not reuse another version one provider key after switching providers", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    writeFileSync(
+      paths.settingsPath,
+      JSON.stringify({ providerId: "openai", model: "old-model" }),
+    );
+    writeFileSync(
+      paths.vaultPath,
+      fakeSafeStorage.encryptString(
+        JSON.stringify({
+          version: 1,
+          keys: {
+            openai: "sk-old-openai-secret",
+            anthropic: "sk-stale-anthropic-secret",
+          },
+        }),
+      ),
+    );
+    const vault = new ProviderVault(paths, fakeSafeStorage);
+
+    await expect(
+      vault.saveSettings({ providerId: "anthropic", model: "claude-test" }),
+    ).resolves.toMatchObject({ hasApiKey: false });
+    await expect(
+      vault.resolveGeneration({
+        chapterId,
+        expectedRevision: 0,
+        operation: "continue",
+        instruction: "继续",
+        providerId: "anthropic",
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
+  });
+
   it("keeps the old endpoint and key when settings commit fails", async () => {
     const { vault: initialVault, paths } = createVault();
     await initialVault.saveSettings({
@@ -311,6 +497,7 @@ describe("desktop provider vault", () => {
       baseUrl: "https://old.example.test/v1",
       apiKey: "sk-old-endpoint-secret",
     });
+    const originalVaultPayload = readFileSync(paths.vaultPath);
     const vault = new ProviderVault(paths, fakeSafeStorage, {
       renameFile: (source, target) => {
         if (target === paths.settingsPath) {
@@ -327,6 +514,7 @@ describe("desktop provider vault", () => {
         apiKey: "sk-new-endpoint-secret",
       }),
     ).rejects.toThrow("settings commit failed");
+    expect(readFileSync(paths.vaultPath)).toEqual(originalVaultPayload);
 
     await expect(
       vault.resolveGeneration({
@@ -342,6 +530,29 @@ describe("desktop provider vault", () => {
         apiKey: "sk-old-endpoint-secret",
       },
     });
+  });
+
+  it("removes a newly created vault when the initial settings commit fails", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    const vault = new ProviderVault(paths, fakeSafeStorage, {
+      renameFile: (source, target) => {
+        if (target === paths.settingsPath) {
+          throw new Error("initial settings commit failed");
+        }
+        renameFile(source, target);
+      },
+    });
+
+    await expect(
+      vault.saveSettings({
+        providerId: "openai",
+        model: "gpt-test",
+        apiKey: "sk-failed-initial-secret",
+      }),
+    ).rejects.toThrow("initial settings commit failed");
+
+    expect(() => readFileSync(paths.vaultPath)).toThrow();
   });
 
   it("allows custom and Ollama providers to resolve without API keys", async () => {
@@ -483,3 +694,4 @@ function createTemporaryDirectory(): string {
   temporaryDirectories.push(directory);
   return directory;
 }
+

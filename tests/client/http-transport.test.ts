@@ -153,4 +153,29 @@ describe("HTTP workbench transport", () => {
       baseUrl: "https://other.example.test/v1",
     });
   });
+
+  it("clears a saved browser key when a custom endpoint changes", async () => {
+    const transport = createHttpTransport();
+    await transport.saveProviderSettings({
+      providerId: "custom",
+      model: "saved-model",
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-session-key",
+    });
+
+    await expect(
+      transport.saveProviderSettings({
+        providerId: "custom",
+        model: "other-model",
+        baseUrl: "https://other.example.test/v1",
+      }),
+    ).resolves.toEqual({
+      platform: "web",
+      providerId: "custom",
+      model: "other-model",
+      baseUrl: "https://other.example.test/v1",
+      hasApiKey: false,
+      apiKey: "",
+    });
+  });
 });

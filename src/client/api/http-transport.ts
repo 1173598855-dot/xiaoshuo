@@ -1,16 +1,13 @@
 import {
   ApiErrorSchema,
   ChapterSchema,
-  CreateGenerationInputSchema,
   DatabaseOperationResultSchema,
   DatabaseStatusSchema,
-  GenerationSchema,
   ProviderCatalogEntrySchema,
   ProviderModelListSchema,
   SaveProviderSettingsInputSchema,
   ListProviderModelsInputSchema,
   WorkspaceSchema,
-  type CreateGenerationInput,
   type ProviderId,
 } from "../../shared/contracts";
 import {
@@ -82,9 +79,12 @@ export function createHttpTransport(
     async saveProviderSettings(input) {
       const parsed = SaveProviderSettingsInputSchema.parse(input);
       const previous = loadProviderSettings();
+      const canReuseSavedKey =
+        previous?.providerId === parsed.providerId &&
+        previous.baseUrl === parsed.baseUrl;
       const apiKey =
         parsed.apiKey ??
-        (previous?.providerId === parsed.providerId ? previous.apiKey : "");
+        (canReuseSavedKey ? previous.apiKey : "");
       const settings = {
         providerId: parsed.providerId,
         model: parsed.model,
@@ -104,38 +104,6 @@ export function createHttpTransport(
       const clearedSettings = { ...settings, apiKey: "" };
       storeProviderSettings(clearedSettings);
       return toWebSettings(clearedSettings);
-    },
-    async generate(input, signal) {
-      const parsed = CreateGenerationInputSchema.parse(
-        input as CreateGenerationInput,
-      );
-      return GenerationSchema.parse(
-        await requestJson(fetchImpl, "/api/generations", {
-          method: "POST",
-          body: JSON.stringify(parsed),
-          signal,
-        }),
-      );
-    },
-    async acceptGeneration(id) {
-      const response = (await requestJson(
-        fetchImpl,
-        "/api/generations/" + id + "/accept",
-        { method: "POST" },
-      )) as { generation: unknown; chapter: unknown };
-      return {
-        generation: GenerationSchema.parse(response.generation),
-        chapter: ChapterSchema.parse(response.chapter),
-      };
-    },
-    async discardGeneration(id) {
-      return GenerationSchema.parse(
-        await requestJson(
-          fetchImpl,
-          "/api/generations/" + id + "/discard",
-          { method: "POST" },
-        ),
-      );
     },
     async getDatabaseStatus() {
       return DatabaseStatusSchema.parse({
@@ -201,3 +169,6 @@ function toWebSettings(settings: {
     ...(settings.baseUrl !== undefined ? { baseUrl: settings.baseUrl } : {}),
   };
 }
+
+
+
