@@ -10,6 +10,7 @@ const AUTO_MESSAGES: Record<string, string> = {
   CANDIDATE_REVIEW_REQUIRED: "候选还没有通过审核。",
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
   UNSUPPORTED_EXPORT_FORMAT: "DOCX 导出尚未实现，请先使用 Markdown 或 TXT。",
+  MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
 };
 
 export function toAutoNovelPublicError(error: unknown): ApiError["error"] {
@@ -22,7 +23,7 @@ export function toAutoNovelPublicError(error: unknown): ApiError["error"] {
 export function autoNovelErrorStatus(error: unknown): PublicErrorStatus {
   if (hasKnownAutoCode(error)) {
     if (error.code === "NOT_FOUND") return 404;
-    if (error.code === "REVISION_CONFLICT" || error.code.includes("CANDIDATE") || error.code.includes("DIRECTION") || error.code.includes("STATE")) return 409;
+    if (error.code === "REVISION_CONFLICT" || error.code === "MEMORY_REVISION_CONFLICT" || error.code.includes("CANDIDATE") || error.code.includes("DIRECTION") || error.code.includes("STATE")) return 409;
     return 400;
   }
   return publicErrorStatus(error);

@@ -47,7 +47,7 @@
 - Modify: `src/server/auto-novel-app.ts`、`src/server/auto-novel-errors.ts`：HTTP 查询/历史/编辑/刷新接口。
 - Modify: `src/client/auto-novel-api.ts`、`src/client/auto-novel-ipc-api.ts`：浏览器和桌面数据适配。
 - Modify: `src/desktop/ipc/auto-novel-channels.ts`、`src/desktop/ipc/auto-novel-handlers.ts`、`src/desktop/auto-novel-preload-api-v2.ts`：白名单 IPC。
-- Create: `src/client/components/MemoryPanel.tsx`、`src/client/components/MemoryEditor.tsx`：记忆抽屉和高级编辑。
+- Create: `src/client/components/MemoryPanel.tsx`：记忆抽屉和内置高级 JSON 编辑。
 - Modify: `src/client/App.tsx`、`src/client/components/ProductionRoom.tsx`、`src/client/styles/app.css`：生产室入口、状态和样式。
 
 ### 测试与文档
@@ -110,6 +110,7 @@ interface MemoryEntry {
   locked: boolean;
   sourceChapterNumber: number | null;
   sourceCandidateId: string | null;
+  source: "foundation" | "accepted_candidate" | "manual_edit";
   validFromChapter: number | null;
   validToChapter: number | null;
   revision: number;
@@ -191,25 +192,25 @@ interface MemoryContext {
 }
 ```
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 测试六种 `kind`、四种 `status`、锁定标记、严格 delta、`memoryRevision` 非负和 20,000 字符上下文上限。候选必须同时接受 `memoryRevision`、64 位 hash 和可空 `memoryDelta`。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/shared/memory-contracts.test.ts`
 
 Expected: FAIL，因为 `src/shared/memory.ts` 和候选记忆字段尚不存在。
 
-- [ ] **Step 3: Implement contracts**
+- [x] **Step 3: Implement contracts**
 
 使用严格 Zod object；按 `kind` 校验内容对象；`MemoryDelta` 只允许 add/update/resolve/conflicts 四个字段；所有 UUID、时间戳和 hash 复用已有约束。
 
-- [ ] **Step 4: Add migration RED and implementation**
+- [x] **Step 4: Add migration RED and implementation**
 
 `memory_entries` 使用 `(book_id, kind, subject)` 索引，`memory_revisions` 使用 `(memory_entry_id, revision)` 唯一约束。`books` 增加 `memory_revision INTEGER NOT NULL DEFAULT 0`；`chapter_candidates` 增加 `memory_revision`、`memory_context_hash`、`memory_delta_json`。已有数据库启动时用 `PRAGMA table_xinfo` 检查并补列，不删除旧表或正文。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/shared/memory-contracts.test.ts tests/server/memory-schema.test.ts`
 
@@ -247,25 +248,25 @@ interface MemoryService {
 }
 ```
 
-- [ ] **Step 1: Write failing repository tests**
+- [x] **Step 1: Write failing repository tests**
 
 覆盖 foundation/章纲 seed 幂等、历史 revision、锁定标记、手动修改的书籍 revision 冲突和条目 revision 冲突。重复 seed 不得产生重复 subject。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/server/memory-repository.test.ts tests/server/memory-service.test.ts`
 
 Expected: FAIL，因为记忆 repository/service 尚不存在。
 
-- [ ] **Step 3: Implement seed and manual updates**
+- [x] **Step 3: Implement seed and manual updates**
 
 seed 从 `book_foundations` 读取世界规则、人物、事实、文风，并从 `chapter_plans.foreshadowing` 生成伏笔；每条初始条目写入 revision 1。手动更新在 `BEGIN IMMEDIATE` 中校验 `expectedBookRevision` 和 `expectedEntryRevision`，保存旧快照，更新 `books.memory_revision` 和条目 revision。
 
-- [ ] **Step 4: Implement deterministic retrieval**
+- [x] **Step 4: Implement deterministic retrieval**
 
 先加入所有有效锁定规则/文风，再按章节计划与 `subject/content` 的关键词重合、章节范围、importance、最近更新时间排序；最终裁剪到 20,000 字符，并返回稳定 JSON hash。禁止读取整本正文作为记忆上下文。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/server/memory-repository.test.ts tests/server/memory-service.test.ts`
 
@@ -287,25 +288,25 @@ Commit: `git add src/server/repositories/memory-repository.ts src/server/service
 
 **Produces:** `buildMemoryPrompt(context)`、严格的 review `memoryDelta` 解析和带记忆基线的候选。
 
-- [ ] **Step 1: Write failing prompt tests**
+- [x] **Step 1: Write failing prompt tests**
 
 断言 draft/review/repair 都包含锁定规则、相关人物和未回收伏笔；无关条目被预算裁剪；review JSON 缺字段或包含未知 delta 操作时只让候选失败，不写记忆。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/server/memory-prompt.test.ts tests/server/production-service.test.ts`
 
 Expected: FAIL，因为生产服务目前只发送想法、章纲和上一章正文。
 
-- [ ] **Step 3: Inject bounded context**
+- [x] **Step 3: Inject bounded context**
 
 每个章节开始时调用一次 `MemoryService.getContext`，把 `entries` 格式化为明确的“故事资料”区块；创建候选时保存 `memoryRevision`、`contextHash` 和空 delta。review 输出扩展为 `{ status, findings, memoryDelta }`；repair 使用相同上下文和审核问题，但不直接调用记忆写入。
 
-- [ ] **Step 4: Preserve candidate isolation**
+- [x] **Step 4: Preserve candidate isolation**
 
 恢复时复用同一 run、章节和记忆 hash 的候选；记忆上下文调用失败只将当前 run 标记失败。Provider 原始响应、API Key 和完整 Prompt 不写入数据库或错误对象。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/server/memory-prompt.test.ts tests/server/production-service.test.ts`
 
@@ -323,25 +324,25 @@ Commit: `git add src/server/services/auto-novel-prompts.ts src/server/services/f
 
 **Consumes:** Task 1 candidate memory fields and Task 2 repository transaction primitives。
 
-- [ ] **Step 1: Write failing accept tests**
+- [x] **Step 1: Write failing accept tests**
 
 覆盖正常 delta 新增/更新/解决、锁定条目不被覆盖、候选记忆 revision/hash 过期、正文 revision 过期、重复 accept、正文成功而记忆失败时整体回滚。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/server/memory-accept.test.ts`
 
 Expected: FAIL，因为 accept 目前只处理章节正文和候选状态。
 
-- [ ] **Step 3: Implement one transaction**
+- [x] **Step 3: Implement one transaction**
 
 在现有 `acceptCandidate` 的 `BEGIN IMMEDIATE` 内先验证章节和记忆基线，再写正文旧快照、章节 revision、未锁定记忆变化和 `memory_revisions`，最后更新候选状态、章纲状态和 checkpoint。锁定条目的 delta 不覆盖原内容，并记录 `MemoryConflict` 供审核结果展示。任何异常触发统一 rollback。
 
-- [ ] **Step 4: Verify idempotency and stale behavior**
+- [x] **Step 4: Verify idempotency and stale behavior**
 
 使用候选 `runId` 限定当前生产任务；accept 只能处理 `completed + passed` 候选一次，旧候选直接变为 `expired`，不能产生正文或记忆副作用。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/server/memory-accept.test.ts tests/server/production-service.test.ts`
 
@@ -365,17 +366,17 @@ Commit: `git add src/server/repositories/production-repository.ts tests/server/m
 
 **Consumes:** Task 2 read/edit interfaces and Task 4 conflict/error codes。
 
-- [ ] **Step 1: Write failing boundary tests**
+- [x] **Step 1: Write failing boundary tests**
 
 测试列表、筛选、历史、手动编辑、锁定/解锁、seed refresh；非法 UUID、缺 expected revision、跨书籍 entry、锁定自动更新和错误响应；桌面测试不可信 sender、白名单频道和无密钥响应。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/server/memory-routes.test.ts tests/desktop/memory-handlers.test.ts`
 
 Expected: FAIL，因为记忆端点和 IPC 频道尚不存在。
 
-- [ ] **Step 3: Add HTTP routes**
+- [x] **Step 3: Add HTTP routes**
 
 实现：
 
@@ -388,11 +389,11 @@ POST  /api/books/:bookId/memory/refresh
 
 所有 body 使用共享 Zod schema；`PATCH` 必须带 `expectedBookRevision` 和 `expectedEntryRevision`；响应只包含公开记忆字段。
 
-- [ ] **Step 4: Add fixed IPC semantics**
+- [x] **Step 4: Add fixed IPC semantics**
 
 为 list/history/update/refresh 分配独立白名单频道；Main 通过 `getServices()` 调用服务，Renderer 只通过 preload 接收 `DesktopResult`。禁止 generic invoke、Renderer Node 访问和直接传递 Provider 配置。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/server/memory-routes.test.ts tests/desktop/memory-handlers.test.ts`
 
@@ -413,25 +414,25 @@ Commit: `git add src/server/auto-novel-app.ts src/server/auto-novel-errors.ts sr
 
 **Consumes:** Task 5 `AutoNovelApi.listMemory/history/updateMemory/refreshMemory`。
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 覆盖生产室打开记忆抽屉、类型筛选、锁定/解锁、编辑保存、revision 冲突保留输入、刷新 seed 和来源/版本展示。测试不要求用户填写角色卡。
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npm run test:run -- tests/client/memory-panel.test.tsx`
 
 Expected: FAIL，因为 MemoryPanel 和入口尚不存在。
 
-- [ ] **Step 3: Implement read-only default panel**
+- [x] **Step 3: Implement read-only default panel**
 
 默认只展示当前章节相关记忆；按世界规则、人物状态、事实、时间线、伏笔、文风分组；每条显示锁定、来源、revision 和更新时间。抽屉关闭时保留生产室状态，不触发额外模型调用。
 
-- [ ] **Step 4: Implement advanced edit path**
+- [x] **Step 4: Implement advanced edit path**
 
 锁定/解锁和手动编辑都通过 Task 5 API；保存失败不清空编辑草稿，显示 revision 冲突并提供重新加载。UI 不读取 SQLite、Node 或 Provider 密钥。
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `npm run test:run -- tests/client/memory-panel.test.tsx`
 
@@ -452,21 +453,21 @@ Commit: `git add src/client/components/MemoryPanel.tsx src/client/components/Mem
 
 **Consumes:** Tasks 1–6。
 
-- [ ] **Step 1: Add end-to-end memory flow**
+- [x] **Step 1: Add end-to-end memory flow**
 
 扩展浏览器和 Electron 主流程：创建作品 → 选择方向 → 查看自动记忆 → 锁定一条世界规则 → 开始生产 → 审核/采纳 → 断言记忆 revision 和来源变化 → 刷新后仍可读取。增加移动视口无横向滚动断言。
 
-- [ ] **Step 2: Add secret and stale-base assertions**
+- [x] **Step 2: Add secret and stale-base assertions**
 
 使用 sentinel key 断言记忆、delta、历史、HTTP 响应、IPC 响应和导出都不包含密钥；构造正文或记忆基线变化，断言旧候选变为 `expired` 且正式正文/记忆不变。
 
-- [ ] **Step 3: Run focused integration tests**
+- [x] **Step 3: Run focused integration tests**
 
 Run: `npm run test:run -- tests/server/auto-novel-app.test.ts tests/client/auto-novel-full-flow.test.tsx`
 
 Expected: PASS，并覆盖记忆中心实际跨层连接。
 
-- [ ] **Step 4: Update documentation and plan state**
+- [x] **Step 4: Update documentation and plan state**
 
 README 增加记忆中心、锁定、冲突和首版无向量数据库说明；本计划逐项勾选真实完成步骤，不写入未执行的验证结果。
 
@@ -487,11 +488,13 @@ npm run desktop:package:test
 
 Expected: 所有命令退出码为 0；浏览器、Electron 和 packaged 主流程通过。
 
-- [ ] **Step 6: Perform main-agent diff review and commit integration record**
+执行记录：除 `npm run e2e` 外的质量门禁均已通过；`npm run e2e` 在当前环境尝试监听 `127.0.0.1:4314`（切换到 `5177` 仍相同）时返回 `EACCES`，无法启动本地监听器。按当前任务约束不再修改环境或伪造通过结果。
+
+- [x] **Step 6: Perform main-agent diff review and commit integration record**
 
 检查 `git diff --check`、`git status --short --branch`、候选/记忆字段、IPC 白名单、API Key 搜索和变更文件边界。只把项目源代码、测试、README 和本计划加入最终提交，不加入 `.superpowers/sdd`。
 
-Commit: `git add README.md docs/superpowers/plans/2026-09-12-long-memory-consistency.md tests e2e && git commit -m "docs: record memory center verification"`
+已完成主代理 diff 审查并将实现、测试、README 和本计划合并提交；未加入 `.superpowers/sdd/**`。
 
 ## Handoff Rules for Subagents
 

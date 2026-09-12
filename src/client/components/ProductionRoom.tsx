@@ -13,6 +13,7 @@ interface ProductionRoomProps {
   onResume: () => void;
   onCancel: () => void;
   onOpenManuscript: () => void;
+  onOpenMemory: () => void;
 }
 
 export function ProductionRoom({
@@ -25,6 +26,7 @@ export function ProductionRoom({
   onResume,
   onCancel,
   onOpenManuscript,
+  onOpenMemory,
 }: ProductionRoomProps) {
   const accepted = run?.acceptedChapters.length ?? 0;
   const total = book.chapterPlans.length;
@@ -34,7 +36,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>

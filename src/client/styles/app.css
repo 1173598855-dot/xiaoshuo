@@ -43,6 +43,12 @@ button {
   align-items: center;
 }
 
+.production-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
 .creative-header,
 .page-topbar,
 .section-heading,
@@ -775,6 +781,208 @@ button:disabled {
   cursor: pointer;
 }
 
+.review-memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 9px;
+  color: var(--violet);
+  font-size: 11px;
+}
+
+.review-conflict {
+  color: var(--amber);
+}
+
+.memory-drawer {
+  position: fixed;
+  z-index: 10;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(430px, 100vw);
+  height: 100dvh;
+  padding: 24px;
+  overflow: hidden;
+  color: var(--ink);
+  background: #f8faf8;
+  border-left: 1px solid var(--line-strong);
+  box-shadow: -18px 0 48px rgb(32 37 31 / 16%);
+}
+
+.memory-drawer-header,
+.memory-toolbar,
+.memory-entry-heading,
+.memory-entry-actions {
+  display: flex;
+  align-items: center;
+}
+
+.memory-drawer-header {
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.memory-drawer-header h2 {
+  margin: 6px 0 0;
+  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-size: 24px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--ink-soft);
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--line);
+}
+
+.memory-toolbar {
+  gap: 8px;
+  padding: 16px 0 12px;
+}
+
+.memory-toolbar select {
+  flex: 1;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--ink-soft);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+}
+
+.memory-context-note {
+  padding: 11px 12px;
+  color: var(--pine);
+  background: var(--pine-soft);
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.memory-context-note div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 750;
+}
+
+.memory-context-note small {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.memory-list {
+  flex: 1;
+  margin: 12px -7px 0 0;
+  padding-right: 7px;
+  overflow-y: auto;
+}
+
+.memory-entry {
+  margin-bottom: 10px;
+  padding: 13px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.memory-entry.locked {
+  border-color: #b7c8bb;
+  box-shadow: inset 3px 0 0 var(--pine);
+}
+
+.memory-entry-heading {
+  gap: 7px;
+  margin-bottom: 8px;
+  color: var(--pine);
+}
+
+.memory-kind,
+.memory-revision {
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.memory-revision {
+  margin-left: auto;
+  color: #929a93;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-weight: 500;
+}
+
+.memory-entry > strong {
+  display: block;
+  font-size: 13px;
+}
+
+.memory-entry-meta {
+  margin-top: 5px;
+  color: #929a93;
+  font-size: 10px;
+}
+
+.memory-content {
+  max-height: 130px;
+  margin: 8px 0 10px;
+  padding: 9px;
+  overflow: auto;
+  color: var(--ink-soft);
+  background: #f7f9f7;
+  border: 1px solid #edf0ed;
+  border-radius: 4px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memory-editor {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  margin: 8px 0 10px;
+  padding: 9px;
+  color: var(--ink-soft);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.memory-entry-actions {
+  gap: 7px;
+}
+
+.memory-entry-actions button {
+  min-height: 29px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
+.memory-empty {
+  margin: 22px 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
 @media (max-width: 900px) {
   .idea-stage,
   .production-grid {
@@ -849,6 +1057,16 @@ button:disabled {
   .page-topbar {
     align-items: start;
     gap: 12px;
+  }
+
+  .production-top-actions {
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .memory-drawer {
+    padding: 18px 15px;
   }
 
   .stage-progress {

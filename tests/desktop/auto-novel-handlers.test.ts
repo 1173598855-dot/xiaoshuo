@@ -38,6 +38,13 @@ function createFixture(isTrustedSender = true) {
     foundationService: { generate: vi.fn(async () => undefined) },
     productionRepository: {},
     productionService: {},
+    memoryService: {
+      snapshot: vi.fn(() => ({ bookId: book.id, bookRevision: 0, memoryRevision: 1, entries: [] })),
+      getContextForChapter: vi.fn(() => ({ entries: [], memoryRevision: 1, contextHash: "a".repeat(64), characterCount: 2 })),
+      history: vi.fn(() => []),
+      updateManual: vi.fn(() => undefined),
+      refresh: vi.fn(() => ({ bookId: book.id, bookRevision: 0, memoryRevision: 1, entries: [] })),
+    },
   } as unknown as AutoNovelServices;
   const providerVault = {
     resolveGeneration: vi.fn(async (input) => ({
@@ -85,5 +92,24 @@ describe("auto novel desktop IPC", () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: "INTERNAL_ERROR" } });
     expect(services.bookRepository.listBooks).not.toHaveBeenCalled();
+  });
+
+  it("exposes memory only through fixed validated channels", async () => {
+    const { handlers, services, book } = createFixture();
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.memoryList)?.({}, {
+      bookId: book.id,
+      filter: { kind: "world_rule" },
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { bookId: book.id } });
+    expect(JSON.stringify(result)).not.toContain("sk-main-only-secret");
+    expect(services.memoryService.snapshot).toHaveBeenCalledWith(book.id, { kind: "world_rule", includeArchived: false });
+    const invalid = await handlers.get(AUTO_NOVEL_CHANNELS.memoryUpdate)?.({}, {
+      entryId: "not-an-uuid",
+      expectedBookRevision: 0,
+      expectedEntryRevision: 1,
+      locked: true,
+    });
+    expect(invalid).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
   });
 });

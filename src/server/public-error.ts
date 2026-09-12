@@ -78,6 +78,7 @@ const AUTO_NOVEL_MESSAGES = {
   CANDIDATE_STALE: "该章节候选已经过期，请重新生成。",
   CANDIDATE_REVIEW_REQUIRED: "候选还没有通过审核。",
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
+  MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
 } as const;
 
 function hasAutoNovelCode(

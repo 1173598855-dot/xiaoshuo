@@ -6,6 +6,7 @@ import {
   ExportBookInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
+import { MemoryFilterSchema, UpdateMemoryInputSchema } from "../../shared/memory";
 import type { ProviderVault } from "../provider-vault";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
@@ -42,6 +43,15 @@ const CandidateAcceptRequestSchema = z
   .strict();
 const CandidateDiscardRequestSchema = z.object({ candidateId: z.string().uuid() }).strict();
 const ExportRequestSchema = ExportBookInputSchema.extend({ bookId: z.string().uuid() }).strict();
+const MemoryListRequestSchema = z.object({
+  bookId: z.string().uuid(),
+  filter: MemoryFilterSchema.partial().optional(),
+}).strict();
+const MemoryContextRequestSchema = z.object({
+  bookId: z.string().uuid(),
+  chapterNumber: z.number().int().positive(),
+}).strict();
+const MemoryHistoryRequestSchema = z.object({ entryId: z.string().uuid() }).strict();
 
 export interface AutoNovelDesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
@@ -111,6 +121,21 @@ export function registerAutoNovelIpcHandlers(
     format,
     content: buildExport(dependencies.getServices(), bookId, format),
   }));
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryList, MemoryListRequestSchema, ({ bookId, filter }) =>
+    dependencies.getServices().memoryService.snapshot(bookId, filter),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryContext, MemoryContextRequestSchema, ({ bookId, chapterNumber }) =>
+    dependencies.getServices().memoryService.getContextForChapter(bookId, chapterNumber),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryHistory, MemoryHistoryRequestSchema, ({ entryId }) =>
+    dependencies.getServices().memoryService.history(entryId),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryUpdate, UpdateMemoryInputSchema, (input) =>
+    dependencies.getServices().memoryService.updateManual(input),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRefresh, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) =>
+    dependencies.getServices().memoryService.refresh(bookId),
+  );
 
   return () => {
     for (const channel of channels) dependencies.ipcMain.removeHandler(channel);

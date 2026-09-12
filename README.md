@@ -12,6 +12,8 @@
 - 每一章先保存为候选，审核通过后才通过原子 accept 事务进入正式正文；
 - 生产任务会保存检查点，关闭应用后可以继续；
 - 生产室支持暂停、继续、停止和查看章节审核记录；
+- 生产室提供独立的“长篇记忆中心”：自动维护世界规则、人物状态、事实、时间线、伏笔和文风约束，按当前章节筛选后注入 draft/review/repair；
+- 记忆条目带独立 revision 和历史快照，可查看、锁定/解锁或进行 JSON 高级修正；锁定内容不会被 AI 自动覆盖，手动修改遇到并发变化会提示冲突；
 - 正式正文支持 Markdown、TXT 导出，DOCX 接口保留在扩展位；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 
@@ -70,6 +72,8 @@ npm run desktop:package:test
 
 - 正文写入必须通过 `expectedRevision`，每次成功修改只增加一次 revision 并保存旧快照；
 - 候选冻结基础 revision 和上下文 hash，正文发生变化后自动过期；
+- 候选同时冻结记忆 revision/hash；accept 会在同一事务中更新正文、候选记忆变化和历史快照，记忆基线变化时候选自动过期；
+- 首版使用本地 SQLite 的确定性关键词检索和 20,000 字符上下文预算，不引入向量数据库或云端记忆服务；
 - 同一候选不能重复采纳或丢弃；
 - 生成、审核和修复失败不会污染已采纳正文；
 - Electron 保持 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`；

@@ -11,6 +11,11 @@ export const AUTO_NOVEL_CHANNELS = {
   candidateAccept: "auto-novel:candidate-accept",
   candidateDiscard: "auto-novel:candidate-discard",
   booksExport: "auto-novel:books-export",
+  memoryList: "auto-novel:memory-list",
+  memoryContext: "auto-novel:memory-context",
+  memoryHistory: "auto-novel:memory-history",
+  memoryUpdate: "auto-novel:memory-update",
+  memoryRefresh: "auto-novel:memory-refresh",
 } as const;
 
 export type AutoNovelDesktopChannel =

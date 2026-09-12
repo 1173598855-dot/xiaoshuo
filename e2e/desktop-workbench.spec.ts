@@ -33,10 +33,24 @@ test("runs the full idea director and production room in Electron", async () => 
     await expect(window.getByText("自动方向 1")).toBeVisible();
     await window.getByRole("button", { name: /选择这条路/ }).first().click();
     await expect(window.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+    await window.getByRole("button", { name: "记忆中心" }).click();
+    await expect(window.getByRole("complementary", { name: "长篇记忆中心" })).toBeVisible();
+    const worldRule = window.locator(".memory-entry").filter({ has: window.getByText("世界规则", { exact: true }) }).first();
+    await expect(worldRule).toBeVisible();
+    await worldRule.getByRole("button", { name: "锁定" }).click();
+    await expect(worldRule.getByRole("button", { name: "解锁" })).toBeVisible();
+    await window.getByRole("button", { name: "关闭记忆中心" }).click();
     await window.getByRole("button", { name: "开始整本生产" }).click();
     await expect(window.getByText("这本书已经写完了")).toBeVisible({ timeout: 30_000 });
     await window.getByRole("button", { name: "打开正式正文" }).click();
     await expect(window.getByRole("main", { name: "正式正文" })).toBeVisible();
+    await window.getByRole("button", { name: "返回生产室" }).click();
+    await window.getByRole("button", { name: "记忆中心" }).click();
+    const persistedWorldRule = window.locator(".memory-entry").filter({ has: window.getByText("世界规则", { exact: true }) }).first();
+    await expect(persistedWorldRule).toContainText("手动修正");
+    await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
+    await window.getByRole("button", { name: "从设定补齐" }).click();
+    await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
   } finally {
     await electronApp?.close().catch(() => undefined);
     await rm(userDataDirectory, { recursive: true, force: true });

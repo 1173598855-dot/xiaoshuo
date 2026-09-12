@@ -17,7 +17,10 @@ import {
   type ProductionRun,
   type ProductionStage,
 } from "../../shared/auto-novel";
+import { MemoryDeltaSchema } from "../../shared/memory";
+import type { MemoryDelta } from "../../shared/memory";
 import { BookRepository } from "./book-repository";
+import { MemoryRepository } from "./memory-repository";
 
 interface RepositoryOptions {
   createId?: () => string;
@@ -58,6 +61,9 @@ interface CandidateRow {
   base_revision: number;
   context_revision: number;
   context_hash: string;
+  memory_revision: number;
+  memory_context_hash: string;
+  memory_delta_json: string;
   candidate_text: string;
   status: ChapterCandidate["status"];
   review_json: string;
@@ -84,6 +90,9 @@ export interface CreateCandidateInput {
   chapterId: string;
   baseRevision: number;
   contextHash: string;
+  memoryRevision?: number;
+  memoryContextHash?: string;
+  memoryDelta?: MemoryDelta | null;
   candidateText: string;
   repairCount?: number;
 }
@@ -133,6 +142,15 @@ export class CandidateStaleError extends Error {
   }
 }
 
+export class CandidateReviewRequiredError extends Error {
+  readonly code = "CANDIDATE_REVIEW_REQUIRED";
+
+  constructor(candidateId: string) {
+    super(`Chapter candidate ${candidateId} has not passed review`);
+    this.name = "CandidateReviewRequiredError";
+  }
+}
+
 export class ProductionRevisionConflictError extends Error {
   readonly code = "REVISION_CONFLICT";
 
@@ -151,6 +169,7 @@ export class ProductionRepository {
   private readonly createId: () => string;
   private readonly now: () => string;
   private readonly bookRepository: BookRepository;
+  private readonly memoryRepository: MemoryRepository;
 
   constructor(
     private readonly database: DatabaseSync,
@@ -159,6 +178,7 @@ export class ProductionRepository {
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date().toISOString());
     this.bookRepository = new BookRepository(database);
+    this.memoryRepository = new MemoryRepository(database);
   }
 
   createRun(
@@ -217,7 +237,8 @@ export class ProductionRepository {
     const candidateRows = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, candidate_text, status, review_json,
+                context_hash, memory_revision, memory_context_hash,
+                memory_delta_json, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE book_id = ? AND run_id = ? ORDER BY created_at, id`,
       )
@@ -322,9 +343,10 @@ export class ProductionRepository {
       .prepare(
         `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
-           context_hash, candidate_text, status, review_json, repair_count,
+           context_hash, memory_revision, memory_context_hash, memory_delta_json,
+           candidate_text, status, review_json, repair_count,
            created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, NULL)`,
       )
       .run(
         id,
@@ -334,6 +356,9 @@ export class ProductionRepository {
         input.baseRevision,
         input.baseRevision,
         input.contextHash,
+        input.memoryRevision ?? 0,
+        input.memoryContextHash ?? "0".repeat(64),
+        JSON.stringify(input.memoryDelta ?? null),
         input.candidateText,
         JSON.stringify({ status: "pending", findings: [] }),
         repairCount,
@@ -346,7 +371,8 @@ export class ProductionRepository {
     const row = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, candidate_text, status, review_json,
+                context_hash, memory_revision, memory_context_hash,
+                memory_delta_json, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE id = ?`,
       )
@@ -392,32 +418,61 @@ export class ProductionRepository {
     chapterId: string,
     baseRevision: number,
     contextHash: string,
+    memoryRevision = 0,
+    memoryContextHash = "0".repeat(64),
   ): ChapterCandidate | null {
     const row = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, candidate_text, status, review_json,
+                context_hash, memory_revision, memory_context_hash,
+                memory_delta_json, candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates
          WHERE run_id = ? AND book_id = ? AND chapter_id = ? AND status = ?
            AND base_revision = ? AND context_hash = ?
+           AND memory_revision = ? AND memory_context_hash = ?
          ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
-      .get(runId, bookId, chapterId, "completed", baseRevision, contextHash) as unknown as
+      .get(
+        runId,
+        bookId,
+        chapterId,
+        "completed",
+        baseRevision,
+        contextHash,
+        memoryRevision,
+        memoryContextHash,
+      ) as unknown as
       | CandidateRow
       | undefined;
     return row ? toCandidate(row) : null;
+  }
+
+  updateCandidateMemoryDelta(
+    candidateId: string,
+    delta: MemoryDelta | null,
+  ): ChapterCandidate {
+    this.getCandidate(candidateId);
+    const parsed = delta === null ? null : MemoryDeltaSchema.parse(delta);
+    this.database
+      .prepare("UPDATE chapter_candidates SET memory_delta_json = ? WHERE id = ?")
+      .run(JSON.stringify(parsed), candidateId);
+    return this.getCandidate(candidateId);
   }
 
   async acceptCandidate(
     candidateId: string,
     expectedRevision: number,
   ): Promise<{ candidate: ChapterCandidate; chapter: Chapter; run: ProductionRun }> {
-    return this.withTransaction(() => {
-      const candidate = this.getCandidate(candidateId);
-      if (candidate.status === "accepted" || candidate.status === "discarded") {
-        throw new CandidateAlreadySettledError(candidateId);
-      }
+    try {
+      return this.withTransaction(() => {
+        const candidate = this.getCandidate(candidateId);
+        if (candidate.status === "accepted" || candidate.status === "discarded") {
+          throw new CandidateAlreadySettledError(candidateId);
+        }
+        if (candidate.status === "expired") {
+          throw new CandidateStaleError(candidateId);
+        }
 
       const bookDetails = this.bookRepository.getBook(candidate.bookId);
       const projectId = this.database
@@ -438,8 +493,23 @@ export class ProductionRepository {
           .run(candidateId);
         throw new CandidateStaleError(candidateId);
       }
+      if (candidate.memoryRevision > 0 || candidate.memoryContextHash !== "0".repeat(64)) {
+        const currentMemoryContext = this.memoryRepository.getContextForChapter(
+          candidate.bookId,
+          chapter.position + 1,
+        );
+        if (
+          candidate.memoryRevision !== currentMemoryContext.memoryRevision ||
+          candidate.memoryContextHash !== currentMemoryContext.contextHash
+        ) {
+          this.database
+            .prepare("UPDATE chapter_candidates SET status = 'expired' WHERE id = ?")
+            .run(candidateId);
+          throw new CandidateStaleError(candidateId);
+        }
+      }
       if (candidate.review.status !== "passed") {
-        throw new Error("Candidate review has not passed");
+        throw new CandidateReviewRequiredError(candidateId);
       }
 
       const timestamp = this.now();
@@ -470,6 +540,23 @@ export class ProductionRepository {
            WHERE id = ? AND status = 'completed'`,
         )
         .run(timestamp, candidateId);
+      if (candidate.memoryDelta !== null) {
+        const conflicts = this.memoryRepository.applyDeltaInTransaction({
+          bookId: candidate.bookId,
+          delta: candidate.memoryDelta,
+          sourceCandidateId: candidate.id,
+          sourceChapterNumber: chapter.position + 1,
+        });
+        if (conflicts.length > 0) {
+          const deltaWithConflicts = MemoryDeltaSchema.parse({
+            ...candidate.memoryDelta,
+            conflicts: [...candidate.memoryDelta.conflicts, ...conflicts].slice(0, 100),
+          });
+          this.database
+            .prepare("UPDATE chapter_candidates SET memory_delta_json = ? WHERE id = ?")
+            .run(JSON.stringify(deltaWithConflicts), candidate.id);
+        }
+      }
       this.database
         .prepare(
           `UPDATE chapter_plans SET status = 'accepted', updated_at = ?
@@ -478,13 +565,16 @@ export class ProductionRepository {
         .run(timestamp, candidate.bookId, chapter.position + 1);
       const acceptedChapter = this.getChapter(chapter.id);
       const acceptedCandidate = this.getCandidate(candidateId);
-      const runRow = this.database
-        .prepare(
-          `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                  version, idempotency_key, error_code, created_at, updated_at
-           FROM production_runs WHERE book_id = ? AND kind = ? ORDER BY updated_at DESC, id LIMIT 1`,
-        )
-        .get(candidate.bookId, "production") as unknown as RunRow | undefined;
+      const runRow = candidate.runId
+        ? (this.database
+            .prepare(
+              `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                      version, idempotency_key, error_code, created_at, updated_at
+               FROM production_runs
+               WHERE id = ? AND book_id = ? AND kind = ?`,
+            )
+            .get(candidate.runId, candidate.bookId, "production") as unknown as RunRow | undefined)
+        : undefined;
       if (!runRow) throw new Error("Production run is missing");
       void bookDetails;
       void projectId;
@@ -493,7 +583,17 @@ export class ProductionRepository {
         chapter: acceptedChapter,
         run: toRun(runRow),
       };
-    });
+      });
+    } catch (error) {
+      // The accept transaction must roll back, but retaining an explicit expired
+      // marker makes a stale candidate observable and prevents accidental reuse.
+      if (error instanceof CandidateStaleError) {
+        this.database
+          .prepare("UPDATE chapter_candidates SET status = 'expired' WHERE id = ?")
+          .run(candidateId);
+      }
+      throw error;
+    }
   }
 
   discardCandidate(candidateId: string): ChapterCandidate {
@@ -615,6 +715,9 @@ function toCandidate(row: CandidateRow): ChapterCandidate {
       revision: row.context_revision,
       hash: row.context_hash,
     },
+    memoryRevision: row.memory_revision,
+    memoryContextHash: row.memory_context_hash,
+    memoryDelta: parseJson<MemoryDelta | null>(row.memory_delta_json),
     candidateText: row.candidate_text,
     status: row.status,
     review: JSON.parse(row.review_json),
@@ -642,4 +745,6 @@ function hashChapterContext(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-
+function parseJson<T>(value: string): T {
+  return JSON.parse(value) as T;
+}
