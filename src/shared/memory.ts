@@ -24,6 +24,13 @@ export const MemoryStatusSchema = z.enum([
 ]);
 export type MemoryStatus = z.infer<typeof MemoryStatusSchema>;
 
+export const MemorySourceSchema = z.enum([
+  "foundation",
+  "accepted_candidate",
+  "manual_edit",
+]);
+export type MemorySource = z.infer<typeof MemorySourceSchema>;
+
 export const WorldRuleContentSchema = z
   .object({
     summary: z.string().trim().min(1).max(500),
@@ -115,6 +122,7 @@ const MemoryEntryBaseSchema = z
     locked: z.boolean(),
     sourceChapterNumber: z.number().int().min(1).nullable(),
     sourceCandidateId: UuidSchema.nullable(),
+    source: MemorySourceSchema.default("foundation"),
     validFromChapter: z.number().int().min(1).nullable(),
     validToChapter: z.number().int().min(1).nullable(),
     revision: z.number().int().positive(),
@@ -242,3 +250,13 @@ export const MemoryContextSchema = z
   })
   .strict();
 export type MemoryContext = z.infer<typeof MemoryContextSchema>;
+
+export const MemoryBookSnapshotSchema = z
+  .object({
+    bookId: UuidSchema,
+    bookRevision: z.number().int().nonnegative(),
+    memoryRevision: z.number().int().nonnegative(),
+    entries: z.array(MemoryEntrySchema).max(500),
+  })
+  .strict();
+export type MemoryBookSnapshot = z.infer<typeof MemoryBookSnapshotSchema>;

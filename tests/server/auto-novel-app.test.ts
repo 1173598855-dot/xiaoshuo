@@ -8,6 +8,8 @@ import { ProductionRepository } from "../../src/server/repositories/production-r
 import { DirectorService } from "../../src/server/services/director-service";
 import { FoundationService } from "../../src/server/services/foundation-service";
 import { ProductionService } from "../../src/server/services/production-service";
+import { MemoryRepository } from "../../src/server/repositories/memory-repository";
+import { MemoryService } from "../../src/server/services/memory-service";
 
 const databases: ReturnType<typeof createDatabase>[] = [];
 
@@ -82,6 +84,7 @@ function fixture() {
   const dependencies = {
     bookRepository,
     productionRepository,
+    memoryService: new MemoryService(new MemoryRepository(database)),
     providerResolver: { resolve: () => provider },
   };
   return {
@@ -91,6 +94,7 @@ function fixture() {
       directorService: new DirectorService(dependencies),
       foundationService: new FoundationService(dependencies),
       productionService: new ProductionService(dependencies),
+      memoryService: dependencies.memoryService,
     }),
     provider: {
       kind: "openai-compatible" as const,
@@ -163,5 +167,71 @@ describe("auto-novel HTTP app", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+  });
+
+  it("lists, previews, locks, and edits versioned memory through HTTP", async () => {
+    const { app, provider } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "记忆接口测试", provider, idempotencyKey: "memory-http" }),
+    });
+    const createdBody = (await created.json()) as {
+      book: { id: string; revision: number };
+      directions: Array<{ id: string }>;
+    };
+    const selected = await app.request(
+      `/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+      },
+    );
+    const selectedBody = (await selected.json()) as { book: { revision: number } };
+    const listed = await app.request(`/api/books/${createdBody.book.id}/memory`);
+    expect(listed.status).toBe(200);
+    const snapshot = (await listed.json()) as {
+      bookId: string;
+      bookRevision: number;
+      memoryRevision: number;
+      entries: Array<{ id: string; revision: number; locked: boolean; content: unknown }>;
+    };
+    expect(snapshot.entries.length).toBeGreaterThan(0);
+    expect(JSON.stringify(snapshot)).not.toContain("sk-test-only");
+    const entry = snapshot.entries[0];
+    const patched = await app.request(`/api/memory/${entry.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entryId: entry.id,
+        expectedBookRevision: selectedBody.book.revision,
+        expectedEntryRevision: entry.revision,
+        locked: true,
+      }),
+    });
+    expect(patched.status).toBe(200);
+    expect((await patched.json() as { locked: boolean }).locked).toBe(true);
+
+    const context = await app.request(`/api/books/${createdBody.book.id}/memory/context/1`);
+    expect(context.status).toBe(200);
+    expect((await context.json() as { entries: unknown[] }).entries.length).toBeGreaterThan(0);
+    const history = await app.request(`/api/memory/${entry.id}/history`);
+    expect(history.status).toBe(200);
+    const historyBody = await history.json() as unknown[];
+    expect(historyBody.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(historyBody)).not.toContain("sk-test-only");
+    const refreshed = await app.request(`/api/books/${createdBody.book.id}/memory/refresh`, { method: "POST" });
+    expect(refreshed.status).toBe(200);
+    expect((await refreshed.json() as { memoryRevision: number }).memoryRevision).toBe(snapshot.memoryRevision + 1);
+    const exported = await app.request(`/api/books/${createdBody.book.id}/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ format: "markdown" }),
+    });
+    expect(exported.status).toBe(200);
+    expect(JSON.stringify(await exported.json())).not.toContain("sk-test-only");
+    const invalid = await app.request("/api/books/not-a-uuid/memory");
+    expect(invalid.status).toBe(400);
   });
 });

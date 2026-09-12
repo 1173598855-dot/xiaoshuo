@@ -3,17 +3,21 @@ import { z } from "zod";
 
 import type { ProviderConfig } from "../../shared/contracts";
 import type { ChapterPlan, ProductionRun } from "../../shared/auto-novel";
+import type { MemoryContext } from "../../shared/memory";
 import { NormalizedProviderError } from "../providers/types";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProviderResolver } from "../providers/resolver";
-import { parseStructuredProviderResult } from "./auto-novel-prompts";
+import type { MemoryService } from "./memory-service";
+import { buildMemoryPrompt, parseStructuredProviderResult } from "./auto-novel-prompts";
+import { MemoryDeltaSchema } from "../../shared/memory";
 
 const ReviewOutputSchema = z
   .object({
     status: z.enum(["passed", "failed"]),
     findings: z.array(z.string().min(1).max(2_000)).max(100),
+    memoryDelta: MemoryDeltaSchema.optional().default({ add: [], update: [], resolve: [], conflicts: [] }),
   })
   .strict();
 
@@ -23,6 +27,7 @@ export interface ProductionServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly providerResolver: ProviderResolver;
+  readonly memoryService?: MemoryService;
 }
 
 interface ActiveRun {
@@ -95,6 +100,9 @@ export class ProductionService {
           });
         }
 
+        const memoryContext = this.dependencies.memoryService
+          ? this.dependencies.memoryService.getContext(run.bookId, plan)
+          : emptyMemoryContext();
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
           stage: "draft",
@@ -113,6 +121,8 @@ export class ProductionService {
             chapter.id,
             chapter.revision,
             contextHash,
+            memoryContext.memoryRevision,
+            memoryContext.contextHash,
           );
 
         if (!candidate) {
@@ -122,6 +132,7 @@ export class ProductionService {
             bookDetails.book.idea,
             plan,
             chapter.content,
+            memoryContext,
             signal,
           );
           const stoppedAfterDraft = this.getStoppedRun(runId, signal);
@@ -132,6 +143,8 @@ export class ProductionService {
             chapterId: chapter.id,
             baseRevision: chapter.revision,
             contextHash,
+            memoryRevision: memoryContext.memoryRevision,
+            memoryContextHash: memoryContext.contextHash,
             candidateText,
           });
           this.dependencies.productionRepository.appendCheckpoint({
@@ -165,6 +178,7 @@ export class ProductionService {
               providerConfig.model,
               candidate.candidateText,
               candidate.review.findings,
+              memoryContext,
               signal,
             );
             const stoppedAfterRepair = this.getStoppedRun(runId, signal);
@@ -193,13 +207,19 @@ export class ProductionService {
             bookDetails.book.idea,
             plan,
             candidate.candidateText,
+            memoryContext,
             signal,
           );
           const stoppedAfterReview = this.getStoppedRun(runId, signal);
           if (stoppedAfterReview) return stoppedAfterReview;
+          const { memoryDelta, ...reviewResult } = review;
           candidate = this.dependencies.productionRepository.updateCandidateReview(
             candidate.id,
-            review,
+            reviewResult,
+          );
+          candidate = this.dependencies.productionRepository.updateCandidateMemoryDelta(
+            candidate.id,
+            memoryDelta,
           );
           this.dependencies.productionRepository.appendCheckpoint({
             runId,
@@ -298,13 +318,19 @@ async function generateDraft(
   idea: string,
   plan: ChapterPlan,
   currentContent: string,
+  memoryContext: MemoryContext,
   signal?: AbortSignal,
 ): Promise<string> {
+  const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await provider.generate(
     {
       model,
-      systemPrompt: "你是中文长篇小说正文作者。只输出章节正文，不输出分析、标题或 Markdown。",
+      systemPrompt: [
+        "你是中文长篇小说正文作者。只输出章节正文，不输出分析、标题或 Markdown。",
+        memoryPrompt.systemPrompt,
+      ].join("\n"),
       userPrompt: [
+        ...memoryPrompt.userPrompt.split("\n"),
         `故事想法：${idea}`,
         `章节：第${plan.chapterNumber}章 ${plan.title}`,
         `章节任务：${plan.objective}`,
@@ -332,13 +358,21 @@ async function reviewDraft(
   idea: string,
   plan: ChapterPlan,
   draft: string,
+  memoryContext: MemoryContext,
   signal?: AbortSignal,
 ) {
+  const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await provider.generate(
     {
       model,
-      systemPrompt: "你是长篇小说审稿人。只输出 JSON，不输出解释。格式为 {\"status\":\"passed\"或\"failed\",\"findings\":[]}。",
+      systemPrompt: [
+        "你是长篇小说审稿人。只输出 JSON，不输出解释。",
+        "格式为 {\"status\":\"passed\"或\"failed\",\"findings\":[],\"memoryDelta\":{\"add\":[],\"update\":[],\"resolve\":[],\"conflicts\":[]}}。",
+        "memoryDelta 只记录本章明确确认的记忆变化；update/resolve 必须使用故事资料中的 id 和 revision，不能猜造 ID。",
+        memoryPrompt.systemPrompt,
+      ].join("\n"),
       userPrompt: [
+        ...memoryPrompt.userPrompt.split("\n"),
         `故事想法：${idea}`,
         `章节任务：${plan.objective}`,
         `章节正文：${draft}`,
@@ -356,13 +390,22 @@ async function repairDraft(
   model: string,
   draft: string,
   findings: readonly string[],
+  memoryContext: MemoryContext,
   signal?: AbortSignal,
 ): Promise<string> {
+  const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await provider.generate(
     {
       model,
-      systemPrompt: "你是中文小说修复编辑。只输出修复后的完整章节正文，不输出分析、标题或 Markdown。",
-      userPrompt: [`原章节：${draft}`, `审核问题：${findings.join("；")}`].join("\n"),
+      systemPrompt: [
+        "你是中文小说修复编辑。只输出修复后的完整章节正文，不输出分析、标题或 Markdown。",
+        memoryPrompt.systemPrompt,
+      ].join("\n"),
+      userPrompt: [
+        ...memoryPrompt.userPrompt.split("\n"),
+        `原章节：${draft}`,
+        `审核问题：${findings.join("；")}`,
+      ].join("\n"),
       maxOutputTokens: 12_000,
     },
     signal,
@@ -377,6 +420,14 @@ async function repairDraft(
   return text;
 }
 
+function emptyMemoryContext(): MemoryContext {
+  return {
+    entries: [],
+    memoryRevision: 0,
+    contextHash: "0".repeat(64),
+    characterCount: 0,
+  };
+}
 function hashContext(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }

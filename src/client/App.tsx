@@ -21,6 +21,7 @@ import { ChapterReview } from "./components/ChapterReview";
 import { ProviderDialog } from "./components/ProviderDialog";
 import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
+import { MemoryPanel } from "./components/MemoryPanel";
 
 type Page = "home" | "directions" | "production" | "manuscript";
 
@@ -38,6 +39,7 @@ export function App() {
   const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>([]);
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
   const [providerOpen, setProviderOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export function App() {
       setBookDetails(details);
       setRunId(details.run?.id ?? null);
       setPage(details.book.selectedDirectionId ? "production" : "directions");
+      setMemoryOpen(false);
     } catch (openError) {
       setError(errorMessage(openError));
     } finally {
@@ -227,7 +230,7 @@ export function App() {
   if (page === "manuscript") {
     return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} /><ChapterReview details={runState.details} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
 }
 
 function providerDialog(

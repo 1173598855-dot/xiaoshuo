@@ -17,6 +17,19 @@ import {
   type StoryDirection,
 } from "../shared/auto-novel";
 import {
+  MemoryBookSnapshotSchema,
+  MemoryContextSchema,
+  MemoryEntrySchema,
+  MemoryRevisionSchema,
+  UpdateMemoryInputSchema,
+  type MemoryBookSnapshot,
+  type MemoryContext,
+  type MemoryEntry,
+  type MemoryRevision,
+  type MemoryFilter,
+  type UpdateMemoryInput,
+} from "../shared/memory";
+import {
   ApiErrorSchema,
   ChapterSchema,
   ProviderConfigSchema,
@@ -64,6 +77,11 @@ export interface AutoNovelApi {
   resumeRun(runId: string, provider: AutoNovelProviderInput): Promise<ProductionRun>;
   cancelRun(runId: string): Promise<ProductionRun>;
   exportBook(bookId: string, format: "markdown" | "txt" | "docx"): Promise<string>;
+  listMemory(bookId: string, filter?: Partial<MemoryFilter>): Promise<MemoryBookSnapshot>;
+  getMemoryContext(bookId: string, chapterNumber: number): Promise<MemoryContext>;
+  getMemoryHistory(entryId: string): Promise<readonly MemoryRevision[]>;
+  updateMemory(input: UpdateMemoryInput): Promise<MemoryEntry>;
+  refreshMemory(bookId: string): Promise<MemoryBookSnapshot>;
 }
 
 export function createAutoNovelApi(
@@ -114,6 +132,40 @@ export function createAutoNovelApi(
       const parsed = ExportBookInputSchema.parse({ format });
       const result = z.object({ format: ExportBookInputSchema.shape.format, content: z.string() }).strict().parse(await requestJson(fetchImpl, `/api/books/${bookId}/export`, { method: "POST", body: JSON.stringify(parsed) }));
       return result.content;
+    },
+    async listMemory(bookId, filter) {
+      const params = new URLSearchParams();
+      if (filter?.kind) params.set("kind", filter.kind);
+      if (filter?.status) params.set("status", filter.status);
+      if (filter?.includeArchived) params.set("includeArchived", "true");
+      const suffix = params.size > 0 ? `?${params.toString()}` : "";
+      return MemoryBookSnapshotSchema.parse(
+        await requestJson(fetchImpl, `/api/books/${bookId}/memory${suffix}`),
+      );
+    },
+    async getMemoryContext(bookId, chapterNumber) {
+      return MemoryContextSchema.parse(
+        await requestJson(fetchImpl, `/api/books/${bookId}/memory/context/${chapterNumber}`),
+      );
+    },
+    async getMemoryHistory(entryId) {
+      return z.array(MemoryRevisionSchema).parse(
+        await requestJson(fetchImpl, `/api/memory/${entryId}/history`),
+      );
+    },
+    async updateMemory(input) {
+      const parsed = UpdateMemoryInputSchema.parse(input);
+      return MemoryEntrySchema.parse(
+        await requestJson(fetchImpl, `/api/memory/${parsed.entryId}`, {
+          method: "PATCH",
+          body: JSON.stringify(parsed),
+        }),
+      );
+    },
+    async refreshMemory(bookId) {
+      return MemoryBookSnapshotSchema.parse(
+        await requestJson(fetchImpl, `/api/books/${bookId}/memory/refresh`, { method: "POST" }),
+      );
     },
   };
 }

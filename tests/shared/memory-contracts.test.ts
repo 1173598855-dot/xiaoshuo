@@ -61,7 +61,10 @@ describe("memory contracts", () => {
       "archived",
     ]);
     for (const kind of MemoryKindSchema.options) {
-      expect(MemoryEntrySchema.parse(entry(kind))).toMatchObject({ kind });
+      expect(MemoryEntrySchema.parse(entry(kind))).toMatchObject({
+        kind,
+        source: "foundation",
+      });
     }
   });
 

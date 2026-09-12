@@ -20,6 +20,14 @@ import type {
 } from "./auto-novel-api";
 import { RunDetailsSchema } from "./auto-novel-api";
 import { ApiRequestError } from "./api/transport";
+import {
+  MemoryBookSnapshotSchema,
+  MemoryContextSchema,
+  MemoryEntrySchema,
+  MemoryRevisionSchema,
+  UpdateMemoryInputSchema,
+  type UpdateMemoryInput,
+} from "../shared/memory";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -81,6 +89,36 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         z.object({ format: z.string(), content: z.string() }).strict(),
       );
       return result.content;
+    },
+    async listMemory(bookId, filter) {
+      return parseResult(
+        await api.memory.list({ bookId, ...(filter ? { filter } : {}) }),
+        MemoryBookSnapshotSchema,
+      );
+    },
+    async getMemoryContext(bookId, chapterNumber) {
+      return parseResult(
+        await api.memory.context({ bookId, chapterNumber }),
+        MemoryContextSchema,
+      );
+    },
+    async getMemoryHistory(entryId) {
+      return parseResult(
+        await api.memory.history(entryId),
+        z.array(MemoryRevisionSchema),
+      );
+    },
+    async updateMemory(input: UpdateMemoryInput) {
+      return parseResult(
+        await api.memory.update(UpdateMemoryInputSchema.parse(input)),
+        MemoryEntrySchema,
+      );
+    },
+    async refreshMemory(bookId) {
+      return parseResult(
+        await api.memory.refresh(bookId),
+        MemoryBookSnapshotSchema,
+      );
     },
   };
 }

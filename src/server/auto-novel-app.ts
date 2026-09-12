@@ -10,6 +10,10 @@ import {
   SelectDirectionInputSchema,
   StartProductionInputSchema,
 } from "../shared/auto-novel";
+import {
+  MemoryFilterSchema,
+  UpdateMemoryInputSchema,
+} from "../shared/memory";
 import { ListProviderModelsInputSchema, ProviderConfigSchema } from "../shared/contracts";
 import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
@@ -20,6 +24,7 @@ import type { ProductionRepository } from "./repositories/production-repository"
 import type { DirectorService } from "./services/director-service";
 import type { FoundationService } from "./services/foundation-service";
 import type { ProductionService } from "./services/production-service";
+import type { MemoryService } from "./services/memory-service";
 
 const CreateBookRequestSchema = CreateBookInputSchema.extend({
   provider: ProviderConfigSchema,
@@ -38,12 +43,27 @@ const ResumeRequestSchema = z
   .object({ action: z.literal("resume"), provider: ProviderConfigSchema })
   .strict();
 
+const MemoryQuerySchema = z
+  .object({
+    kind: MemoryFilterSchema.shape.kind,
+    status: MemoryFilterSchema.shape.status,
+    includeArchived: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .optional(),
+  })
+  .strict();
+
+const MemoryPathIdSchema = z.string().uuid();
+
+
 export interface AutoNovelAppDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
+  readonly memoryService?: MemoryService;
 }
 
 export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
@@ -112,6 +132,62 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.get("/api/books/:bookId", (context) =>
     context.json(dependencies.bookRepository.getBook(context.req.param("bookId"))),
   );
+
+  app.get("/api/books/:bookId/memory", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    const query = context.req.query();
+    const parsed = MemoryQuerySchema.safeParse({
+      ...(query.kind !== undefined ? { kind: query.kind } : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.includeArchived !== undefined
+        ? { includeArchived: query.includeArchived }
+        : {}),
+    });
+    if (!parsed.success) return context.json(apiError("VALIDATION_ERROR", "记忆筛选参数无效。"), 400);
+    const service = requireMemoryService(dependencies);
+    return context.json(service.snapshot(bookId.data, parsed.data));
+  });
+
+  app.get("/api/books/:bookId/memory/context/:chapterNumber", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    const chapterNumber = Number(context.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
+      return context.json(apiError("VALIDATION_ERROR", "章节编号无效。"), 400);
+    }
+    return context.json(
+      requireMemoryService(dependencies).getContextForChapter(
+        bookId.data,
+        chapterNumber,
+      ),
+    );
+  });
+
+  app.post("/api/books/:bookId/memory/refresh", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    return context.json(requireMemoryService(dependencies).refresh(bookId.data));
+  });
+
+  app.get("/api/memory/:entryId/history", (context) => {
+    const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
+    if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    return context.json(requireMemoryService(dependencies).history(entryId.data));
+  });
+
+  app.patch("/api/memory/:entryId", async (context) => {
+    const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
+    if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    const parsed = await parseJson(context.req.raw, UpdateMemoryInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.entryId !== entryId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "记忆条目标识不一致。"), 400);
+    }
+    return context.json(
+      requireMemoryService(dependencies).updateManual(parsed.data),
+    );
+  });
 
   app.post("/api/books/:bookId/directions/:directionId/select", async (context) => {
     const parsed = await parseJson(
@@ -345,4 +421,13 @@ function buildExport(
     "",
     ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
   ].join("\n");
+}
+
+function requireMemoryService(
+  dependencies: AutoNovelAppDependencies,
+): MemoryService {
+  if (!dependencies.memoryService) {
+    throw new Error("Memory service is not configured");
+  }
+  return dependencies.memoryService;
 }

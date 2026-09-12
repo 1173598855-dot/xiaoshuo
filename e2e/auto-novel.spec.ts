@@ -28,11 +28,25 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
 
   await page.getByRole("button", { name: /选择这条路/ }).first().click();
   await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+  await page.getByRole("button", { name: "记忆中心" }).click();
+  await expect(page.getByRole("complementary", { name: "长篇记忆中心" })).toBeVisible();
+  const worldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
+  await expect(worldRule).toBeVisible();
+  await worldRule.getByRole("button", { name: "锁定" }).click();
+  await expect(worldRule.getByRole("button", { name: "解锁" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭记忆中心" }).click();
   await page.getByRole("button", { name: "开始整本生产" }).click();
   await expect(page.getByText("这本书已经写完了")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "打开正式正文" }).click();
   await expect(page.getByRole("main", { name: "正式正文" })).toBeVisible();
   await expect(page.getByText("异常物件").first()).toBeVisible();
+  await page.getByRole("button", { name: "返回生产室" }).click();
+  await page.getByRole("button", { name: "记忆中心" }).click();
+  const persistedWorldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
+  await expect(persistedWorldRule).toContainText("手动修正");
+  await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
+  await page.getByRole("button", { name: "从设定补齐" }).click();
+  await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
 });
 
 for (const viewport of [

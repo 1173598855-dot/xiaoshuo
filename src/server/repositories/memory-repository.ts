@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import type { ChapterPlan } from "../../shared/auto-novel";
+import { ChapterPlanSchema, type ChapterPlan } from "../../shared/auto-novel";
 import {
   MemoryContextSchema,
   MemoryDeltaSchema,
   MemoryEntrySchema,
   MemoryRevisionSchema,
   type MemoryContent,
+  type MemoryConflict,
   type MemoryContext,
   type MemoryDelta,
   type MemoryDraft,
@@ -36,6 +37,7 @@ interface MemoryEntryRow {
   locked: number;
   source_chapter_number: number | null;
   source_candidate_id: string | null;
+  source: MemoryRevision["source"] | null;
   valid_from_chapter: number | null;
   valid_to_chapter: number | null;
   revision: number;
@@ -140,10 +142,13 @@ export class MemoryRepository {
     }
     const rows = this.database
       .prepare(
-        `SELECT id, book_id, kind, subject, content_json, status, importance,
+      `SELECT id, book_id, kind, subject, content_json, status, importance,
                 locked, source_chapter_number, source_candidate_id,
                 valid_from_chapter, valid_to_chapter, revision, created_at,
-                updated_at
+                updated_at,
+                (SELECT source FROM memory_revisions
+                 WHERE memory_entry_id = memory_entries.id
+                 ORDER BY revision DESC, id DESC LIMIT 1) AS source
          FROM memory_entries
          WHERE ${conditions.join(" AND ")}
          ORDER BY importance DESC, updated_at DESC, id`,
@@ -155,11 +160,14 @@ export class MemoryRepository {
   get(entryId: string): MemoryEntry {
     const row = this.database
       .prepare(
-        `SELECT id, book_id, kind, subject, content_json, status, importance,
+      `SELECT id, book_id, kind, subject, content_json, status, importance,
                 locked, source_chapter_number, source_candidate_id,
                 valid_from_chapter, valid_to_chapter, revision, created_at,
-                updated_at
-         FROM memory_entries WHERE id = ?`,
+                updated_at,
+                (SELECT source FROM memory_revisions
+                 WHERE memory_entry_id = memory_entries.id
+                 ORDER BY revision DESC, id DESC LIMIT 1) AS source
+          FROM memory_entries WHERE id = ?`,
       )
       .get(entryId) as unknown as MemoryEntryRow | undefined;
     if (!row) throw new MemoryNotFoundError(entryId);
@@ -182,11 +190,6 @@ export class MemoryRepository {
   seedFromFoundation(bookId: string): readonly MemoryEntry[] {
     return this.withTransaction(() => {
       this.requireBook(bookId);
-      const existing = this.database
-        .prepare("SELECT COUNT(*) AS count FROM memory_entries WHERE book_id = ?")
-        .get(bookId) as { count: number };
-      if (existing.count > 0) return this.list(bookId, { includeArchived: true });
-
       const foundation = this.database
         .prepare(
           `SELECT world_rules_json, characters_json, style_guide, facts_json
@@ -298,6 +301,7 @@ export class MemoryRepository {
       }
 
       const timestamp = this.now();
+      let insertedCount = 0;
       for (const draft of drafts) {
         const id = this.createId();
         const entry = MemoryEntrySchema.parse({
@@ -308,9 +312,9 @@ export class MemoryRepository {
           createdAt: timestamp,
           updatedAt: timestamp,
         });
-        this.database
+        const result = this.database
           .prepare(
-            `INSERT INTO memory_entries (
+            `INSERT OR IGNORE INTO memory_entries (
                id, book_id, kind, subject, content_json, status, importance,
                locked, source_chapter_number, source_candidate_id,
                valid_from_chapter, valid_to_chapter, revision, created_at,
@@ -334,9 +338,12 @@ export class MemoryRepository {
             entry.createdAt,
             entry.updatedAt,
           );
-        this.insertRevision(entry, "foundation", null);
+        if (Number(result.changes) === 1) {
+          this.insertRevision(entry, "foundation", null);
+          insertedCount += 1;
+        }
       }
-      if (drafts.length > 0) {
+      if (insertedCount > 0) {
         this.database
           .prepare(
             "UPDATE books SET memory_revision = memory_revision + 1, updated_at = ? WHERE id = ?",
@@ -347,6 +354,44 @@ export class MemoryRepository {
     });
   }
 
+  getContextForChapter(bookId: string, chapterNumber: number): MemoryContext {
+    const row = this.database
+      .prepare(
+        "SELECT id, book_id, volume_number, volume_title, chapter_number, title, summary, objective, hook, foreshadowing_json, status, created_at, updated_at FROM chapter_plans WHERE book_id = ? AND chapter_number = ?",
+      )
+      .get(bookId, chapterNumber) as {
+      id: string;
+      book_id: string;
+      volume_number: number;
+      volume_title: string;
+      chapter_number: number;
+      title: string;
+      summary: string;
+      objective: string;
+      hook: string;
+      foreshadowing_json: string;
+      status: ChapterPlan["status"];
+      created_at: string;
+      updated_at: string;
+    } | undefined;
+    if (!row) throw new Error("Chapter plan is missing");
+    const plan = ChapterPlanSchema.parse({
+      id: row.id,
+      bookId: row.book_id,
+      volumeNumber: row.volume_number,
+      volumeTitle: row.volume_title,
+      chapterNumber: row.chapter_number,
+      title: row.title,
+      summary: row.summary,
+      objective: row.objective,
+      hook: row.hook,
+      foreshadowing: parseJson<string[]>(row.foreshadowing_json),
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+    return this.buildContext(bookId, plan);
+  }
   buildContext(bookId: string, plan: ChapterPlan): MemoryContext {
     this.requireBook(bookId);
     const entries = this.list(bookId);
@@ -367,12 +412,10 @@ export class MemoryRepository {
       .sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id));
 
     const selected: MemoryEntry[] = [];
-    let characterCount = 2;
     for (const { entry } of ranked) {
-      const nextCount = characterCount + JSON.stringify(entry).length + 1;
-      if (nextCount > MAX_MEMORY_CONTEXT_CHARACTERS && selected.length > 0) continue;
+      const nextCount = JSON.stringify([...selected, entry]).length;
+      if (nextCount > MAX_MEMORY_CONTEXT_CHARACTERS) continue;
       selected.push(entry);
-      characterCount = nextCount;
     }
     const serialized = JSON.stringify(selected);
     const memoryRevision = this.getBookRevision(bookId).memory_revision;
@@ -387,6 +430,172 @@ export class MemoryRepository {
     });
   }
 
+  applyDeltaInTransaction(input: {
+    bookId: string;
+    delta: MemoryDelta;
+    sourceCandidateId: string | null;
+    sourceChapterNumber: number | null;
+  }): readonly MemoryConflict[] {
+    const delta = MemoryDeltaSchema.parse(input.delta);
+    // The candidate already persists provider-reported conflicts. Return only
+    // conflicts discovered while applying this transaction so the caller does
+    // not duplicate them in the candidate delta.
+    const conflicts: MemoryConflict[] = [];
+    let changed = false;
+    const timestamp = this.now();
+    const addConflict = (
+      entryId: string,
+      reason: MemoryConflict["reason"],
+      summary: string,
+    ) => {
+      conflicts.push({ entryId, reason, summary });
+    };
+
+    for (const draft of delta.add) {
+      const duplicate = this.database
+        .prepare(
+          "SELECT id FROM memory_entries WHERE book_id = ? AND kind = ? AND subject = ?",
+        )
+        .get(input.bookId, draft.kind, draft.subject) as { id: string } | undefined;
+      if (duplicate) {
+        addConflict(
+          duplicate.id,
+          "contradiction",
+          "AI 记忆新增与现有条目主题重复，未覆盖原条目。",
+        );
+        continue;
+      }
+      const entry = MemoryEntrySchema.parse({
+        ...draft,
+        id: this.createId(),
+        bookId: input.bookId,
+        locked: false,
+        sourceCandidateId: input.sourceCandidateId,
+        source: "accepted_candidate",
+        sourceChapterNumber:
+          input.sourceChapterNumber ?? draft.sourceChapterNumber,
+        revision: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      this.database
+        .prepare(
+          "INSERT INTO memory_entries (id, book_id, kind, subject, content_json, status, importance, locked, source_chapter_number, source_candidate_id, valid_from_chapter, valid_to_chapter, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          entry.id,
+          entry.bookId,
+          entry.kind,
+          entry.subject,
+          JSON.stringify(entry.content),
+          entry.status,
+          entry.importance,
+          entry.locked ? 1 : 0,
+          entry.sourceChapterNumber,
+          entry.sourceCandidateId,
+          entry.validFromChapter,
+          entry.validToChapter,
+          entry.revision,
+          entry.createdAt,
+          entry.updatedAt,
+        );
+      this.insertRevision(entry, "accepted_candidate", input.sourceCandidateId);
+      changed = true;
+    }
+
+    for (const update of delta.update) {
+      const entry = this.get(update.id);
+      if (entry.bookId !== input.bookId) {
+        addConflict(update.id, "revision", "记忆条目不属于当前作品。");
+        continue;
+      }
+      if (entry.locked) {
+        addConflict(update.id, "locked", "记忆条目已锁定，AI 更新被跳过。");
+        continue;
+      }
+      if (entry.revision !== update.expectedRevision) {
+        addConflict(update.id, "revision", "记忆条目版本已经变化，AI 更新被跳过。");
+        continue;
+      }
+      const updated = MemoryEntrySchema.parse({
+        ...entry,
+        content: update.content ?? entry.content,
+        status: update.status ?? entry.status,
+        importance: update.importance ?? entry.importance,
+        source: "accepted_candidate",
+        sourceCandidateId: input.sourceCandidateId,
+        sourceChapterNumber: input.sourceChapterNumber ?? entry.sourceChapterNumber,
+        revision: entry.revision + 1,
+        updatedAt: timestamp,
+      });
+      this.database
+        .prepare(
+          "UPDATE memory_entries SET content_json = ?, status = ?, importance = ?, source_chapter_number = ?, source_candidate_id = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?",
+        )
+        .run(
+          JSON.stringify(updated.content),
+          updated.status,
+          updated.importance,
+          updated.sourceChapterNumber,
+          updated.sourceCandidateId,
+          updated.revision,
+          updated.updatedAt,
+          updated.id,
+          entry.revision,
+        );
+      this.insertRevision(updated, "accepted_candidate", input.sourceCandidateId);
+      changed = true;
+    }
+
+    for (const resolve of delta.resolve) {
+      const entry = this.get(resolve.id);
+      if (entry.bookId !== input.bookId) {
+        addConflict(resolve.id, "revision", "记忆条目不属于当前作品。");
+        continue;
+      }
+      if (entry.locked) {
+        addConflict(resolve.id, "locked", "记忆条目已锁定，AI 解决操作被跳过。");
+        continue;
+      }
+      if (entry.revision !== resolve.expectedRevision) {
+        addConflict(resolve.id, "revision", "记忆条目版本已经变化，解决操作被跳过。");
+        continue;
+      }
+      const updated = MemoryEntrySchema.parse({
+        ...entry,
+        status: "resolved",
+        source: "accepted_candidate",
+        sourceCandidateId: input.sourceCandidateId,
+        sourceChapterNumber: input.sourceChapterNumber ?? entry.sourceChapterNumber,
+        revision: entry.revision + 1,
+        updatedAt: timestamp,
+      });
+      this.database
+        .prepare(
+          "UPDATE memory_entries SET status = ?, source_chapter_number = ?, source_candidate_id = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?",
+        )
+        .run(
+          updated.status,
+          updated.sourceChapterNumber,
+          updated.sourceCandidateId,
+          updated.revision,
+          updated.updatedAt,
+          updated.id,
+          entry.revision,
+        );
+      this.insertRevision(updated, "accepted_candidate", input.sourceCandidateId);
+      changed = true;
+    }
+
+    if (changed) {
+      this.database
+        .prepare(
+          "UPDATE books SET memory_revision = memory_revision + 1, updated_at = ? WHERE id = ?",
+        )
+        .run(timestamp, input.bookId);
+    }
+    return conflicts;
+  }
   updateManual(input: UpdateMemoryInput): MemoryEntry {
     return this.withTransaction(() => {
       const entry = this.get(input.entryId);
@@ -410,19 +619,23 @@ export class MemoryRepository {
         status: input.status ?? entry.status,
         importance: input.importance ?? entry.importance,
         locked: input.locked ?? entry.locked,
+        source: "manual_edit",
+        sourceCandidateId: null,
         revision: entry.revision + 1,
         updatedAt: this.now(),
       });
       this.database
         .prepare(
           `UPDATE memory_entries SET content_json = ?, status = ?, importance = ?,
-           locked = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?`,
+           locked = ?, source_candidate_id = ?, revision = ?, updated_at = ?
+           WHERE id = ? AND revision = ?`,
         )
         .run(
           JSON.stringify(updated.content),
           updated.status,
           updated.importance,
           updated.locked ? 1 : 0,
+          updated.sourceCandidateId,
           updated.revision,
           updated.updatedAt,
           updated.id,
@@ -472,6 +685,14 @@ export class MemoryRepository {
     return row;
   }
 
+  getMemoryRevision(bookId: string): number {
+    return this.getBookRevision(bookId).memory_revision;
+  }
+
+  getBookRevisionNumber(bookId: string): number {
+    return this.getBookRevision(bookId).revision;
+  }
+
   private requireBook(bookId: string): void {
     this.getBookRevision(bookId);
   }
@@ -501,6 +722,7 @@ function toMemoryEntry(row: MemoryEntryRow): MemoryEntry {
     locked: row.locked === 1,
     sourceChapterNumber: row.source_chapter_number,
     sourceCandidateId: row.source_candidate_id,
+    source: row.source ?? "foundation",
     validFromChapter: row.valid_from_chapter,
     validToChapter: row.valid_to_chapter,
     revision: row.revision,
