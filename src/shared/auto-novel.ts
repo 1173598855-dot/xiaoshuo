@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ChapterSchema, MAX_CHAPTER_CONTENT_CHARACTERS } from "./contracts";
+import { MemoryDeltaSchema } from "./memory";
 
 const UuidSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
@@ -202,6 +203,9 @@ export const ChapterCandidateSchema = z
     bookId: UuidSchema,
     runId: UuidSchema.nullable(),
     chapterId: UuidSchema,
+    memoryRevision: z.number().int().nonnegative().default(0),
+    memoryContextHash: HashSchema.default("0".repeat(64)),
+    memoryDelta: MemoryDeltaSchema.nullable().default(null),
     baseRevision: z.number().int().nonnegative(),
     context: ChapterCandidateContextSchema,
     candidateText: z.string().max(MAX_CHAPTER_CONTENT_CHARACTERS),

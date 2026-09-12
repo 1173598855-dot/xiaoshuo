@@ -12,6 +12,7 @@ const AUTO_NOVEL_SCHEMA = `
     target_chapter_characters INTEGER NOT NULL DEFAULT 2500 CHECK (target_chapter_characters BETWEEN 200 AND 100000),
     status TEXT NOT NULL DEFAULT 'directions-generating',
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    memory_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_revision >= 0),
     selected_direction_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -99,6 +100,9 @@ const AUTO_NOVEL_SCHEMA = `
     base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
     context_revision INTEGER NOT NULL CHECK (context_revision >= 0),
     context_hash TEXT NOT NULL,
+    memory_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_revision >= 0),
+    memory_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
+    memory_delta_json TEXT NOT NULL DEFAULT 'null',
     candidate_text TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     review_json TEXT NOT NULL,
@@ -129,8 +133,20 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   if (!candidateColumns.some(({ name }) => name === "run_id")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN run_id TEXT REFERENCES production_runs(id) ON DELETE CASCADE");
   }
+  if (!candidateColumns.some(({ name }) => name === "memory_revision")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_revision INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!candidateColumns.some(({ name }) => name === "memory_context_hash")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'");
+  }
+  if (!candidateColumns.some(({ name }) => name === "memory_delta_json")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_delta_json TEXT NOT NULL DEFAULT 'null'");
+  }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
+  if (!columns.some(({ name }) => name === "memory_revision")) {
+    database.exec("ALTER TABLE books ADD COLUMN memory_revision INTEGER NOT NULL DEFAULT 0");
+  }
   if (!columns.some(({ name }) => name === "director_idempotency_key")) {
     database.exec("ALTER TABLE books ADD COLUMN director_idempotency_key TEXT");
   }

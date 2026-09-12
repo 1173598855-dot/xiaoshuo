@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { publicProviderErrorMessage } from "../../shared/contracts";
 import { ensureAutoNovelSchema } from './auto-novel-schema';
+import { ensureMemorySchema } from './memory-schema';
 
 const GENERATIONS_TABLE_DEFINITION = `(
     id TEXT PRIMARY KEY,
@@ -144,6 +145,7 @@ export function migrate(database: DatabaseSync): void {
       )
       .run();
     ensureAutoNovelSchema(database);
+    ensureMemorySchema(database);
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
