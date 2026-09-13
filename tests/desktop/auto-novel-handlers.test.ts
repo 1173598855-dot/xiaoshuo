@@ -33,10 +33,13 @@ function createFixture(isTrustedSender = true) {
       createBook: vi.fn(() => book),
       listBooks: vi.fn(() => [book]),
       getBook: vi.fn(() => ({ book, directions: [], foundation: null, chapterPlans: [], run: null })),
+      listDirections: vi.fn(() => []),
     },
     directorService: { generateDirections: vi.fn(async () => []) },
     foundationService: { generate: vi.fn(async () => undefined) },
     productionRepository: {
+      getCandidate: vi.fn(() => ({ id: "candidate" })),
+      getChapters: vi.fn(() => []),
       updateCandidateMemoryReview: vi.fn(() => ({ id: "candidate" })),
       editCandidateText: vi.fn(() => ({ id: "candidate" })),
     },
@@ -153,5 +156,30 @@ describe("auto novel desktop IPC", () => {
       expectedEntryRevision: 1,
       targetRevision: 1,
     });
+  });
+
+  it("exposes read projections through dedicated validated channels", async () => {
+    const { handlers, services, book } = createFixture();
+    const directions = await handlers.get(AUTO_NOVEL_CHANNELS.directionsList)?.({}, {
+      bookId: book.id,
+    });
+    expect(directions).toMatchObject({ ok: true, data: [] });
+    expect(services.bookRepository.listDirections).toHaveBeenCalledWith(book.id);
+
+    const chapters = await handlers.get(AUTO_NOVEL_CHANNELS.booksChapters)?.({}, {
+      bookId: book.id,
+    });
+    expect(chapters).toMatchObject({
+      ok: true,
+      data: { bookId: book.id, plans: [], chapters: [] },
+    });
+    expect(services.productionRepository.getChapters).toHaveBeenCalledWith(book.id);
+
+    const candidateId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
+    const candidate = await handlers.get(AUTO_NOVEL_CHANNELS.candidateGet)?.({}, {
+      candidateId,
+    });
+    expect(candidate).toMatchObject({ ok: true, data: { id: "candidate" } });
+    expect(services.productionRepository.getCandidate).toHaveBeenCalledWith(candidateId);
   });
 });

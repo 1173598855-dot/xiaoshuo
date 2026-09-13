@@ -57,6 +57,31 @@ $env:XIAOYI_FAKE_PROVIDER = "1"
 npm run dev
 ```
 
+## HTTP 接口
+
+服务端提供与创作流程对应的 JSON API，默认地址为 `http://127.0.0.1:4310`：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/health` | 健康检查 |
+| `GET` | `/api/providers`、`/api/providers/models` | Provider 目录 / 拉取兼容端点模型列表 |
+| `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并生成 3 个方向 |
+| `GET` | `/api/books/:bookId` | 读取作品、基础设定、章纲和任务摘要 |
+| `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |
+| `POST` | `/api/books/:bookId/directions/:directionId/select` | 选择方向并生成基础设定与章纲 |
+| `GET` | `/api/books/:bookId/chapters` | 读取章纲与已采纳正文 |
+| `POST` | `/api/books/:bookId/production` | 启动整本生产 |
+| `GET` | `/api/production-runs/:runId` | 查询生产进度、候选和检查点 |
+| `POST` | `/api/production-runs/:runId/pause\|resume\|cancel` | 控制任务 |
+| `GET` | `/api/chapter-candidates/:candidateId` | 读取候选及审核结果 |
+| `PATCH` | `/api/chapter-candidates/:candidateId/text\|memory-review` | 编辑候选或保存记忆审阅 |
+| `POST` | `/api/chapter-candidates/:candidateId/accept\|discard` | 原子采纳或丢弃候选 |
+| `GET` | `/api/books/:bookId/memory`、`/api/books/:bookId/memory/context/:chapterNumber` | 读取记忆账本 / 预览注入上下文 |
+| `GET` / `PATCH` / `POST` | `/api/memory/:entryId/history`、`/api/memory/:entryId`、`/api/memory/:entryId/rollback` | 查看历史、手动修正和回滚记忆 |
+| `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT |
+
+所有输入和返回值都经过共享 Zod 契约校验；失败统一返回 `{ "error": { "code", "message" } }`。Electron 桌面端使用同一业务语义的白名单 IPC，不让 Renderer 接触 API Key。
+
 ## Windows 桌面版
 
 ```powershell

@@ -1,10 +1,12 @@
 import type { DesktopIpcRenderer } from "./preload-api";
 import { AUTO_NOVEL_CHANNELS } from "./ipc/auto-novel-channels";
-import type { ProviderId, DesktopResult, Chapter } from "../shared/contracts";
+import type { ProviderId, DesktopResult } from "../shared/contracts";
 import type { ProviderConfig } from "../shared/contracts";
 import type {
   Book,
+  BookChapters,
   BookDetails,
+  AcceptedChapterResult,
   ChapterCandidate,
   CreateBookInput,
   ProductionRun,
@@ -37,12 +39,14 @@ export interface AutoNovelDesktopApiV2 {
       idempotencyKey: string;
     }): Promise<DesktopResult<{ book: Book; directions: readonly StoryDirection[] }>>;
     get(bookId: string): Promise<DesktopResult<BookDetails>>;
+    chapters(bookId: string): Promise<DesktopResult<BookChapters>>;
     export(input: {
       bookId: string;
       format: "markdown" | "txt" | "docx";
     }): Promise<DesktopResult<{ format: string; content: string }>>;
   };
   readonly directions: {
+    list(bookId: string): Promise<DesktopResult<readonly StoryDirection[]>>;
     select(input: {
       bookId: string;
       directionId: string;
@@ -63,8 +67,9 @@ export interface AutoNovelDesktopApiV2 {
     cancel(runId: string): Promise<DesktopResult<ProductionRun>>;
   };
   readonly candidates: {
-    accept(input: { candidateId: string; expectedRevision: number }): Promise<DesktopResult<{ candidate: ChapterCandidate; chapter: Chapter; run: ProductionRun }>>;
-    discard(candidateId: string): Promise<DesktopResult<unknown>>;
+    accept(input: { candidateId: string; expectedRevision: number }): Promise<DesktopResult<AcceptedChapterResult>>;
+    get(candidateId: string): Promise<DesktopResult<ChapterCandidate>>;
+    discard(candidateId: string): Promise<DesktopResult<ChapterCandidate>>;
     updateMemoryReview(input: UpdateCandidateMemoryReviewInput): Promise<DesktopResult<ChapterCandidate>>;
     updateText(input: UpdateCandidateTextInput): Promise<DesktopResult<ChapterCandidate>>;
   };
@@ -86,9 +91,11 @@ export function createAutoNovelPreloadApiV2(
       list: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksList),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
+      chapters: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksChapters, { bookId }),
       export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),
     },
     directions: {
+      list: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.directionsList, { bookId }),
       select: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.directionsSelect, input),
     },
     production: {
@@ -100,6 +107,7 @@ export function createAutoNovelPreloadApiV2(
     },
     candidates: {
       accept: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateAccept, input),
+      get: (candidateId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateGet, { candidateId }),
       discard: (candidateId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateDiscard, { candidateId }),
       updateMemoryReview: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateMemoryReview, input),
       updateText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateTextUpdate, input),

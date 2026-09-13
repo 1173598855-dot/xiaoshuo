@@ -128,6 +128,41 @@ describe("auto-novel HTTP app", () => {
     expect(JSON.stringify(body)).not.toContain("sk-test-only");
   });
 
+  it("exposes directions and chapter projections as first-class read APIs", async () => {
+    const { app, provider } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "公开章节接口", provider, idempotencyKey: "read-api-1" }),
+    });
+    const createdBody = await created.json() as {
+      book: { id: string; revision: number };
+      directions: Array<{ id: string }>;
+    };
+
+    const directions = await app.request(`/api/books/${createdBody.book.id}/directions`);
+    expect(directions.status).toBe(200);
+    expect(await directions.json()).toHaveLength(3);
+
+    const selected = await app.request(
+      `/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+      },
+    );
+    expect(selected.status).toBe(200);
+
+    const chapters = await app.request(`/api/books/${createdBody.book.id}/chapters`);
+    expect(chapters.status).toBe(200);
+    expect(await chapters.json()).toMatchObject({
+      bookId: createdBody.book.id,
+      plans: expect.any(Array),
+      chapters: [],
+    });
+  });
+
   it("selects a direction and automatically builds foundation and chapter plans", async () => {
     const { app, provider } = fixture();
     const created = await app.request("/api/books", {
@@ -327,6 +362,10 @@ describe("auto-novel HTTP app", () => {
       review: { status: "pending" },
       memoryDelta: null,
     });
+
+    const candidateResponse = await app.request(`/api/chapter-candidates/${candidate.id}`);
+    expect(candidateResponse.status).toBe(200);
+    expect(await candidateResponse.json()).toMatchObject({ id: candidate.id });
   });
 
   it("persists a selected memory allow-list on the production run", async () => {

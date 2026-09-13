@@ -138,6 +138,23 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     context.json(dependencies.bookRepository.getBook(context.req.param("bookId"))),
   );
 
+  app.get("/api/books/:bookId/directions", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    return context.json(dependencies.bookRepository.listDirections(bookId.data));
+  });
+
+  app.get("/api/books/:bookId/chapters", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    const details = dependencies.bookRepository.getBook(bookId.data);
+    return context.json({
+      bookId: bookId.data,
+      plans: details.chapterPlans,
+      chapters: dependencies.productionRepository.getChapters(bookId.data),
+    });
+  });
+
   app.get("/api/books/:bookId/memory", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
@@ -329,6 +346,12 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
         parsed.data.expectedRevision,
       ),
     );
+  });
+
+  app.get("/api/chapter-candidates/:candidateId", (context) => {
+    const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
+    if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    return context.json(dependencies.productionRepository.getCandidate(candidateId.data));
   });
 
   app.post("/api/chapter-candidates/:candidateId/discard", (context) =>

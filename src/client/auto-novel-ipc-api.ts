@@ -3,7 +3,9 @@ import { z } from "zod";
 import type { AutoNovelDesktopApiV2 } from "../desktop/auto-novel-preload-api-v2";
 import {
   BookDetailsSchema,
+  BookChaptersSchema,
   BookSchema,
+  AcceptedChapterResultSchema,
   CreateBookInputSchema,
   ChapterCandidateSchema,
   ProductionRunSchema,
@@ -54,6 +56,15 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     async getBook(bookId) {
       return parseResult(await api.books.get(bookId), BookDetailsSchema);
     },
+    async listDirections(bookId) {
+      return parseResult(await api.directions.list(bookId), z.array(StoryDirectionSchema));
+    },
+    async getChapters(bookId) {
+      return parseResult(await api.books.chapters(bookId), BookChaptersSchema);
+    },
+    async getCandidate(candidateId) {
+      return parseResult(await api.candidates.get(candidateId), ChapterCandidateSchema);
+    },
     async selectDirection(bookId, directionId, expectedBookRevision, provider) {
       return parseResult(
         await api.directions.select({
@@ -90,6 +101,15 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async cancelRun(runId) {
       return parseResult(await api.production.cancel(runId), ProductionRunSchema);
+    },
+    async acceptCandidate(candidateId, expectedRevision) {
+      return parseResult(
+        await api.candidates.accept({ candidateId, expectedRevision }),
+        AcceptedChapterResultSchema,
+      );
+    },
+    async discardCandidate(candidateId) {
+      return parseResult(await api.candidates.discard(candidateId), ChapterCandidateSchema);
     },
     async exportBook(bookId, format) {
       const result = parseResult(

@@ -293,6 +293,16 @@ export const BookDetailsSchema = z
   .strict();
 export type BookDetails = z.infer<typeof BookDetailsSchema>;
 
+/** Public chapter workspace projection used by the standalone chapters API. */
+export const BookChaptersSchema = z
+  .object({
+    bookId: UuidSchema,
+    plans: z.array(ChapterPlanSchema),
+    chapters: z.array(ChapterSchema),
+  })
+  .strict();
+export type BookChapters = z.infer<typeof BookChaptersSchema>;
+
 export const ProductionRunDetailsSchema = z
   .object({
     run: ProductionRunSchema,

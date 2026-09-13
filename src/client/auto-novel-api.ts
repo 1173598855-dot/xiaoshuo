@@ -2,10 +2,14 @@ import { z } from "zod";
 
 import {
   BookDetailsSchema,
+  BookChaptersSchema,
   BookSchema,
+  AcceptedChapterResultSchema,
+  AcceptCandidateInputSchema,
   ChapterCandidateSchema,
   CreateBookInputSchema,
   ExportBookInputSchema,
+  StoryDirectionSchema,
   ProductionCheckpointSchema,
   ProductionRunSchema,
   SelectDirectionInputSchema,
@@ -14,8 +18,10 @@ import {
   UpdateCandidateMemoryReviewInputSchema,
   type Book,
   type BookDetails,
+  type BookChapters,
   type ChapterCandidate,
   type CreateBookInput,
+  type AcceptedChapterResult,
   type ProductionRun,
   type StoryDirection,
 } from "../shared/auto-novel";
@@ -67,6 +73,9 @@ export interface AutoNovelApi {
     idempotencyKey: string,
   ): Promise<{ book: Book; directions: readonly StoryDirection[] }>;
   getBook(bookId: string): Promise<BookDetails>;
+  listDirections(bookId: string): Promise<readonly StoryDirection[]>;
+  getChapters(bookId: string): Promise<BookChapters>;
+  getCandidate(candidateId: string): Promise<ChapterCandidate>;
   selectDirection(
     bookId: string,
     directionId: string,
@@ -83,6 +92,8 @@ export interface AutoNovelApi {
   pauseRun(runId: string): Promise<ProductionRun>;
   resumeRun(runId: string, provider: AutoNovelProviderInput): Promise<ProductionRun>;
   cancelRun(runId: string): Promise<ProductionRun>;
+  acceptCandidate(candidateId: string, expectedRevision: number): Promise<AcceptedChapterResult>;
+  discardCandidate(candidateId: string): Promise<ChapterCandidate>;
   exportBook(bookId: string, format: "markdown" | "txt" | "docx"): Promise<string>;
   listMemory(bookId: string, filter?: Partial<MemoryFilter>): Promise<MemoryBookSnapshot>;
   getMemoryContext(bookId: string, chapterNumber: number, memoryContextConfig?: MemoryContextConfig): Promise<MemoryContext>;
@@ -119,11 +130,26 @@ export function createAutoNovelApi(
           idempotencyKey: StartProductionInputSchema.shape.idempotencyKey.parse(idempotencyKey),
         }),
       });
-      const parsed = z.object({ book: BookSchema, directions: z.array(z.unknown()) }).strict().parse(body);
-      return { book: parsed.book, directions: parsed.directions as StoryDirection[] };
+      const parsed = z.object({ book: BookSchema, directions: z.array(StoryDirectionSchema) }).strict().parse(body);
+      return { book: parsed.book, directions: parsed.directions };
     },
     async getBook(bookId) {
       return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}`));
+    },
+    async listDirections(bookId) {
+      return z.array(StoryDirectionSchema).parse(
+        await requestJson(fetchImpl, `/api/books/${bookId}/directions`),
+      );
+    },
+    async getChapters(bookId) {
+      return BookChaptersSchema.parse(
+        await requestJson(fetchImpl, `/api/books/${bookId}/chapters`),
+      );
+    },
+    async getCandidate(candidateId) {
+      return ChapterCandidateSchema.parse(
+        await requestJson(fetchImpl, `/api/chapter-candidates/${candidateId}`),
+      );
     },
     async selectDirection(bookId, directionId, expectedBookRevision, provider) {
       const body = SelectDirectionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({ expectedBookRevision, provider: providerForHttp(provider) });
@@ -148,6 +174,14 @@ export function createAutoNovelApi(
     },
     async cancelRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/cancel`, { method: "POST", body: JSON.stringify({ action: "cancel" }) }));
+    },
+    async acceptCandidate(candidateId, expectedRevision) {
+      const parsed = AcceptCandidateInputSchema.parse({ expectedRevision });
+      return AcceptedChapterResultSchema.parse(await requestJson(fetchImpl, `/api/chapter-candidates/${candidateId}/accept`, { method: "POST", body: JSON.stringify(parsed) }));
+    },
+    async discardCandidate(candidateId) {
+      const parsedCandidateId = z.string().uuid().parse(candidateId);
+      return ChapterCandidateSchema.parse(await requestJson(fetchImpl, `/api/chapter-candidates/${parsedCandidateId}/discard`, { method: "POST" }));
     },
     async exportBook(bookId, format) {
       const parsed = ExportBookInputSchema.parse({ format });

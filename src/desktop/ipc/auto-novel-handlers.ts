@@ -89,6 +89,26 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.booksGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) =>
     dependencies.getServices().bookRepository.getBook(bookId),
   );
+  register(
+    dependencies,
+    AUTO_NOVEL_CHANNELS.booksChapters,
+    z.object({ bookId: z.string().uuid() }).strict(),
+    ({ bookId }) => {
+      const services = dependencies.getServices();
+      const details = services.bookRepository.getBook(bookId);
+      return {
+        bookId,
+        plans: details.chapterPlans,
+        chapters: services.productionRepository.getChapters(bookId),
+      };
+    },
+  );
+  register(
+    dependencies,
+    AUTO_NOVEL_CHANNELS.directionsList,
+    z.object({ bookId: z.string().uuid() }).strict(),
+    ({ bookId }) => dependencies.getServices().bookRepository.listDirections(bookId),
+  );
   register(dependencies, AUTO_NOVEL_CHANNELS.directionsSelect, SelectRequestSchema, async ({ bookId, directionId, expectedBookRevision, providerId }) => {
     const services = dependencies.getServices();
     const book = services.directorService.selectDirection(bookId, directionId, expectedBookRevision);
@@ -123,6 +143,12 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.candidateAccept, CandidateAcceptRequestSchema, ({ candidateId, expectedRevision }) =>
     dependencies.getServices().productionRepository.acceptCandidate(candidateId, expectedRevision),
+  );
+  register(
+    dependencies,
+    AUTO_NOVEL_CHANNELS.candidateGet,
+    z.object({ candidateId: z.string().uuid() }).strict(),
+    ({ candidateId }) => dependencies.getServices().productionRepository.getCandidate(candidateId),
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.candidateDiscard, CandidateDiscardRequestSchema, ({ candidateId }) =>
     dependencies.getServices().productionRepository.discardCandidate(candidateId),

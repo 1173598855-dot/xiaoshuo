@@ -263,6 +263,11 @@ export class BookRepository {
     });
   }
 
+  listDirections(bookId: string): readonly StoryDirection[] {
+    this.requireBookRow(bookId);
+    return this.getDirections(bookId);
+  }
+
   saveDirections(
     bookId: string,
     drafts: readonly DirectionDraft[],
