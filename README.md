@@ -22,6 +22,10 @@
 - 正式正文支持 Markdown、TXT 导出，DOCX 接口保留在扩展位；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 
+## 界面方向
+
+前端采用编辑部 / 独立出版物式的视觉语言：大字号叙事标题、细线网格、黑白纸张底色和橙色行动色，把“输入想法 → 选择方向 → 生产正文”做成一条清晰的创作路径。桌面端保持高密度工作台，移动端在 `390x844` 下折叠为单列；参考了 Awwwards 收录网站常见的编排、留白和作品展示节奏，但未复制其代码或资源。
+
 参考的产品方向是 [AI-Novel-Writing-Assistant](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant)，本项目没有复制其代码或资源。
 
 ## 环境
