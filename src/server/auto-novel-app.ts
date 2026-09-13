@@ -9,10 +9,13 @@ import {
   ProductionCommandInputSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
+  UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
 } from "../shared/auto-novel";
 import {
   MemoryFilterSchema,
+  MemoryContextConfigSchema,
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
   RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
 } from "../shared/memory";
@@ -158,10 +161,20 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
       return context.json(apiError("VALIDATION_ERROR", "章节编号无效。"), 400);
     }
+    const query = context.req.query();
+    const rawEntryIds = context.req.queries().entryId ?? [];
+    const selection = MemoryContextConfigSchema.safeParse({
+      mode: query.selectionMode ?? DEFAULT_MEMORY_CONTEXT_CONFIG.mode,
+      entryIds: rawEntryIds,
+    });
+    if (!selection.success) {
+      return context.json(apiError("VALIDATION_ERROR", "记忆注入选择无效。"), 400);
+    }
     return context.json(
       requireMemoryService(dependencies).getContextForChapter(
         bookId.data,
         chapterNumber,
+        selection.data,
       ),
     );
   });
@@ -263,6 +276,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       context.req.param("bookId"),
       "production",
       parsed.data.idempotencyKey,
+      parsed.data.memoryContextConfig,
     );
     void dependencies.productionService
       .start(run.id, parsed.data.provider)
@@ -324,6 +338,19 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       ),
     ),
   );
+
+  app.patch("/api/chapter-candidates/:candidateId/text", async (context) => {
+    const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
+    if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    const parsed = await parseJson(context.req.raw, UpdateCandidateTextInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.candidateId !== candidateId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "候选标识不一致。"), 400);
+    }
+    return context.json(
+      dependencies.productionRepository.editCandidateText(parsed.data),
+    );
+  });
 
   app.patch("/api/chapter-candidates/:candidateId/memory-review", async (context) => {
     const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));

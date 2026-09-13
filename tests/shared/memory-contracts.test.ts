@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MemoryContextSchema,
+  MemoryContextConfigSchema,
   MemoryDeltaSchema,
   MemoryEntrySchema,
   MemoryKindSchema,
@@ -91,6 +92,15 @@ describe("memory contracts", () => {
       contextHash: "a".repeat(64),
       characterCount: 20_001,
     })).toThrow();
+  });
+
+  it("keeps automatic selection separate from an explicit allow-list", () => {
+    expect(MemoryContextConfigSchema.parse({ mode: "selected", entryIds: [ids.entry] })).toEqual({
+      mode: "selected",
+      entryIds: [ids.entry],
+    });
+    expect(() => MemoryContextConfigSchema.parse({ mode: "automatic", entryIds: [ids.entry] })).toThrow();
+    expect(() => MemoryContextConfigSchema.parse({ mode: "selected", entryIds: [ids.entry, ids.entry] })).toThrow();
   });
 
   it("accepts candidate memory baselines without exposing provider data", () => {

@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { ChapterSchema, MAX_CHAPTER_CONTENT_CHARACTERS } from "./contracts";
-import { MemoryDeltaReviewSchema, MemoryDeltaSchema } from "./memory";
+import {
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
+  MemoryContextConfigSchema,
+  MemoryDeltaReviewSchema,
+  MemoryDeltaSchema,
+} from "./memory";
 
 const UuidSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
@@ -168,6 +173,7 @@ export const ProductionRunSchema = z
     currentChapterNumber: z.number().int().nonnegative().nullable(),
     version: z.number().int().nonnegative(),
     idempotencyKey: z.string().min(1).max(200),
+    memoryContextConfig: MemoryContextConfigSchema.default(DEFAULT_MEMORY_CONTEXT_CONFIG),
     errorCode: z.string().max(120).nullable(),
     createdAt: TimestampSchema,
     updatedAt: TimestampSchema,
@@ -213,6 +219,9 @@ export const ChapterCandidateSchema = z
       ignoredResolveIds: [],
     }),
     memoryReviewRevision: z.number().int().nonnegative().default(0),
+    originalText: z.string().max(MAX_CHAPTER_CONTENT_CHARACTERS).optional(),
+    candidateTextRevision: z.number().int().nonnegative().optional(),
+    memoryContextConfig: MemoryContextConfigSchema.optional(),
     baseRevision: z.number().int().nonnegative(),
     context: ChapterCandidateContextSchema,
     candidateText: z.string().max(MAX_CHAPTER_CONTENT_CHARACTERS),
@@ -262,6 +271,17 @@ export type UpdateCandidateMemoryReviewInput = z.infer<
   typeof UpdateCandidateMemoryReviewInputSchema
 >;
 
+export const UpdateCandidateTextInputSchema = z
+  .object({
+    candidateId: UuidSchema,
+    expectedCandidateTextRevision: z.number().int().nonnegative(),
+    candidateText: z.string().trim().min(1).max(MAX_CHAPTER_CONTENT_CHARACTERS),
+  })
+  .strict();
+export type UpdateCandidateTextInput = z.infer<
+  typeof UpdateCandidateTextInputSchema
+>;
+
 export const BookDetailsSchema = z
   .object({
     book: BookSchema,
@@ -298,7 +318,10 @@ export const SelectDirectionInputSchema = z
 export type SelectDirectionInput = z.infer<typeof SelectDirectionInputSchema>;
 
 export const StartProductionInputSchema = z
-  .object({ idempotencyKey: z.string().trim().min(1).max(200) })
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(200),
+    memoryContextConfig: MemoryContextConfigSchema.default(DEFAULT_MEMORY_CONTEXT_CONFIG),
+  })
   .strict();
 export type StartProductionInput = z.infer<typeof StartProductionInputSchema>;
 

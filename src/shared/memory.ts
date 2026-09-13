@@ -289,6 +289,36 @@ export const MemoryContextSelectionSchema = z
   .strict();
 export type MemoryContextSelection = z.infer<typeof MemoryContextSelectionSchema>;
 
+/** Explicit allow-list used when local memories are sent to a Provider. */
+export const MemoryContextConfigSchema = z
+  .object({
+    mode: z.enum(["automatic", "selected"]),
+    entryIds: z.array(UuidSchema).max(500),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === "automatic" && value.entryIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["entryIds"],
+        message: "Automatic memory selection cannot include explicit entry IDs",
+      });
+    }
+    if (new Set(value.entryIds).size !== value.entryIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["entryIds"],
+        message: "Memory entry IDs must be unique",
+      });
+    }
+  });
+export type MemoryContextConfig = z.infer<typeof MemoryContextConfigSchema>;
+
+export const DEFAULT_MEMORY_CONTEXT_CONFIG: MemoryContextConfig = {
+  mode: "automatic",
+  entryIds: [],
+};
+
 export const MemoryContextSchema = z
   .object({
     entries: z.array(MemoryEntrySchema).max(500),

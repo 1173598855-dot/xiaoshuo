@@ -1,6 +1,6 @@
 {
   "name": "xiaoyi-novel-workbench",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "本地优先、候选先审后采纳的中文 AI 长篇小说工作台。",
   "author": "1173598855-dot",
   "private": true,

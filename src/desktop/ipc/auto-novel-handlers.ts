@@ -4,11 +4,13 @@ import {
   CreateBookInputSchema,
   SelectDirectionInputSchema,
   ExportBookInputSchema,
+  UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
 import {
   MemoryFilterSchema,
+  MemoryContextConfigSchema,
   RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
 } from "../../shared/memory";
@@ -37,6 +39,7 @@ const ProductionStartRequestSchema = z
     bookId: z.string().uuid(),
     providerId: ProviderIdSchema,
     idempotencyKey: IdempotencyKeySchema,
+    memoryContextConfig: MemoryContextConfigSchema.optional(),
   })
   .strict();
 const RunRequestSchema = z.object({ runId: z.string().uuid() }).strict();
@@ -47,6 +50,7 @@ const CandidateAcceptRequestSchema = z
   .object({ candidateId: z.string().uuid(), expectedRevision: z.number().int().nonnegative() })
   .strict();
 const CandidateDiscardRequestSchema = z.object({ candidateId: z.string().uuid() }).strict();
+const CandidateTextUpdateRequestSchema = UpdateCandidateTextInputSchema;
 const ExportRequestSchema = ExportBookInputSchema.extend({ bookId: z.string().uuid() }).strict();
 const MemoryListRequestSchema = z.object({
   bookId: z.string().uuid(),
@@ -55,6 +59,7 @@ const MemoryListRequestSchema = z.object({
 const MemoryContextRequestSchema = z.object({
   bookId: z.string().uuid(),
   chapterNumber: z.number().int().positive(),
+  memoryContextConfig: MemoryContextConfigSchema.optional(),
 }).strict();
 const MemoryHistoryRequestSchema = z.object({ entryId: z.string().uuid() }).strict();
 
@@ -90,9 +95,9 @@ export function registerAutoNovelIpcHandlers(
     await services.foundationService.generate(book.id, await resolveProvider(dependencies.providerVault, providerId));
     return services.bookRepository.getBook(book.id);
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, providerId, idempotencyKey }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, providerId, idempotencyKey, memoryContextConfig }) => {
     const services = dependencies.getServices();
-    const run = services.productionRepository.createRun(bookId, "production", idempotencyKey);
+    const run = services.productionRepository.createRun(bookId, "production", idempotencyKey, memoryContextConfig);
     void services.productionService.start(run.id, await resolveProvider(dependencies.providerVault, providerId)).catch(() => undefined);
     return run;
   });
@@ -133,6 +138,12 @@ export function registerAutoNovelIpcHandlers(
         review,
       ),
   );
+  register(
+    dependencies,
+    AUTO_NOVEL_CHANNELS.candidateTextUpdate,
+    CandidateTextUpdateRequestSchema,
+    (input) => dependencies.getServices().productionRepository.editCandidateText(input),
+  );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
     format,
     content: buildExport(dependencies.getServices(), bookId, format),
@@ -140,8 +151,8 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.memoryList, MemoryListRequestSchema, ({ bookId, filter }) =>
     dependencies.getServices().memoryService.snapshot(bookId, filter),
   );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryContext, MemoryContextRequestSchema, ({ bookId, chapterNumber }) =>
-    dependencies.getServices().memoryService.getContextForChapter(bookId, chapterNumber),
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryContext, MemoryContextRequestSchema, ({ bookId, chapterNumber, memoryContextConfig }) =>
+    dependencies.getServices().memoryService.getContextForChapter(bookId, chapterNumber, memoryContextConfig),
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.memoryHistory, MemoryHistoryRequestSchema, ({ entryId }) =>
     dependencies.getServices().memoryService.history(entryId),

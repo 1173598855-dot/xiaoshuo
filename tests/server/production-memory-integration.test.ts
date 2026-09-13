@@ -120,6 +120,44 @@ describe("production memory integration", () => {
     expect(fixture.productionRepository.getRun(fixture.run.id).status).toBe("failed");
   });
 
+  it("sends only the explicitly selected local memories to the Provider", async () => {
+    const fixture = setup();
+    const seeded = fixture.memoryService.ensureSeeded(fixture.book.id);
+    const selected = seeded.find(({ kind }) => kind === "world_rule");
+    if (!selected) throw new Error("test fixture did not seed a world rule");
+    const run = fixture.productionRepository.createRun(
+      fixture.book.id,
+      "production",
+      "memory-selection-run",
+      { mode: "selected", entryIds: [selected.id] },
+    );
+    const prompts: ProviderGenerateInput[] = [];
+    const provider: TextGenerationProvider = {
+      kind: "openai-compatible",
+      async generate(input) {
+        prompts.push(input);
+        return input.systemPrompt.includes("审稿人")
+          ? { text: JSON.stringify({ status: "passed", findings: [] }), usage: null }
+          : { text: "主角确认了规则。", usage: null };
+      },
+    };
+    await new ProductionService({
+      bookRepository: fixture.bookRepository,
+      productionRepository: fixture.productionRepository,
+      providerResolver: { resolve: () => provider },
+      memoryService: fixture.memoryService,
+    } as never).start(run.id, providerConfig);
+
+    const generatedPrompts = prompts.filter(({ systemPrompt }) => systemPrompt.includes("正文作者"));
+    expect(generatedPrompts).toHaveLength(1);
+    expect(generatedPrompts[0].userPrompt).toContain(selected.subject);
+    expect(generatedPrompts[0].userPrompt).not.toContain("全书文风");
+    expect(fixture.productionRepository.getRun(run.id).memoryContextConfig).toEqual({
+      mode: "selected",
+      entryIds: [selected.id],
+    });
+  });
+
   it("pauses before accept until the chapter memory delta is confirmed", async () => {
     const fixture = setup();
     const provider: TextGenerationProvider = {

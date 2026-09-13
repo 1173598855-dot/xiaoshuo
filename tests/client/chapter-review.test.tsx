@@ -84,4 +84,38 @@ describe("ChapterReview memory review", () => {
     await waitFor(() => expect(onResume).toHaveBeenCalledOnce());
     expect(api.updateCandidateMemoryReview).toHaveBeenCalledTimes(2);
   });
+
+  it("lets the author edit a candidate and shows the changed lines", async () => {
+    const details = createDetails();
+    details.candidate = {
+      ...details.candidate!,
+      originalText: "旧的一行。",
+      candidateText: "旧的一行。",
+      candidateTextRevision: 0,
+      memoryDelta: null,
+    };
+    const api = {
+      updateCandidateText: vi.fn(async (input) => ({
+        ...details.candidate!,
+        candidateText: input.candidateText,
+        originalText: "旧的一行。",
+        candidateTextRevision: 1,
+        memoryDelta: null,
+      })),
+    } as unknown as AutoNovelApi;
+    const onResume = vi.fn(async () => undefined);
+    render(<ChapterReview details={details} api={api} onResume={onResume} />);
+
+    expect(screen.getByRole("region", { name: "候选正文 Diff" })).toHaveTextContent("与初始候选一致");
+    fireEvent.click(screen.getByRole("button", { name: /编辑候选/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "编辑候选正文" }), { target: { value: "新的一行。" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存并重新审核/ }));
+
+    await waitFor(() => expect(api.updateCandidateText).toHaveBeenCalledWith({
+      candidateId,
+      expectedCandidateTextRevision: 0,
+      candidateText: "新的一行。",
+    }));
+    await waitFor(() => expect(onResume).toHaveBeenCalledOnce());
+  });
 });

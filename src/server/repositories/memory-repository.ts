@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ChapterPlanSchema, type ChapterPlan } from "../../shared/auto-novel";
 import {
   MemoryContextSchema,
+  MemoryContextConfigSchema,
   MemoryDeltaSchema,
   MemoryDeltaReviewSchema,
   MemoryEntrySchema,
@@ -11,6 +12,7 @@ import {
   type MemoryContent,
   type MemoryConflict,
   type MemoryContext,
+  type MemoryContextConfig,
   type MemoryDelta,
   type MemoryDeltaReview,
   type MemoryDraft,
@@ -22,6 +24,7 @@ import {
   type RollbackMemoryInput,
   type UpdateMemoryInput,
   MAX_MEMORY_CONTEXT_CHARACTERS,
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
 } from "../../shared/memory";
 
 interface RepositoryOptions {
@@ -120,6 +123,15 @@ export class MemoryBookRevisionConflictError extends Error {
       `Expected book revision ${expectedRevision}, but found ${actualRevision}`,
     );
     this.name = "MemoryBookRevisionConflictError";
+  }
+}
+
+export class MemoryContextSelectionInvalidError extends Error {
+  readonly code = "MEMORY_CONTEXT_SELECTION_INVALID";
+
+  constructor(readonly entryIds: readonly string[]) {
+    super("Memory context selection contains entries that are unavailable for this book");
+    this.name = "MemoryContextSelectionInvalidError";
   }
 }
 
@@ -373,7 +385,11 @@ export class MemoryRepository {
     });
   }
 
-  getContextForChapter(bookId: string, chapterNumber: number): MemoryContext {
+  getContextForChapter(
+    bookId: string,
+    chapterNumber: number,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
+  ): MemoryContext {
     const row = this.database
       .prepare(
         "SELECT id, book_id, volume_number, volume_title, chapter_number, title, summary, objective, hook, foreshadowing_json, status, created_at, updated_at FROM chapter_plans WHERE book_id = ? AND chapter_number = ?",
@@ -409,11 +425,26 @@ export class MemoryRepository {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
-    return this.buildContext(bookId, plan);
+    return this.buildContext(bookId, plan, memoryContextConfig);
   }
-  buildContext(bookId: string, plan: ChapterPlan): MemoryContext {
+  buildContext(
+    bookId: string,
+    plan: ChapterPlan,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
+  ): MemoryContext {
     this.requireBook(bookId);
+    const parsedConfig = MemoryContextConfigSchema.parse(memoryContextConfig);
     const entries = this.list(bookId);
+    const entryById = new Map(entries.map((entry) => [entry.id, entry]));
+    if (parsedConfig.mode === "selected") {
+      const unavailable = parsedConfig.entryIds.filter((entryId) => !entryById.has(entryId));
+      if (unavailable.length > 0) {
+        throw new MemoryContextSelectionInvalidError(unavailable);
+      }
+    }
+    const eligibleEntries = parsedConfig.mode === "selected"
+      ? entries.filter((entry) => parsedConfig.entryIds.includes(entry.id))
+      : entries;
     const chapterText = [
       plan.title,
       plan.summary,
@@ -423,7 +454,7 @@ export class MemoryRepository {
     ]
       .join(" ")
       .toLocaleLowerCase();
-    const ranked = entries
+    const ranked = eligibleEntries
       .map((entry) => ({
         entry,
         score: scoreEntry(entry, chapterText, plan.chapterNumber),
@@ -443,7 +474,14 @@ export class MemoryRepository {
     const serialized = JSON.stringify(selectedEntries);
     const memoryRevision = this.getBookRevision(bookId).memory_revision;
     const contextHash = createHash("sha256")
-      .update(JSON.stringify({ memoryRevision, entries: selectedEntries }))
+      .update(JSON.stringify({
+        memoryRevision,
+        memoryContextConfig: {
+          mode: parsedConfig.mode,
+          entryIds: [...parsedConfig.entryIds].sort(),
+        },
+        entries: selectedEntries,
+      }))
       .digest("hex");
     return MemoryContextSchema.parse({
       entries: selectedEntries,

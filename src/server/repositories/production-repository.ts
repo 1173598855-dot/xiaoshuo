@@ -16,9 +16,16 @@ import {
   type ProductionCheckpoint,
   type ProductionRun,
   type ProductionStage,
+  type UpdateCandidateTextInput,
 } from "../../shared/auto-novel";
-import { filterMemoryDelta, MemoryDeltaReviewSchema, MemoryDeltaSchema } from "../../shared/memory";
-import type { MemoryDelta, MemoryDeltaReview } from "../../shared/memory";
+import {
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
+  filterMemoryDelta,
+  MemoryContextConfigSchema,
+  MemoryDeltaReviewSchema,
+  MemoryDeltaSchema,
+} from "../../shared/memory";
+import type { MemoryContextConfig, MemoryDelta, MemoryDeltaReview } from "../../shared/memory";
 import { BookRepository } from "./book-repository";
 import { MemoryRepository } from "./memory-repository";
 
@@ -36,6 +43,7 @@ interface RunRow {
   current_chapter_number: number | null;
   version: number;
   idempotency_key: string;
+  memory_context_config_json: string;
   error_code: string | null;
   created_at: string;
   updated_at: string;
@@ -66,6 +74,9 @@ interface CandidateRow {
   memory_delta_json: string;
   memory_delta_review_json: string;
   memory_review_revision: number;
+  original_text: string;
+  candidate_text_revision: number;
+  memory_context_config_json: string;
   candidate_text: string;
   status: ChapterCandidate["status"];
   review_json: string;
@@ -98,6 +109,7 @@ export interface CreateCandidateInput {
   memoryDeltaReview?: MemoryDeltaReview;
   candidateText: string;
   repairCount?: number;
+  memoryContextConfig?: MemoryContextConfig;
 }
 
 export interface ProductionRunDetailsSnapshot {
@@ -172,6 +184,20 @@ export class CandidateMemoryReviewInvalidError extends Error {
   }
 }
 
+export class CandidateTextRevisionConflictError extends Error {
+  readonly code = "CANDIDATE_TEXT_REVISION_CONFLICT";
+
+  constructor(
+    readonly expectedRevision: number,
+    readonly actualRevision: number,
+  ) {
+    super(
+      `Expected candidate text revision ${expectedRevision}, but found ${actualRevision}`,
+    );
+    this.name = "CandidateTextRevisionConflictError";
+  }
+}
+
 export class ProductionRevisionConflictError extends Error {
   readonly code = "REVISION_CONFLICT";
 
@@ -206,13 +232,16 @@ export class ProductionRepository {
     bookId: string,
     kind: ProductionRun["kind"],
     idempotencyKey: string,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
   ): ProductionRun {
     return this.withTransaction(() => {
+      const parsedMemoryContextConfig = MemoryContextConfigSchema.parse(memoryContextConfig);
       this.bookRepository.getBook(bookId);
       const existing = this.database
         .prepare(
           `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                  version, idempotency_key, error_code, created_at, updated_at
+                  version, idempotency_key, memory_context_config_json,
+                  error_code, created_at, updated_at
            FROM production_runs WHERE book_id = ? AND idempotency_key = ?`,
         )
         .get(bookId, idempotencyKey) as unknown as RunRow | undefined;
@@ -225,10 +254,20 @@ export class ProductionRepository {
         .prepare(
           `INSERT INTO production_runs (
              id, book_id, kind, status, stage, current_chapter_number,
-             version, idempotency_key, error_code, created_at, updated_at
-           ) VALUES (?, ?, ?, 'queued', ?, NULL, 0, ?, NULL, ?, ?)`,
+             version, idempotency_key, memory_context_config_json, error_code,
+             created_at, updated_at
+           ) VALUES (?, ?, ?, 'queued', ?, NULL, 0, ?, ?, NULL, ?, ?)`,
         )
-        .run(id, bookId, kind, stage, idempotencyKey, timestamp, timestamp);
+        .run(
+          id,
+          bookId,
+          kind,
+          stage,
+          idempotencyKey,
+          JSON.stringify(parsedMemoryContextConfig),
+          timestamp,
+          timestamp,
+        );
       return this.getRun(id);
     });
   }
@@ -237,7 +276,8 @@ export class ProductionRepository {
     const row = this.database
       .prepare(
         `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                version, idempotency_key, error_code, created_at, updated_at
+                version, idempotency_key, memory_context_config_json,
+                error_code, created_at, updated_at
          FROM production_runs WHERE id = ?`,
       )
       .get(runId) as unknown as RunRow | undefined;
@@ -260,6 +300,7 @@ export class ProductionRepository {
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
+                original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE book_id = ? AND run_id = ? ORDER BY created_at, id`,
@@ -361,15 +402,19 @@ export class ProductionRepository {
     const id = this.createId();
     const timestamp = this.now();
     const repairCount = input.repairCount ?? 0;
+    const memoryContextConfig = MemoryContextConfigSchema.parse(
+      input.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG,
+    );
     this.database
       .prepare(
         `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
            context_hash, memory_revision, memory_context_hash, memory_delta_json,
-           memory_delta_review_json, memory_review_revision, candidate_text, status,
+           memory_delta_review_json, memory_review_revision, original_text,
+           candidate_text_revision, memory_context_config_json, candidate_text, status,
            review_json, repair_count,
            created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'completed', ?, ?, ?, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL)`,
       )
       .run(
         id,
@@ -384,6 +429,8 @@ export class ProductionRepository {
         JSON.stringify(input.memoryDelta ?? null),
         JSON.stringify(input.memoryDeltaReview ?? emptyMemoryDeltaReview()),
         input.candidateText,
+        JSON.stringify(memoryContextConfig),
+        input.candidateText,
         JSON.stringify({ status: "pending", findings: [] }),
         repairCount,
         timestamp,
@@ -397,6 +444,7 @@ export class ProductionRepository {
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
+                original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE id = ?`,
@@ -426,6 +474,7 @@ export class ProductionRepository {
     this.database
       .prepare(
         `UPDATE chapter_candidates SET candidate_text = ?, repair_count = ?,
+         candidate_text_revision = candidate_text_revision + 1,
          review_json = ? WHERE id = ?`,
       )
       .run(
@@ -451,6 +500,7 @@ export class ProductionRepository {
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
+                original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates
@@ -492,6 +542,47 @@ export class ProductionRepository {
         candidateId,
       );
     return this.getCandidate(candidateId);
+  }
+
+  editCandidateText(input: UpdateCandidateTextInput): ChapterCandidate {
+    const candidate = this.getCandidate(input.candidateId);
+    if (["accepted", "discarded", "expired"].includes(candidate.status)) {
+      throw new CandidateAlreadySettledError(input.candidateId);
+    }
+    const currentTextRevision = candidate.candidateTextRevision ?? 0;
+    if (currentTextRevision !== input.expectedCandidateTextRevision) {
+      throw new CandidateTextRevisionConflictError(
+        input.expectedCandidateTextRevision,
+        currentTextRevision,
+      );
+    }
+    const result = this.database
+      .prepare(
+        `UPDATE chapter_candidates
+         SET candidate_text = ?, candidate_text_revision = candidate_text_revision + 1,
+             review_json = ?, memory_delta_json = ?, memory_delta_review_json = ?,
+             memory_review_revision = 0
+         WHERE id = ? AND status = 'completed' AND candidate_text_revision = ?`,
+      )
+      .run(
+        input.candidateText,
+        JSON.stringify({ status: "pending", findings: [] }),
+        JSON.stringify(null),
+        JSON.stringify(emptyMemoryDeltaReview()),
+        input.candidateId,
+        input.expectedCandidateTextRevision,
+      );
+    if (Number(result.changes) !== 1) {
+      const current = this.getCandidate(input.candidateId);
+      if ((current.candidateTextRevision ?? 0) !== input.expectedCandidateTextRevision) {
+        throw new CandidateTextRevisionConflictError(
+          input.expectedCandidateTextRevision,
+          current.candidateTextRevision ?? 0,
+        );
+      }
+      throw new CandidateAlreadySettledError(input.candidateId);
+    }
+    return this.getCandidate(input.candidateId);
   }
 
   updateCandidateMemoryReview(
@@ -576,6 +667,7 @@ export class ProductionRepository {
         const currentMemoryContext = this.memoryRepository.getContextForChapter(
           candidate.bookId,
           chapter.position + 1,
+          candidate.memoryContextConfig,
         );
         if (
           candidate.memoryRevision !== currentMemoryContext.memoryRevision ||
@@ -662,7 +754,8 @@ export class ProductionRepository {
         ? (this.database
             .prepare(
               `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                      version, idempotency_key, error_code, created_at, updated_at
+                      version, idempotency_key, memory_context_config_json,
+                      error_code, created_at, updated_at
                FROM production_runs
                WHERE id = ? AND book_id = ? AND kind = ?`,
             )
@@ -777,6 +870,9 @@ function toRun(row: RunRow): ProductionRun {
     currentChapterNumber: row.current_chapter_number,
     version: row.version,
     idempotencyKey: row.idempotency_key,
+    memoryContextConfig: MemoryContextConfigSchema.parse(
+      parseJson<unknown>(row.memory_context_config_json),
+    ),
     errorCode: row.error_code,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -815,6 +911,11 @@ function toCandidate(row: CandidateRow): ChapterCandidate {
       parseJson<unknown>(row.memory_delta_review_json),
     ),
     memoryReviewRevision: row.memory_review_revision,
+    originalText: row.original_text,
+    candidateTextRevision: row.candidate_text_revision,
+    memoryContextConfig: MemoryContextConfigSchema.parse(
+      parseJson<unknown>(row.memory_context_config_json),
+    ),
     candidateText: row.candidate_text,
     status: row.status,
     review: JSON.parse(row.review_json),

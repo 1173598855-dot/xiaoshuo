@@ -169,4 +169,28 @@ describe("MemoryPanel", () => {
       targetRevision: 1,
     }));
   });
+
+  it("allows selecting exactly which local memories cross the Provider boundary", async () => {
+    const { api, world } = createApi();
+    const onChange = vi.fn();
+    render(
+      <MemoryPanel
+        bookId={bookId}
+        chapterNumber={1}
+        api={api}
+        memoryContextConfig={{ mode: "selected", entryIds: [world.id] }}
+        onMemoryContextConfigChange={onChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("林默")).toBeInTheDocument();
+    const characterCheckbox = screen.getByRole("checkbox", { name: "发送“林默”给当前 Provider" });
+    expect(characterCheckbox).not.toBeChecked();
+    fireEvent.click(characterCheckbox);
+    expect(onChange).toHaveBeenCalledWith({
+      mode: "selected",
+      entryIds: [world.id, characterId],
+    });
+  });
 });

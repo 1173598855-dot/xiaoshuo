@@ -10,6 +10,7 @@ import {
   ProductionRunSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
+  UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
   type Book,
   type BookDetails,
@@ -32,6 +33,7 @@ import {
   type MemoryFilter,
   type RollbackMemoryInput,
   type UpdateMemoryInput,
+  type MemoryContextConfig,
 } from "../shared/memory";
 import {
   ApiErrorSchema,
@@ -75,6 +77,7 @@ export interface AutoNovelApi {
     bookId: string,
     provider: AutoNovelProviderInput,
     idempotencyKey: string,
+    memoryContextConfig?: MemoryContextConfig,
   ): Promise<ProductionRun>;
   getRun(runId: string, signal?: AbortSignal): Promise<AutoNovelRunDetails>;
   pauseRun(runId: string): Promise<ProductionRun>;
@@ -82,19 +85,21 @@ export interface AutoNovelApi {
   cancelRun(runId: string): Promise<ProductionRun>;
   exportBook(bookId: string, format: "markdown" | "txt" | "docx"): Promise<string>;
   listMemory(bookId: string, filter?: Partial<MemoryFilter>): Promise<MemoryBookSnapshot>;
-  getMemoryContext(bookId: string, chapterNumber: number): Promise<MemoryContext>;
+  getMemoryContext(bookId: string, chapterNumber: number, memoryContextConfig?: MemoryContextConfig): Promise<MemoryContext>;
   getMemoryHistory(entryId: string): Promise<readonly MemoryRevision[]>;
   updateMemory(input: UpdateMemoryInput): Promise<MemoryEntry>;
   rollbackMemory(input: RollbackMemoryInput): Promise<MemoryEntry>;
   updateCandidateMemoryReview(
     input: UpdateCandidateMemoryReviewInput,
   ): Promise<ChapterCandidate>;
+  updateCandidateText(input: UpdateCandidateTextInput): Promise<ChapterCandidate>;
   refreshMemory(bookId: string): Promise<MemoryBookSnapshot>;
 }
 
 export type UpdateCandidateMemoryReviewInput = z.infer<
   typeof UpdateCandidateMemoryReviewInputSchema
 >;
+export type UpdateCandidateTextInput = z.infer<typeof UpdateCandidateTextInputSchema>;
 
 export function createAutoNovelApi(
   fetchImpl: typeof fetch = globalThis.fetch,
@@ -124,8 +129,12 @@ export function createAutoNovelApi(
       const body = SelectDirectionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({ expectedBookRevision, provider: providerForHttp(provider) });
       return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/directions/${directionId}/select`, { method: "POST", body: JSON.stringify(body) }));
     },
-    async startProduction(bookId, provider, idempotencyKey) {
-      const body = StartProductionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({ idempotencyKey, provider: providerForHttp(provider) });
+    async startProduction(bookId, provider, idempotencyKey, memoryContextConfig) {
+      const body = StartProductionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({
+        idempotencyKey,
+        provider: providerForHttp(provider),
+        ...(memoryContextConfig ? { memoryContextConfig } : {}),
+      });
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/production`, { method: "POST", body: JSON.stringify(body) }));
     },
     async getRun(runId, signal) {
@@ -155,9 +164,15 @@ export function createAutoNovelApi(
         await requestJson(fetchImpl, `/api/books/${bookId}/memory${suffix}`),
       );
     },
-    async getMemoryContext(bookId, chapterNumber) {
+    async getMemoryContext(bookId, chapterNumber, memoryContextConfig) {
+      const params = new URLSearchParams();
+      if (memoryContextConfig?.mode === "selected") {
+        params.set("selectionMode", "selected");
+        for (const entryId of memoryContextConfig.entryIds) params.append("entryId", entryId);
+      }
+      const suffix = params.size > 0 ? `?${params.toString()}` : "";
       return MemoryContextSchema.parse(
-        await requestJson(fetchImpl, `/api/books/${bookId}/memory/context/${chapterNumber}`),
+        await requestJson(fetchImpl, `/api/books/${bookId}/memory/context/${chapterNumber}${suffix}`),
       );
     },
     async getMemoryHistory(entryId) {
@@ -191,6 +206,15 @@ export function createAutoNovelApi(
           `/api/chapter-candidates/${parsed.candidateId}/memory-review`,
           { method: "PATCH", body: JSON.stringify(parsed) },
         ),
+      );
+    },
+    async updateCandidateText(input) {
+      const parsed = UpdateCandidateTextInputSchema.parse(input);
+      return ChapterCandidateSchema.parse(
+        await requestJson(fetchImpl, `/api/chapter-candidates/${parsed.candidateId}/text`, {
+          method: "PATCH",
+          body: JSON.stringify(parsed),
+        }),
       );
     },
     async refreshMemory(bookId) {

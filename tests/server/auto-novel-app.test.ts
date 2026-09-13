@@ -310,5 +310,63 @@ describe("auto-novel HTTP app", () => {
 
     expect(response.status).toBe(200);
     expect((await response.json() as { memoryDeltaReview: { approved: boolean } }).memoryDeltaReview.approved).toBe(true);
+
+    const edited = await app.request(`/api/chapter-candidates/${candidate.id}/text`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: 0,
+        candidateText: "作者修改后的候选正文。",
+      }),
+    });
+    expect(edited.status).toBe(200);
+    expect(await edited.json()).toMatchObject({
+      candidateText: "作者修改后的候选正文。",
+      candidateTextRevision: 1,
+      review: { status: "pending" },
+      memoryDelta: null,
+    });
+  });
+
+  it("persists a selected memory allow-list on the production run", async () => {
+    const { app, provider, memoryService } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "选择记忆接口", provider, idempotencyKey: "memory-selection-http" }),
+    });
+    const createdBody = await created.json() as { book: { id: string; revision: number }; directions: Array<{ id: string }> };
+    const selected = await app.request(`/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+    });
+    const selectedBody = await selected.json() as { book: { id: string } };
+    const memory = await app.request(`/api/books/${selectedBody.book.id}/memory`);
+    const entries = await memory.json() as { entries: Array<{ id: string }> };
+    const context = await app.request(
+      `/api/books/${selectedBody.book.id}/memory/context/1?selectionMode=selected&entryId=${entries.entries[0].id}`,
+    );
+    expect(context.status).toBe(200);
+    expect((await context.json() as { entries: Array<{ id: string }> }).entries.map(({ id }) => id)).toEqual([entries.entries[0].id]);
+
+    const started = await app.request(`/api/books/${selectedBody.book.id}/production`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider,
+        idempotencyKey: "production-selected-http",
+        memoryContextConfig: { mode: "selected", entryIds: [entries.entries[0].id] },
+      }),
+    });
+    expect(started.status).toBe(202);
+    expect((await started.json() as { memoryContextConfig: unknown }).memoryContextConfig).toEqual({
+      mode: "selected",
+      entryIds: [entries.entries[0].id],
+    });
+    // The explicit argument is also accepted by the service API used by the
+    // HTTP handler; this assertion ensures the fixture's service remains live.
+    expect(memoryService.list(selectedBody.book.id)).toHaveLength(entries.entries.length);
   });
 });

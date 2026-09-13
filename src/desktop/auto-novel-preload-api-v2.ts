@@ -9,6 +9,7 @@ import type {
   CreateBookInput,
   ProductionRun,
   StoryDirection,
+  UpdateCandidateTextInput,
   UpdateCandidateMemoryReviewInput,
 } from "../shared/auto-novel";
 import type {
@@ -19,6 +20,7 @@ import type {
   MemoryRevision,
   RollbackMemoryInput,
   UpdateMemoryInput,
+  MemoryContextConfig,
 } from "../shared/memory";
 import type { AutoNovelRunDetails } from "../client/auto-novel-api";
 
@@ -53,6 +55,7 @@ export interface AutoNovelDesktopApiV2 {
       bookId: string;
       providerId: ProviderId;
       idempotencyKey: string;
+      memoryContextConfig?: MemoryContextConfig;
     }): Promise<DesktopResult<ProductionRun>>;
     get(runId: string): Promise<DesktopResult<AutoNovelRunDetails>>;
     pause(runId: string): Promise<DesktopResult<ProductionRun>>;
@@ -63,10 +66,11 @@ export interface AutoNovelDesktopApiV2 {
     accept(input: { candidateId: string; expectedRevision: number }): Promise<DesktopResult<{ candidate: ChapterCandidate; chapter: Chapter; run: ProductionRun }>>;
     discard(candidateId: string): Promise<DesktopResult<unknown>>;
     updateMemoryReview(input: UpdateCandidateMemoryReviewInput): Promise<DesktopResult<ChapterCandidate>>;
+    updateText(input: UpdateCandidateTextInput): Promise<DesktopResult<ChapterCandidate>>;
   };
   readonly memory: {
     list(input: { bookId: string; filter?: Partial<MemoryFilter> }): Promise<DesktopResult<MemoryBookSnapshot>>;
-    context(input: { bookId: string; chapterNumber: number }): Promise<DesktopResult<MemoryContext>>;
+    context(input: { bookId: string; chapterNumber: number; memoryContextConfig?: MemoryContextConfig }): Promise<DesktopResult<MemoryContext>>;
     history(entryId: string): Promise<DesktopResult<readonly MemoryRevision[]>>;
     update(input: UpdateMemoryInput): Promise<DesktopResult<MemoryEntry>>;
     rollback(input: RollbackMemoryInput): Promise<DesktopResult<MemoryEntry>>;
@@ -98,6 +102,7 @@ export function createAutoNovelPreloadApiV2(
       accept: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateAccept, input),
       discard: (candidateId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateDiscard, { candidateId }),
       updateMemoryReview: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateMemoryReview, input),
+      updateText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateTextUpdate, input),
     },
     memory: {
       list: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.memoryList, input),

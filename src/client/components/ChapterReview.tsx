@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CheckCircle2, FileText, ShieldCheck, X } from "lucide-react";
+import { Check, CheckCircle2, Edit3, FileText, Save, ShieldCheck, X } from "lucide-react";
 
 import type { ChapterCandidate } from "../../shared/auto-novel";
 import type {
@@ -23,6 +23,8 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
   const [decisions, setDecisions] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState("");
 
   useEffect(() => {
     if (!candidate) {
@@ -33,6 +35,8 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
     setReview(candidate.memoryDeltaReview);
     setReviewRevision(candidate.memoryReviewRevision);
     setDecisions(new Set());
+    setEditing(false);
+    setDraftText(candidate.candidateText);
     // Review edits are local to a candidate and must survive polling refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate?.id]);
@@ -107,11 +111,50 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
     }
   };
 
+  const saveCandidateText = async () => {
+    if (!draftText.trim()) {
+      setError("候选正文不能为空。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateCandidateText({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: candidate.candidateTextRevision ?? 0,
+        candidateText: draftText,
+      });
+      setDraftText(updated.candidateText);
+      setReview(updated.memoryDeltaReview);
+      setReviewRevision(updated.memoryReviewRevision);
+      setDecisions(new Set());
+      setEditing(false);
+      await onResume();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "候选正文保存失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="review-panel" aria-label="章节审核">
       <div className="panel-heading"><h2>最新章节审核</h2><span className="review-pass"><ShieldCheck size={15} /> {candidate.review.status === "passed" ? "审核通过" : "审核中"}</span></div>
-      <p className="review-copy">{candidate.candidateText}</p>
-      <div className="review-meta"><span><CheckCircle2 size={14} /> 候选已隔离</span><span>修复 {candidate.repairCount} 次</span></div>
+      <div className="candidate-text-toolbar">
+        <span><CheckCircle2 size={14} /> 候选已隔离 · 正文版本 v{candidate.candidateTextRevision}</span>
+        {!editing ? <button className="ghost-button" type="button" disabled={busy || candidate.status !== "completed"} onClick={() => { setDraftText(candidate.candidateText); setEditing(true); }}><Edit3 size={14} /> 编辑候选</button> : null}
+      </div>
+      {editing ? (
+        <div className="candidate-editor">
+          <textarea className="candidate-textarea" value={draftText} onChange={(event) => setDraftText(event.target.value)} aria-label="编辑候选正文" />
+          <div className="candidate-editor-actions">
+            <button className="primary-button" type="button" disabled={busy} onClick={() => void saveCandidateText()}><Save size={14} /> 保存并重新审核</button>
+            <button className="ghost-button" type="button" disabled={busy} onClick={() => { setDraftText(candidate.candidateText); setEditing(false); }}>取消</button>
+          </div>
+        </div>
+      ) : <p className="review-copy">{candidate.candidateText}</p>}
+      <CandidateDiff originalText={candidate.originalText || candidate.candidateText} candidateText={candidate.candidateText} />
+      <div className="review-meta"><span>修复 {candidate.repairCount} 次</span><span>{candidate.review.status === "pending" ? "等待重新审核" : "审核结果可追溯"}</span></div>
       {delta ? (
         <div className="review-memory-panel">
           <div className="review-memory-heading">
@@ -150,6 +193,68 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
       {candidate.memoryDelta?.conflicts.length ? <div className="review-memory-meta"><span className="review-conflict">模型报告冲突 {candidate.memoryDelta.conflicts.length} 条，已保留原记忆。</span></div> : null}
     </section>
   );
+}
+
+function CandidateDiff({ originalText, candidateText }: { originalText: string; candidateText: string }) {
+  const changed = originalText !== candidateText;
+  const lines = useMemo(() => buildLineDiff(originalText, candidateText), [originalText, candidateText]);
+  return (
+    <section className="candidate-diff" aria-label="候选正文 Diff">
+      <div className="candidate-diff-heading">
+        <strong>正文 Diff</strong>
+        <span>{changed ? `${lines.filter((line) => line.kind !== "same").length} 处变化` : "与初始候选一致"}</span>
+      </div>
+      <div className="candidate-diff-body">
+        {lines.map((line, index) => (
+          <div className={`candidate-diff-line ${line.kind}`} key={`${line.kind}-${index}`}>
+            <span className="candidate-diff-marker">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span>
+            <code>{line.text || " "}</code>
+          </div>
+        ))}
+      </div>
+      <div className="candidate-diff-legend"><span><i className="diff-swatch removed" />初始候选删除</span><span><i className="diff-swatch added" />当前候选新增</span></div>
+    </section>
+  );
+}
+
+type DiffLine = { kind: "same" | "added" | "removed"; text: string };
+
+function buildLineDiff(before: string, after: string): DiffLine[] {
+  const left = before.split("\n");
+  const right = after.split("\n");
+  if (left.length * right.length > 250_000 || left.length + right.length > 4_000) {
+    return [
+      ...left.map((text) => ({ kind: "removed" as const, text })),
+      ...right.map((text) => ({ kind: "added" as const, text })),
+    ];
+  }
+  const table = Array.from({ length: left.length + 1 }, () => new Array<number>(right.length + 1).fill(0));
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      table[i][j] = left[i] === right[j]
+        ? table[i + 1][j + 1] + 1
+        : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const result: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      result.push({ kind: "same", text: left[i] });
+      i += 1;
+      j += 1;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      result.push({ kind: "removed", text: left[i] });
+      i += 1;
+    } else {
+      result.push({ kind: "added", text: right[j] });
+      j += 1;
+    }
+  }
+  while (i < left.length) result.push({ kind: "removed", text: left[i++] });
+  while (j < right.length) result.push({ kind: "added", text: right[j++] });
+  return result;
 }
 
 type MemoryChange = {

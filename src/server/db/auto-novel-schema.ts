@@ -73,6 +73,7 @@ const AUTO_NOVEL_SCHEMA = `
     current_chapter_number INTEGER,
     version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     idempotency_key TEXT NOT NULL,
+    memory_context_config_json TEXT NOT NULL DEFAULT '{"mode":"automatic","entryIds":[]}',
     error_code TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -105,6 +106,9 @@ const AUTO_NOVEL_SCHEMA = `
     memory_delta_json TEXT NOT NULL DEFAULT 'null',
     memory_delta_review_json TEXT NOT NULL DEFAULT '{"approved":false,"ignoredAddIndices":[],"ignoredUpdateIds":[],"ignoredResolveIds":[]}',
     memory_review_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_review_revision >= 0),
+    original_text TEXT NOT NULL DEFAULT '',
+    candidate_text_revision INTEGER NOT NULL DEFAULT 0 CHECK (candidate_text_revision >= 0),
+    memory_context_config_json TEXT NOT NULL DEFAULT '{"mode":"automatic","entryIds":[]}',
     candidate_text TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     review_json TEXT NOT NULL,
@@ -150,6 +154,16 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   if (!candidateColumns.some(({ name }) => name === "memory_review_revision")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_review_revision INTEGER NOT NULL DEFAULT 0");
   }
+  if (!candidateColumns.some(({ name }) => name === "original_text")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN original_text TEXT NOT NULL DEFAULT ''");
+    database.exec("UPDATE chapter_candidates SET original_text = candidate_text WHERE original_text = ''");
+  }
+  if (!candidateColumns.some(({ name }) => name === "candidate_text_revision")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN candidate_text_revision INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!candidateColumns.some(({ name }) => name === "memory_context_config_json")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_context_config_json TEXT NOT NULL DEFAULT '{\"mode\":\"automatic\",\"entryIds\":[]}'");
+  }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
   if (!columns.some(({ name }) => name === "memory_revision")) {
@@ -159,10 +173,14 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
     database.exec("ALTER TABLE books ADD COLUMN director_idempotency_key TEXT");
   }
   database.exec("CREATE UNIQUE INDEX IF NOT EXISTS books_director_idempotency_idx ON books(director_idempotency_key) WHERE director_idempotency_key IS NOT NULL");
+  const runColumns = database.prepare("PRAGMA table_xinfo(production_runs)").all() as Array<{ name: string }>;
+  if (!runColumns.some(({ name }) => name === "memory_context_config_json")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN memory_context_config_json TEXT NOT NULL DEFAULT '{\"mode\":\"automatic\",\"entryIds\":[]}'");
+  }
   database
     .prepare(
       `INSERT INTO app_meta (key, value)
-       VALUES ('auto_novel_schema_version', '2')
+       VALUES ('auto_novel_schema_version', '3')
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
     .run();

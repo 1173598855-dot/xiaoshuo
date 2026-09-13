@@ -1,6 +1,7 @@
 import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
+import type { MemoryContextConfig } from "../../shared/memory";
 import type { AutoNovelRunDetails } from "../auto-novel-api";
 
 interface ProductionRoomProps {
@@ -8,6 +9,7 @@ interface ProductionRoomProps {
   run: AutoNovelRunDetails | null;
   busy: boolean;
   error: string | null;
+  memoryContextConfig: MemoryContextConfig;
   onStart: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -21,6 +23,7 @@ export function ProductionRoom({
   run,
   busy,
   error,
+  memoryContextConfig,
   onStart,
   onPause,
   onResume,
@@ -43,6 +46,9 @@ export function ProductionRoom({
           <span className="stage-label"><Terminal size={14} /> 自动生产室</span>
           <h1>{status === "completed" ? "这本书已经写完了" : "导演正在把它写出来"}</h1>
           <p>{book.book.idea}</p>
+          <small className="memory-mode-note">
+            Provider 记忆：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`}
+          </small>
         </div>
         <div className="production-stat"><strong>{progress}%</strong><span>{accepted} / {total || "—"} 章已完成</span></div>
       </section>

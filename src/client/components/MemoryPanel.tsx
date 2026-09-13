@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, History, Lock, RefreshCw, RotateCcw, Save, Unlock, X } from "lucide-react";
 
 import {
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
   MemoryKindSchema,
   UpdateMemoryInputSchema,
   type MemoryBookSnapshot,
   type MemoryContext,
   type MemoryEntry,
+  type MemoryContextConfig,
   type MemoryKind,
   type MemoryRevision,
 } from "../../shared/memory";
@@ -16,6 +18,8 @@ interface MemoryPanelProps {
   bookId: string;
   chapterNumber: number;
   api: AutoNovelApi;
+  memoryContextConfig?: MemoryContextConfig;
+  onMemoryContextConfigChange?: (config: MemoryContextConfig) => void;
   onClose: () => void;
 }
 
@@ -28,7 +32,7 @@ const KIND_LABELS: Record<MemoryKind, string> = {
   style_constraint: "文风",
 };
 
-export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanelProps) {
+export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG, onMemoryContextConfigChange = () => undefined, onClose }: MemoryPanelProps) {
   const [snapshot, setSnapshot] = useState<MemoryBookSnapshot | null>(null);
   const [context, setContext] = useState<MemoryContext | null>(null);
   const [kind, setKind] = useState<MemoryKind | "relevant">("relevant");
@@ -46,7 +50,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
     try {
       const [nextSnapshot, nextContext] = await Promise.all([
         api.listMemory(bookId, { includeArchived: true }),
-        api.getMemoryContext(bookId, Math.max(1, chapterNumber)),
+        api.getMemoryContext(bookId, Math.max(1, chapterNumber), memoryContextConfig),
       ]);
       setSnapshot(nextSnapshot);
       setContext(nextContext);
@@ -59,20 +63,40 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
 
   useEffect(() => {
     void load();
-    // The panel is intentionally refreshed only when opened or when the target chapter changes.
+    // Refresh the preview when the panel, chapter, or explicit allow-list changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, chapterNumber]);
+  }, [bookId, chapterNumber, memoryContextConfig]);
 
   const entries = useMemo(
     () => kind === "relevant"
-      ? context?.entries ?? []
+      ? memoryContextConfig.mode === "selected"
+        ? snapshot?.entries.filter((entry) => entry.status !== "archived") ?? []
+        : context?.entries ?? []
       : snapshot?.entries.filter((entry) => entry.kind === kind) ?? [],
-    [context, kind, snapshot],
+    [context, kind, memoryContextConfig.mode, snapshot],
   );
   const selectionReasons = useMemo(
     () => new Map((context?.selectionReasons ?? []).map((selection) => [selection.entryId, selection])),
     [context],
   );
+
+  const switchSelectionMode = (mode: MemoryContextConfig["mode"]) => {
+    if (mode === "automatic") {
+      onMemoryContextConfigChange({ mode, entryIds: [] });
+      return;
+    }
+    const entryIds = memoryContextConfig.entryIds.length > 0
+      ? memoryContextConfig.entryIds
+      : (context?.entries.map((entry) => entry.id) ?? []);
+    onMemoryContextConfigChange({ mode, entryIds });
+  };
+
+  const toggleEntry = (entryId: string, checked: boolean) => {
+    const nextIds = checked
+      ? [...new Set([...memoryContextConfig.entryIds, entryId])]
+      : memoryContextConfig.entryIds.filter((id) => id !== entryId);
+    onMemoryContextConfigChange({ mode: "selected", entryIds: nextIds });
+  };
 
   const beginEdit = (entry: MemoryEntry) => {
     setEditingId(entry.id);
@@ -125,7 +149,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
     try {
       const nextSnapshot = await api.refreshMemory(bookId);
       setSnapshot(nextSnapshot);
-      const nextContext = await api.getMemoryContext(bookId, Math.max(1, chapterNumber));
+      const nextContext = await api.getMemoryContext(bookId, Math.max(1, chapterNumber), memoryContextConfig);
       setContext(nextContext);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "记忆刷新失败。" );
@@ -193,6 +217,27 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
           <RefreshCw size={14} /> 从设定补齐
         </button>
       </div>
+      <div className="memory-selection-control">
+        <div>
+          <strong>发送给当前 Provider</strong>
+          <small>只影响下一次生产，不会修改本地记忆。</small>
+        </div>
+        <div className="memory-selection-modes" role="group" aria-label="Provider 记忆发送模式">
+          <button className={memoryContextConfig.mode === "automatic" ? "active" : ""} type="button" onClick={() => switchSelectionMode("automatic")}>
+            自动推荐
+          </button>
+          <button className={memoryContextConfig.mode === "selected" ? "active" : ""} type="button" onClick={() => switchSelectionMode("selected")}>
+            仅发送选中
+          </button>
+        </div>
+        {memoryContextConfig.mode === "selected" ? (
+          <div className="memory-selection-actions">
+            <span>已选 {memoryContextConfig.entryIds.length} 条</span>
+            <button className="text-button" type="button" onClick={() => onMemoryContextConfigChange({ mode: "selected", entryIds: entries.map((entry) => entry.id) })}>全选当前</button>
+            <button className="text-button" type="button" onClick={() => onMemoryContextConfigChange({ mode: "selected", entryIds: [] })}>清空</button>
+          </div>
+        ) : null}
+      </div>
       {context ? (
         <div className="memory-context-note">
           <div><Check size={14} /> 第 {chapterNumber} 章将注入 {context.entries.length} 条记忆</div>
@@ -205,6 +250,17 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
         {entries.map((entry) => (
           <article className={`memory-entry${entry.locked ? " locked" : ""}`} key={entry.id}>
             <div className="memory-entry-heading">
+              {memoryContextConfig.mode === "selected" ? (
+                <label className="memory-entry-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={memoryContextConfig.entryIds.includes(entry.id)}
+                    onChange={(event) => toggleEntry(entry.id, event.target.checked)}
+                    aria-label={`发送“${entry.subject}”给当前 Provider`}
+                  />
+                  <span>发送</span>
+                </label>
+              ) : null}
               <span className="memory-kind">{KIND_LABELS[entry.kind]}</span>
               {entry.locked ? <Lock size={13} aria-label="已锁定" /> : null}
               <span className="memory-revision">v{entry.revision}</span>

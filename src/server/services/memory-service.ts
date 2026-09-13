@@ -2,6 +2,7 @@ import type { ChapterPlan } from "../../shared/auto-novel";
 import { MemoryBookSnapshotSchema } from "../../shared/memory";
 import type {
   MemoryContext,
+  MemoryContextConfig,
   MemoryBookSnapshot,
   MemoryEntry,
   MemoryFilter,
@@ -9,6 +10,7 @@ import type {
   RollbackMemoryInput,
   UpdateMemoryInput,
 } from "../../shared/memory";
+import { DEFAULT_MEMORY_CONTEXT_CONFIG } from "../../shared/memory";
 import type { MemoryRepository } from "../repositories/memory-repository";
 
 export class MemoryService {
@@ -21,9 +23,13 @@ export class MemoryService {
     return this.repository.seedFromFoundation(bookId);
   }
 
-  getContext(bookId: string, plan: ChapterPlan): MemoryContext {
+  getContext(
+    bookId: string,
+    plan: ChapterPlan,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
+  ): MemoryContext {
     this.ensureSeeded(bookId);
-    return this.repository.buildContext(bookId, plan);
+    return this.repository.buildContext(bookId, plan, memoryContextConfig);
   }
 
   list(bookId: string, filter?: Partial<MemoryFilter>): readonly MemoryEntry[] {
@@ -41,9 +47,13 @@ export class MemoryService {
     });
   }
 
-  getContextForChapter(bookId: string, chapterNumber: number): MemoryContext {
+  getContextForChapter(
+    bookId: string,
+    chapterNumber: number,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
+  ): MemoryContext {
     this.ensureSeeded(bookId);
-    return this.repository.getContextForChapter(bookId, chapterNumber);
+    return this.repository.getContextForChapter(bookId, chapterNumber, memoryContextConfig);
   }
 
   refresh(bookId: string): MemoryBookSnapshot {

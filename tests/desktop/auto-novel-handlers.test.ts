@@ -38,6 +38,7 @@ function createFixture(isTrustedSender = true) {
     foundationService: { generate: vi.fn(async () => undefined) },
     productionRepository: {
       updateCandidateMemoryReview: vi.fn(() => ({ id: "candidate" })),
+      editCandidateText: vi.fn(() => ({ id: "candidate" })),
     },
     productionService: {},
     memoryService: {
@@ -127,6 +128,17 @@ describe("auto novel desktop IPC", () => {
       0,
       { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
     );
+    const edited = await handlers.get(AUTO_NOVEL_CHANNELS.candidateTextUpdate)?.({}, {
+      candidateId,
+      expectedCandidateTextRevision: 0,
+      candidateText: "作者修改后的正文。",
+    });
+    expect(edited).toMatchObject({ ok: true, data: { id: "candidate" } });
+    expect(services.productionRepository.editCandidateText).toHaveBeenCalledWith({
+      candidateId,
+      expectedCandidateTextRevision: 0,
+      candidateText: "作者修改后的正文。",
+    });
 
     const rolledBack = await handlers.get(AUTO_NOVEL_CHANNELS.memoryRollback)?.({}, {
       entryId: book.id,

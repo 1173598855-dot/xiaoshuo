@@ -107,7 +107,11 @@ export class ProductionService {
         }
 
         const memoryContext = this.dependencies.memoryService
-          ? this.dependencies.memoryService.getContext(run.bookId, plan)
+          ? this.dependencies.memoryService.getContext(
+              run.bookId,
+              plan,
+              run.memoryContextConfig,
+            )
           : emptyMemoryContext();
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
@@ -151,6 +155,7 @@ export class ProductionService {
             contextHash,
             memoryRevision: memoryContext.memoryRevision,
             memoryContextHash: memoryContext.contextHash,
+            memoryContextConfig: run.memoryContextConfig,
             candidateText,
           });
           this.dependencies.productionRepository.appendCheckpoint({

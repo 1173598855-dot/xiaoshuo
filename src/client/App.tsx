@@ -8,6 +8,10 @@ import type {
   SaveProviderSettingsInput,
 } from "../shared/contracts";
 import type { Book, BookDetails, StoryDirection } from "../shared/auto-novel";
+import {
+  DEFAULT_MEMORY_CONTEXT_CONFIG,
+  type MemoryContextConfig,
+} from "../shared/memory";
 import { apiClient, ApiRequestError } from "./api/client";
 import type { ClientProviderSettings } from "./api/transport";
 import { createAutoNovelApi, type AutoNovelProviderInput } from "./auto-novel-api";
@@ -40,6 +44,7 @@ export function App() {
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
   const [providerOpen, setProviderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [memoryContextConfig, setMemoryContextConfig] = useState<MemoryContextConfig>(DEFAULT_MEMORY_CONTEXT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +117,7 @@ export function App() {
       setBooks((current) => [result.book, ...current]);
       setBookDetails(details);
       setRunId(null);
+      setMemoryContextConfig(DEFAULT_MEMORY_CONTEXT_CONFIG);
       setPage("directions");
     } catch (createError) {
       setError(errorMessage(createError));
@@ -127,6 +133,7 @@ export function App() {
       const details = await autoApi.getBook(book.id);
       setBookDetails(details);
       setRunId(details.run?.id ?? null);
+      setMemoryContextConfig(details.run?.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG);
       setPage(details.book.selectedDirectionId ? "production" : "directions");
       setMemoryOpen(false);
     } catch (openError) {
@@ -149,6 +156,7 @@ export function App() {
         config,
       );
       setBookDetails(next);
+      setMemoryContextConfig(DEFAULT_MEMORY_CONTEXT_CONFIG);
       setPage("production");
     } catch (selectError) {
       setError(errorMessage(selectError));
@@ -163,7 +171,12 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const run = await autoApi.startProduction(bookDetails.book.id, config, makeId());
+      const run = await autoApi.startProduction(
+        bookDetails.book.id,
+        config,
+        makeId(),
+        memoryContextConfig,
+      );
       setRunId(run.id);
     } catch (startError) {
       setError(errorMessage(startError));
@@ -230,7 +243,7 @@ export function App() {
   if (page === "manuscript") {
     return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
 }
 
 function providerDialog(

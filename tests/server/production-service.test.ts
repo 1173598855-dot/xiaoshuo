@@ -144,6 +144,40 @@ describe("ProductionService", () => {
     ).rejects.toMatchObject({ code: "CANDIDATE_ALREADY_SETTLED" });
   });
 
+  it("edits a pending candidate with an optimistic text revision and resets review state", () => {
+    const fixture = createFixture();
+    const chapter = fixture.productionRepository.getOrCreateChapter(
+      fixture.run.bookId,
+      "第一封信",
+      0,
+    );
+    const candidate = fixture.productionRepository.createCandidate({
+      runId: fixture.run.id,
+      bookId: fixture.run.bookId,
+      chapterId: chapter.id,
+      baseRevision: chapter.revision,
+      contextHash: "a".repeat(64),
+      candidateText: "初始候选。",
+    });
+
+    const edited = fixture.productionRepository.editCandidateText({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      candidateText: "作者修改后的候选。",
+    });
+
+    expect(edited.originalText).toBe("初始候选。");
+    expect(edited.candidateText).toBe("作者修改后的候选。");
+    expect(edited.candidateTextRevision).toBe(1);
+    expect(edited.review).toEqual({ status: "pending", findings: [] });
+    expect(edited.memoryDelta).toBeNull();
+    expect(() => fixture.productionRepository.editCandidateText({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      candidateText: "过期修改。",
+    })).toThrowError("Expected candidate text revision 0, but found 1");
+  });
+
   it("retries transient provider failures without creating duplicate candidates", async () => {
     let calls = 0;
     const provider = {

@@ -8,7 +8,9 @@ import {
   ChapterCandidateSchema,
   ProductionRunSchema,
   StoryDirectionSchema,
+  UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  type UpdateCandidateTextInput,
   type UpdateCandidateMemoryReviewInput,
 } from "../shared/auto-novel";
 import {
@@ -63,12 +65,13 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         BookDetailsSchema,
       );
     },
-    async startProduction(bookId, provider, idempotencyKey) {
+    async startProduction(bookId, provider, idempotencyKey, memoryContextConfig) {
       return parseResult(
         await api.production.start({
           bookId,
           providerId: providerId(provider),
           idempotencyKey,
+          ...(memoryContextConfig ? { memoryContextConfig } : {}),
         }),
         ProductionRunSchema,
       );
@@ -101,9 +104,9 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         MemoryBookSnapshotSchema,
       );
     },
-    async getMemoryContext(bookId, chapterNumber) {
+    async getMemoryContext(bookId, chapterNumber, memoryContextConfig) {
       return parseResult(
-        await api.memory.context({ bookId, chapterNumber }),
+        await api.memory.context({ bookId, chapterNumber, ...(memoryContextConfig ? { memoryContextConfig } : {}) }),
         MemoryContextSchema,
       );
     },
@@ -130,6 +133,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         await api.candidates.updateMemoryReview(
           UpdateCandidateMemoryReviewInputSchema.parse(input),
         ),
+        ChapterCandidateSchema,
+      );
+    },
+    async updateCandidateText(input: UpdateCandidateTextInput) {
+      return parseResult(
+        await api.candidates.updateText(UpdateCandidateTextInputSchema.parse(input)),
         ChapterCandidateSchema,
       );
     },
