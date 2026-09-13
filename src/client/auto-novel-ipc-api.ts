@@ -5,8 +5,11 @@ import {
   BookDetailsSchema,
   BookSchema,
   CreateBookInputSchema,
+  ChapterCandidateSchema,
   ProductionRunSchema,
   StoryDirectionSchema,
+  UpdateCandidateMemoryReviewInputSchema,
+  type UpdateCandidateMemoryReviewInput,
 } from "../shared/auto-novel";
 import {
   ApiErrorSchema,
@@ -25,7 +28,9 @@ import {
   MemoryContextSchema,
   MemoryEntrySchema,
   MemoryRevisionSchema,
+  RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
+  type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
 
@@ -112,6 +117,20 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.memory.update(UpdateMemoryInputSchema.parse(input)),
         MemoryEntrySchema,
+      );
+    },
+    async rollbackMemory(input: RollbackMemoryInput) {
+      return parseResult(
+        await api.memory.rollback(RollbackMemoryInputSchema.parse(input)),
+        MemoryEntrySchema,
+      );
+    },
+    async updateCandidateMemoryReview(input: UpdateCandidateMemoryReviewInput) {
+      return parseResult(
+        await api.candidates.updateMemoryReview(
+          UpdateCandidateMemoryReviewInputSchema.parse(input),
+        ),
+        ChapterCandidateSchema,
       );
     },
     async refreshMemory(bookId) {

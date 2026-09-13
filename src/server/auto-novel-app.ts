@@ -9,9 +9,11 @@ import {
   ProductionCommandInputSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
+  UpdateCandidateMemoryReviewInputSchema,
 } from "../shared/auto-novel";
 import {
   MemoryFilterSchema,
+  RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
 } from "../shared/memory";
 import { ListProviderModelsInputSchema, ProviderConfigSchema } from "../shared/contracts";
@@ -189,6 +191,19 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     );
   });
 
+  app.post("/api/memory/:entryId/rollback", async (context) => {
+    const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
+    if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    const parsed = await parseJson(context.req.raw, RollbackMemoryInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.entryId !== entryId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "记忆条目标识不一致。"), 400);
+    }
+    return context.json(
+      requireMemoryService(dependencies).rollbackManual(parsed.data),
+    );
+  });
+
   app.post("/api/books/:bookId/directions/:directionId/select", async (context) => {
     const parsed = await parseJson(
       context.req.raw,
@@ -309,6 +324,23 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       ),
     ),
   );
+
+  app.patch("/api/chapter-candidates/:candidateId/memory-review", async (context) => {
+    const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
+    if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    const parsed = await parseJson(context.req.raw, UpdateCandidateMemoryReviewInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.candidateId !== candidateId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "候选标识不一致。"), 400);
+    }
+    return context.json(
+      dependencies.productionRepository.updateCandidateMemoryReview(
+        parsed.data.candidateId,
+        parsed.data.expectedReviewRevision,
+        parsed.data.review,
+      ),
+    );
+  });
 
   app.post("/api/books/:bookId/export", async (context) => {
     const parsed = await parseJson(context.req.raw, ExportBookInputSchema);

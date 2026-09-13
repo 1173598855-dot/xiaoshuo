@@ -26,6 +26,7 @@ const context: MemoryContext = {
       updatedAt: "2026-09-12T00:00:00.000Z",
     },
   ],
+  selectionReasons: [],
   memoryRevision: 3,
   contextHash: "a".repeat(64),
   characterCount: 100,

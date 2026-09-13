@@ -3,7 +3,11 @@ import { z } from "zod";
 
 import type { ProviderConfig } from "../../shared/contracts";
 import type { ChapterPlan, ProductionRun } from "../../shared/auto-novel";
-import type { MemoryContext } from "../../shared/memory";
+import {
+  filterMemoryDelta,
+  type MemoryContext,
+  type MemoryDelta,
+} from "../../shared/memory";
 import { NormalizedProviderError } from "../providers/types";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
@@ -22,6 +26,8 @@ const ReviewOutputSchema = z
   .strict();
 
 const MAX_REPAIR_ATTEMPTS = 2;
+const MAX_TRANSIENT_RETRIES = 2;
+const TRANSIENT_RETRY_DELAYS_MS = [250, 500] as const;
 
 export interface ProductionServiceDependencies {
   readonly bookRepository: BookRepository;
@@ -232,6 +238,20 @@ export class ProductionService {
 
         const stoppedBeforeAccept = this.getStoppedRun(runId, signal);
         if (stoppedBeforeAccept) return stoppedBeforeAccept;
+        const pendingMemoryDelta = candidate.memoryDelta
+          ? filterMemoryDelta(candidate.memoryDelta, candidate.memoryDeltaReview)
+          : null;
+        if (
+          pendingMemoryDelta &&
+          hasMemoryChanges(pendingMemoryDelta) &&
+          !candidate.memoryDeltaReview.approved
+        ) {
+          return this.dependencies.productionRepository.updateRun(runId, {
+            status: "paused",
+            stage: "review",
+            currentChapterNumber: plan.chapterNumber,
+          });
+        }
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
           stage: "accept",
@@ -322,8 +342,7 @@ async function generateDraft(
   signal?: AbortSignal,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
-  const result = await provider.generate(
-    {
+  const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [
         "你是中文长篇小说正文作者。只输出章节正文，不输出分析、标题或 Markdown。",
@@ -339,9 +358,7 @@ async function generateDraft(
         `上一版正文：${currentContent || "无"}`,
       ].join("\n"),
       maxOutputTokens: 12_000,
-    },
-    signal,
-  );
+  }, signal);
   const text = result.text.trim();
   if (!text) {
     throw new NormalizedProviderError(
@@ -362,8 +379,7 @@ async function reviewDraft(
   signal?: AbortSignal,
 ) {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
-  const result = await provider.generate(
-    {
+  const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [
         "你是长篇小说审稿人。只输出 JSON，不输出解释。",
@@ -379,9 +395,7 @@ async function reviewDraft(
         "检查人物、事实、时间线、章节目标、伏笔和文风；没有硬伤就通过。",
       ].join("\n"),
       maxOutputTokens: 2_000,
-    },
-    signal,
-  );
+  }, signal);
   return parseStructuredProviderResult(result.text, ReviewOutputSchema);
 }
 
@@ -394,8 +408,7 @@ async function repairDraft(
   signal?: AbortSignal,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
-  const result = await provider.generate(
-    {
+  const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [
         "你是中文小说修复编辑。只输出修复后的完整章节正文，不输出分析、标题或 Markdown。",
@@ -407,9 +420,7 @@ async function repairDraft(
         `审核问题：${findings.join("；")}`,
       ].join("\n"),
       maxOutputTokens: 12_000,
-    },
-    signal,
-  );
+  }, signal);
   const text = result.text.trim();
   if (!text) {
     throw new NormalizedProviderError(
@@ -423,6 +434,7 @@ async function repairDraft(
 function emptyMemoryContext(): MemoryContext {
   return {
     entries: [],
+    selectionReasons: [],
     memoryRevision: 0,
     contextHash: "0".repeat(64),
     characterCount: 0,
@@ -434,6 +446,53 @@ function hashContext(content: string): string {
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Production was aborted", "AbortError");
+}
+
+async function generateWithRetry(
+  provider: ReturnType<ProviderResolver["resolve"]>,
+  input: Parameters<ReturnType<ProviderResolver["resolve"]>["generate"]>[0],
+  signal?: AbortSignal,
+): ReturnType<ReturnType<ProviderResolver["resolve"]>["generate"]> {
+  for (let attempt = 0; ; attempt += 1) {
+    throwIfAborted(signal);
+    try {
+      return await provider.generate(input, signal);
+    } catch (error) {
+      if (
+        !isTransientProviderError(error) ||
+        attempt >= MAX_TRANSIENT_RETRIES
+      ) {
+        throw error;
+      }
+      await delayWithAbort(
+        TRANSIENT_RETRY_DELAYS_MS[attempt] ?? TRANSIENT_RETRY_DELAYS_MS.at(-1)!,
+        signal,
+      );
+    }
+  }
+}
+
+function isTransientProviderError(error: unknown): boolean {
+  return (
+    error instanceof NormalizedProviderError &&
+    (error.code === "RATE_LIMITED" || error.code === "UPSTREAM_UNAVAILABLE")
+  );
+}
+
+function delayWithAbort(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new DOMException("Production was aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    const abort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      reject(new DOMException("Production was aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 function linkAbortSignal(
@@ -469,4 +528,8 @@ function isKnownErrorCode(
     "code" in error &&
     typeof error.code === "string"
   );
+}
+
+function hasMemoryChanges(delta: MemoryDelta): boolean {
+  return delta.add.length > 0 || delta.update.length > 0 || delta.resolve.length > 0;
 }

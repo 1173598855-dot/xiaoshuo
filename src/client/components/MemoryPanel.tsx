@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Lock, RefreshCw, Save, Unlock, X } from "lucide-react";
+import { Check, History, Lock, RefreshCw, RotateCcw, Save, Unlock, X } from "lucide-react";
 
 import {
   MemoryKindSchema,
@@ -8,6 +8,7 @@ import {
   type MemoryContext,
   type MemoryEntry,
   type MemoryKind,
+  type MemoryRevision,
 } from "../../shared/memory";
 import type { AutoNovelApi } from "../auto-novel-api";
 
@@ -35,6 +36,9 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
   const [draftContent, setDraftContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [historyByEntry, setHistoryByEntry] = useState<Record<string, readonly MemoryRevision[]>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = async () => {
     setBusy(true);
@@ -64,6 +68,10 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
       ? context?.entries ?? []
       : snapshot?.entries.filter((entry) => entry.kind === kind) ?? [],
     [context, kind, snapshot],
+  );
+  const selectionReasons = useMemo(
+    () => new Map((context?.selectionReasons ?? []).map((selection) => [selection.entryId, selection])),
+    [context],
   );
 
   const beginEdit = (entry: MemoryEntry) => {
@@ -126,6 +134,45 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
     }
   };
 
+  const toggleHistory = async (entryId: string) => {
+    if (historyOpenId === entryId) {
+      setHistoryOpenId(null);
+      return;
+    }
+    setHistoryOpenId(entryId);
+    if (historyByEntry[entryId]) return;
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const history = await api.getMemoryHistory(entryId);
+      setHistoryByEntry((current) => ({ ...current, [entryId]: history }));
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : "记忆历史读取失败。" );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const rollback = async (entry: MemoryEntry, target: MemoryRevision) => {
+    if (!snapshot) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.rollbackMemory({
+        entryId: entry.id,
+        expectedBookRevision: snapshot.bookRevision,
+        expectedEntryRevision: entry.revision,
+        targetRevision: target.revision,
+      });
+      setHistoryOpenId(null);
+      await load();
+    } catch (rollbackError) {
+      setError(rollbackError instanceof Error ? rollbackError.message : "记忆回滚失败。" );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <aside className="memory-drawer" aria-label="长篇记忆中心">
       <div className="memory-drawer-header">
@@ -149,7 +196,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
       {context ? (
         <div className="memory-context-note">
           <div><Check size={14} /> 第 {chapterNumber} 章将注入 {context.entries.length} 条记忆</div>
-          <small>记忆版本 {context.memoryRevision} · {context.characterCount.toLocaleString()} 字符</small>
+          <small>记忆版本 {context.memoryRevision} · {context.characterCount.toLocaleString()} 字符 · 每条记忆都有注入原因</small>
         </div>
       ) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -164,6 +211,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
             </div>
             <strong>{entry.subject}</strong>
             <div className="memory-entry-meta">{statusLabel(entry.status)} · {sourceLabel(entry)} · 更新于 {formatDate(entry.updatedAt)}</div>
+            {kind === "relevant" && selectionReasons.get(entry.id) ? <div className="memory-selection-reason">注入原因：{selectionReasons.get(entry.id)?.reason}</div> : null}
             {editingId === entry.id ? (
               <>
                 <textarea className="memory-editor" value={draftContent} onChange={(event) => setDraftContent(event.target.value)} aria-label={`${entry.subject} 内容`} />
@@ -177,12 +225,14 @@ export function MemoryPanel({ bookId, chapterNumber, api, onClose }: MemoryPanel
                 <pre className="memory-content">{JSON.stringify(entry.content, null, 2)}</pre>
                 <div className="memory-entry-actions">
                   <button className="ghost-button" type="button" disabled={busy} onClick={() => beginEdit(entry)}>修正</button>
+                  <button className="ghost-button" type="button" disabled={busy || historyLoading} onClick={() => void toggleHistory(entry.id)}><History size={14} /> 历史</button>
                   <button className="ghost-button" type="button" disabled={busy} onClick={() => void toggleLock(entry)}>
                     {entry.locked ? <><Unlock size={14} /> 解锁</> : <><Lock size={14} /> 锁定</>}
                   </button>
                 </div>
               </>
             )}
+            {historyOpenId === entry.id ? <MemoryHistory history={historyByEntry[entry.id] ?? []} currentRevision={entry.revision} busy={busy} onRollback={(target) => void rollback(entry, target)} /> : null}
           </article>
         ))}
       </div>
@@ -202,4 +252,35 @@ function sourceLabel(entry: MemoryEntry): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(value));
+}
+
+function MemoryHistory({
+  history,
+  currentRevision,
+  busy,
+  onRollback,
+}: {
+  history: readonly MemoryRevision[];
+  currentRevision: number;
+  busy: boolean;
+  onRollback: (revision: MemoryRevision) => void;
+}) {
+  if (history.length === 0) return <p className="memory-history-empty">暂无历史版本。</p>;
+  return (
+    <div className="memory-history" aria-label="记忆历史">
+      <div className="memory-history-title"><History size={13} /> 历史版本</div>
+      {history.slice().reverse().map((revision) => (
+        <div className="memory-history-row" key={`${revision.memoryEntryId}-${revision.revision}`}>
+          <span><strong>v{revision.revision}</strong> · {revisionSourceLabel(revision.source)} · {formatDate(revision.createdAt)}</span>
+          {revision.revision === currentRevision ? <span className="memory-history-current">当前</span> : <button className="text-button" type="button" disabled={busy} onClick={() => onRollback(revision)}><RotateCcw size={12} /> 回滚</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function revisionSourceLabel(source: MemoryRevision["source"]): string {
+  if (source === "accepted_candidate") return "候选采纳";
+  if (source === "manual_edit") return "手动修正";
+  return "基础设定";
 }

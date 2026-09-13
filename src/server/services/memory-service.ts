@@ -6,6 +6,7 @@ import type {
   MemoryEntry,
   MemoryFilter,
   MemoryRevision,
+  RollbackMemoryInput,
   UpdateMemoryInput,
 } from "../../shared/memory";
 import type { MemoryRepository } from "../repositories/memory-repository";
@@ -56,5 +57,9 @@ export class MemoryService {
 
   updateManual(input: UpdateMemoryInput): MemoryEntry {
     return this.repository.updateManual(input);
+  }
+
+  rollbackManual(input: RollbackMemoryInput): MemoryEntry {
+    return this.repository.rollbackManual(input);
   }
 }

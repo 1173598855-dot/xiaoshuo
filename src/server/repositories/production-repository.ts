@@ -17,8 +17,8 @@ import {
   type ProductionRun,
   type ProductionStage,
 } from "../../shared/auto-novel";
-import { MemoryDeltaSchema } from "../../shared/memory";
-import type { MemoryDelta } from "../../shared/memory";
+import { filterMemoryDelta, MemoryDeltaReviewSchema, MemoryDeltaSchema } from "../../shared/memory";
+import type { MemoryDelta, MemoryDeltaReview } from "../../shared/memory";
 import { BookRepository } from "./book-repository";
 import { MemoryRepository } from "./memory-repository";
 
@@ -64,6 +64,8 @@ interface CandidateRow {
   memory_revision: number;
   memory_context_hash: string;
   memory_delta_json: string;
+  memory_delta_review_json: string;
+  memory_review_revision: number;
   candidate_text: string;
   status: ChapterCandidate["status"];
   review_json: string;
@@ -93,6 +95,7 @@ export interface CreateCandidateInput {
   memoryRevision?: number;
   memoryContextHash?: string;
   memoryDelta?: MemoryDelta | null;
+  memoryDeltaReview?: MemoryDeltaReview;
   candidateText: string;
   repairCount?: number;
 }
@@ -148,6 +151,24 @@ export class CandidateReviewRequiredError extends Error {
   constructor(candidateId: string) {
     super(`Chapter candidate ${candidateId} has not passed review`);
     this.name = "CandidateReviewRequiredError";
+  }
+}
+
+export class CandidateMemoryReviewRequiredError extends Error {
+  readonly code = "CANDIDATE_MEMORY_REVIEW_REQUIRED";
+
+  constructor(candidateId: string) {
+    super(`Chapter candidate ${candidateId} has pending memory changes`);
+    this.name = "CandidateMemoryReviewRequiredError";
+  }
+}
+
+export class CandidateMemoryReviewInvalidError extends Error {
+  readonly code = "CANDIDATE_MEMORY_REVIEW_INVALID";
+
+  constructor() {
+    super("Candidate memory review does not match its memory delta");
+    this.name = "CandidateMemoryReviewInvalidError";
   }
 }
 
@@ -238,7 +259,8 @@ export class ProductionRepository {
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
-                memory_delta_json, candidate_text, status, review_json,
+                memory_delta_json, memory_delta_review_json, memory_review_revision,
+                candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE book_id = ? AND run_id = ? ORDER BY created_at, id`,
       )
@@ -344,9 +366,10 @@ export class ProductionRepository {
         `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
            context_hash, memory_revision, memory_context_hash, memory_delta_json,
-           candidate_text, status, review_json, repair_count,
+           memory_delta_review_json, memory_review_revision, candidate_text, status,
+           review_json, repair_count,
            created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'completed', ?, ?, ?, NULL)`,
       )
       .run(
         id,
@@ -359,6 +382,7 @@ export class ProductionRepository {
         input.memoryRevision ?? 0,
         input.memoryContextHash ?? "0".repeat(64),
         JSON.stringify(input.memoryDelta ?? null),
+        JSON.stringify(input.memoryDeltaReview ?? emptyMemoryDeltaReview()),
         input.candidateText,
         JSON.stringify({ status: "pending", findings: [] }),
         repairCount,
@@ -372,7 +396,8 @@ export class ProductionRepository {
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
-                memory_delta_json, candidate_text, status, review_json,
+                memory_delta_json, memory_delta_review_json, memory_review_revision,
+                candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates WHERE id = ?`,
       )
@@ -425,7 +450,8 @@ export class ProductionRepository {
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
                 context_hash, memory_revision, memory_context_hash,
-                memory_delta_json, candidate_text, status, review_json,
+                memory_delta_json, memory_delta_review_json, memory_review_revision,
+                candidate_text, status, review_json,
                 repair_count, created_at, accepted_at
          FROM chapter_candidates
          WHERE run_id = ? AND book_id = ? AND chapter_id = ? AND status = ?
@@ -455,8 +481,61 @@ export class ProductionRepository {
     this.getCandidate(candidateId);
     const parsed = delta === null ? null : MemoryDeltaSchema.parse(delta);
     this.database
-      .prepare("UPDATE chapter_candidates SET memory_delta_json = ? WHERE id = ?")
-      .run(JSON.stringify(parsed), candidateId);
+      .prepare(
+        `UPDATE chapter_candidates
+         SET memory_delta_json = ?, memory_delta_review_json = ?,
+             memory_review_revision = 0 WHERE id = ?`,
+      )
+      .run(
+        JSON.stringify(parsed),
+        JSON.stringify(emptyMemoryDeltaReview()),
+        candidateId,
+      );
+    return this.getCandidate(candidateId);
+  }
+
+  updateCandidateMemoryReview(
+    candidateId: string,
+    expectedReviewRevision: number,
+    review: MemoryDeltaReview,
+  ): ChapterCandidate {
+    const candidate = this.getCandidate(candidateId);
+    if (["accepted", "discarded", "expired"].includes(candidate.status)) {
+      throw new CandidateAlreadySettledError(candidateId);
+    }
+    if (candidate.memoryReviewRevision !== expectedReviewRevision) {
+      throw new ProductionRevisionConflictError(
+        expectedReviewRevision,
+        candidate.memoryReviewRevision,
+      );
+    }
+    const parsedReview = MemoryDeltaReviewSchema.parse(review);
+    const delta = candidate.memoryDelta;
+    if (
+      parsedReview.ignoredAddIndices.some(
+        (index) => index >= (delta?.add.length ?? 0),
+      ) ||
+      parsedReview.ignoredUpdateIds.some(
+        (id) => !(delta?.update.some((update) => update.id === id) ?? false),
+      ) ||
+      parsedReview.ignoredResolveIds.some(
+        (id) => !(delta?.resolve.some((resolve) => resolve.id === id) ?? false),
+      )
+    ) {
+      throw new CandidateMemoryReviewInvalidError();
+    }
+    const normalized = normalizeMemoryDeltaReview(parsedReview);
+    this.database
+      .prepare(
+        `UPDATE chapter_candidates SET memory_delta_review_json = ?,
+         memory_review_revision = memory_review_revision + 1
+         WHERE id = ? AND memory_review_revision = ?`,
+      )
+      .run(
+        JSON.stringify(normalized),
+        candidateId,
+        expectedReviewRevision,
+      );
     return this.getCandidate(candidateId);
   }
 
@@ -511,6 +590,16 @@ export class ProductionRepository {
       if (candidate.review.status !== "passed") {
         throw new CandidateReviewRequiredError(candidateId);
       }
+      const appliedMemoryDelta = candidate.memoryDelta
+        ? filterMemoryDelta(candidate.memoryDelta, candidate.memoryDeltaReview)
+        : null;
+      if (
+        appliedMemoryDelta &&
+        hasMemoryChanges(appliedMemoryDelta) &&
+        !candidate.memoryDeltaReview.approved
+      ) {
+        throw new CandidateMemoryReviewRequiredError(candidateId);
+      }
 
       const timestamp = this.now();
       this.database
@@ -540,17 +629,21 @@ export class ProductionRepository {
            WHERE id = ? AND status = 'completed'`,
         )
         .run(timestamp, candidateId);
-      if (candidate.memoryDelta !== null) {
+      if (appliedMemoryDelta !== null) {
         const conflicts = this.memoryRepository.applyDeltaInTransaction({
           bookId: candidate.bookId,
-          delta: candidate.memoryDelta,
+          delta: appliedMemoryDelta,
           sourceCandidateId: candidate.id,
           sourceChapterNumber: chapter.position + 1,
         });
         if (conflicts.length > 0) {
+          const originalMemoryDelta = candidate.memoryDelta;
+          if (!originalMemoryDelta) {
+            throw new Error("Candidate memory delta disappeared during accept");
+          }
           const deltaWithConflicts = MemoryDeltaSchema.parse({
-            ...candidate.memoryDelta,
-            conflicts: [...candidate.memoryDelta.conflicts, ...conflicts].slice(0, 100),
+            ...originalMemoryDelta,
+            conflicts: [...originalMemoryDelta.conflicts, ...conflicts].slice(0, 100),
           });
           this.database
             .prepare("UPDATE chapter_candidates SET memory_delta_json = ? WHERE id = ?")
@@ -718,6 +811,10 @@ function toCandidate(row: CandidateRow): ChapterCandidate {
     memoryRevision: row.memory_revision,
     memoryContextHash: row.memory_context_hash,
     memoryDelta: parseJson<MemoryDelta | null>(row.memory_delta_json),
+    memoryDeltaReview: MemoryDeltaReviewSchema.parse(
+      parseJson<unknown>(row.memory_delta_review_json),
+    ),
+    memoryReviewRevision: row.memory_review_revision,
     candidateText: row.candidate_text,
     status: row.status,
     review: JSON.parse(row.review_json),
@@ -747,4 +844,26 @@ function hashChapterContext(content: string): string {
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
+}
+
+function emptyMemoryDeltaReview(): MemoryDeltaReview {
+  return {
+    approved: false,
+    ignoredAddIndices: [],
+    ignoredUpdateIds: [],
+    ignoredResolveIds: [],
+  };
+}
+
+function normalizeMemoryDeltaReview(review: MemoryDeltaReview): MemoryDeltaReview {
+  return {
+    approved: review.approved,
+    ignoredAddIndices: [...new Set(review.ignoredAddIndices)].sort((a, b) => a - b),
+    ignoredUpdateIds: [...new Set(review.ignoredUpdateIds)].sort(),
+    ignoredResolveIds: [...new Set(review.ignoredResolveIds)].sort(),
+  };
+}
+
+function hasMemoryChanges(delta: MemoryDelta): boolean {
+  return delta.add.length > 0 || delta.update.length > 0 || delta.resolve.length > 0;
 }

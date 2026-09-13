@@ -4,9 +4,14 @@ import {
   CreateBookInputSchema,
   SelectDirectionInputSchema,
   ExportBookInputSchema,
+  UpdateCandidateMemoryReviewInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
-import { MemoryFilterSchema, UpdateMemoryInputSchema } from "../../shared/memory";
+import {
+  MemoryFilterSchema,
+  RollbackMemoryInputSchema,
+  UpdateMemoryInputSchema,
+} from "../../shared/memory";
 import type { ProviderVault } from "../provider-vault";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
@@ -117,6 +122,17 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.candidateDiscard, CandidateDiscardRequestSchema, ({ candidateId }) =>
     dependencies.getServices().productionRepository.discardCandidate(candidateId),
   );
+  register(
+    dependencies,
+    AUTO_NOVEL_CHANNELS.candidateMemoryReview,
+    UpdateCandidateMemoryReviewInputSchema,
+    ({ candidateId, expectedReviewRevision, review }) =>
+      dependencies.getServices().productionRepository.updateCandidateMemoryReview(
+        candidateId,
+        expectedReviewRevision,
+        review,
+      ),
+  );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
     format,
     content: buildExport(dependencies.getServices(), bookId, format),
@@ -132,6 +148,9 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.memoryUpdate, UpdateMemoryInputSchema, (input) =>
     dependencies.getServices().memoryService.updateManual(input),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRollback, RollbackMemoryInputSchema, (input) =>
+    dependencies.getServices().memoryService.rollbackManual(input),
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.memoryRefresh, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) =>
     dependencies.getServices().memoryService.refresh(bookId),

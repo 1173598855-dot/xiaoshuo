@@ -107,4 +107,51 @@ describe("MemoryRepository", () => {
       locked: false,
     })).not.toThrow(MemoryBookRevisionConflictError);
   });
+
+  it("stores complete snapshots and creates a new revision when rolling back", () => {
+    const { book, repository } = fixture();
+    const [entry] = repository.seedFromFoundation(book.id).filter(
+      ({ kind }) => kind === "world_rule",
+    );
+    const originalHistory = repository.history(entry.id);
+
+    const edited = repository.updateManual({
+      entryId: entry.id,
+      expectedBookRevision: book.revision + 2,
+      expectedEntryRevision: entry.revision,
+      content: { summary: "被改过的规则", rule: "临时规则" },
+      locked: true,
+    });
+    const rolledBack = repository.rollbackManual({
+      entryId: entry.id,
+      expectedBookRevision: repository.getBookRevisionNumber(book.id),
+      expectedEntryRevision: edited.revision,
+      targetRevision: originalHistory[0].revision,
+    });
+
+    expect(originalHistory[0]).toMatchObject({
+      subject: entry.subject,
+      importance: entry.importance,
+      sourceChapterNumber: entry.sourceChapterNumber,
+      validFromChapter: entry.validFromChapter,
+      validToChapter: entry.validToChapter,
+    });
+    expect(rolledBack.revision).toBe(edited.revision + 1);
+    expect(rolledBack.content).toEqual(entry.content);
+    expect(rolledBack.locked).toBe(entry.locked);
+    expect(repository.history(entry.id)).toHaveLength(3);
+
+    expect(() => repository.rollbackManual({
+      entryId: entry.id,
+      expectedBookRevision: repository.getBookRevisionNumber(book.id) - 1,
+      expectedEntryRevision: rolledBack.revision,
+      targetRevision: originalHistory[0].revision,
+    })).toThrow(MemoryBookRevisionConflictError);
+    expect(() => repository.rollbackManual({
+      entryId: entry.id,
+      expectedBookRevision: repository.getBookRevisionNumber(book.id),
+      expectedEntryRevision: edited.revision,
+      targetRevision: originalHistory[0].revision,
+    })).toThrow(MemoryRevisionConflictError);
+  });
 });

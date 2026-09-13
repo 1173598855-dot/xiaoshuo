@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { ChapterSchema, MAX_CHAPTER_CONTENT_CHARACTERS } from "./contracts";
-import { MemoryDeltaSchema } from "./memory";
+import { MemoryDeltaReviewSchema, MemoryDeltaSchema } from "./memory";
 
 const UuidSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
@@ -206,6 +206,13 @@ export const ChapterCandidateSchema = z
     memoryRevision: z.number().int().nonnegative().default(0),
     memoryContextHash: HashSchema.default("0".repeat(64)),
     memoryDelta: MemoryDeltaSchema.nullable().default(null),
+    memoryDeltaReview: MemoryDeltaReviewSchema.default({
+      approved: false,
+      ignoredAddIndices: [],
+      ignoredUpdateIds: [],
+      ignoredResolveIds: [],
+    }),
+    memoryReviewRevision: z.number().int().nonnegative().default(0),
     baseRevision: z.number().int().nonnegative(),
     context: ChapterCandidateContextSchema,
     candidateText: z.string().max(MAX_CHAPTER_CONTENT_CHARACTERS),
@@ -243,6 +250,17 @@ export const PersistedChapterCandidateSchema = ChapterCandidateSchema.superRefin
   },
 );
 export type ChapterCandidate = z.infer<typeof ChapterCandidateSchema>;
+
+export const UpdateCandidateMemoryReviewInputSchema = z
+  .object({
+    candidateId: UuidSchema,
+    expectedReviewRevision: z.number().int().nonnegative(),
+    review: MemoryDeltaReviewSchema,
+  })
+  .strict();
+export type UpdateCandidateMemoryReviewInput = z.infer<
+  typeof UpdateCandidateMemoryReviewInputSchema
+>;
 
 export const BookDetailsSchema = z
   .object({

@@ -36,7 +36,9 @@ function createFixture(isTrustedSender = true) {
     },
     directorService: { generateDirections: vi.fn(async () => []) },
     foundationService: { generate: vi.fn(async () => undefined) },
-    productionRepository: {},
+    productionRepository: {
+      updateCandidateMemoryReview: vi.fn(() => ({ id: "candidate" })),
+    },
     productionService: {},
     memoryService: {
       snapshot: vi.fn(() => ({ bookId: book.id, bookRevision: 0, memoryRevision: 1, entries: [] })),
@@ -44,6 +46,7 @@ function createFixture(isTrustedSender = true) {
       history: vi.fn(() => []),
       updateManual: vi.fn(() => undefined),
       refresh: vi.fn(() => ({ bookId: book.id, bookRevision: 0, memoryRevision: 1, entries: [] })),
+      rollbackManual: vi.fn(() => undefined),
     },
   } as unknown as AutoNovelServices;
   const providerVault = {
@@ -111,5 +114,32 @@ describe("auto novel desktop IPC", () => {
       locked: true,
     });
     expect(invalid).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+
+    const candidateId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
+    const reviewed = await handlers.get(AUTO_NOVEL_CHANNELS.candidateMemoryReview)?.({}, {
+      candidateId,
+      expectedReviewRevision: 0,
+      review: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
+    });
+    expect(reviewed).toMatchObject({ ok: true, data: { id: "candidate" } });
+    expect(services.productionRepository.updateCandidateMemoryReview).toHaveBeenCalledWith(
+      candidateId,
+      0,
+      { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
+    );
+
+    const rolledBack = await handlers.get(AUTO_NOVEL_CHANNELS.memoryRollback)?.({}, {
+      entryId: book.id,
+      expectedBookRevision: 0,
+      expectedEntryRevision: 1,
+      targetRevision: 1,
+    });
+    expect(rolledBack).toMatchObject({ ok: true });
+    expect(services.memoryService.rollbackManual).toHaveBeenCalledWith({
+      entryId: book.id,
+      expectedBookRevision: 0,
+      expectedEntryRevision: 1,
+      targetRevision: 1,
+    });
   });
 });

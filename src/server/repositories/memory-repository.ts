@@ -5,18 +5,21 @@ import { ChapterPlanSchema, type ChapterPlan } from "../../shared/auto-novel";
 import {
   MemoryContextSchema,
   MemoryDeltaSchema,
+  MemoryDeltaReviewSchema,
   MemoryEntrySchema,
   MemoryRevisionSchema,
   type MemoryContent,
   type MemoryConflict,
   type MemoryContext,
   type MemoryDelta,
+  type MemoryDeltaReview,
   type MemoryDraft,
   type MemoryEntry,
   type MemoryFilter,
   type MemoryRevision,
   type MemoryStatus,
   type MemoryUpdate,
+  type RollbackMemoryInput,
   type UpdateMemoryInput,
   MAX_MEMORY_CONTEXT_CHARACTERS,
 } from "../../shared/memory";
@@ -49,11 +52,16 @@ interface MemoryRevisionRow {
   id: string;
   memory_entry_id: string;
   revision: number;
+  subject: string;
   content_json: string;
   status: MemoryStatus;
+  importance: number;
   locked: number;
   source: MemoryRevision["source"];
   source_candidate_id: string | null;
+  source_chapter_number: number | null;
+  valid_from_chapter: number | null;
+  valid_to_chapter: number | null;
   created_at: string;
 }
 
@@ -112,6 +120,15 @@ export class MemoryBookRevisionConflictError extends Error {
       `Expected book revision ${expectedRevision}, but found ${actualRevision}`,
     );
     this.name = "MemoryBookRevisionConflictError";
+  }
+}
+
+export class MemoryRevisionNotFoundError extends Error {
+  readonly code = "NOT_FOUND";
+
+  constructor(entryId: string, revision: number) {
+    super(`Memory revision ${entryId}@${revision} was not found`);
+    this.name = "MemoryRevisionNotFoundError";
   }
 }
 
@@ -178,8 +195,10 @@ export class MemoryRepository {
     this.get(entryId);
     const rows = this.database
       .prepare(
-        `SELECT id, memory_entry_id, revision, content_json, status, locked,
-                source, source_candidate_id, created_at
+        `SELECT id, memory_entry_id, revision, subject, content_json, status,
+                importance, locked, source, source_candidate_id,
+                source_chapter_number, valid_from_chapter, valid_to_chapter,
+                created_at
          FROM memory_revisions
          WHERE memory_entry_id = ? ORDER BY revision, id`,
       )
@@ -411,19 +430,28 @@ export class MemoryRepository {
       }))
       .sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id));
 
-    const selected: MemoryEntry[] = [];
-    for (const { entry } of ranked) {
-      const nextCount = JSON.stringify([...selected, entry]).length;
+    const selected: Array<{ entry: MemoryEntry; score: number }> = [];
+    for (const item of ranked) {
+      const nextCount = JSON.stringify([
+        ...selected.map(({ entry }) => entry),
+        item.entry,
+      ]).length;
       if (nextCount > MAX_MEMORY_CONTEXT_CHARACTERS) continue;
-      selected.push(entry);
+      selected.push(item);
     }
-    const serialized = JSON.stringify(selected);
+    const selectedEntries = selected.map(({ entry }) => entry);
+    const serialized = JSON.stringify(selectedEntries);
     const memoryRevision = this.getBookRevision(bookId).memory_revision;
     const contextHash = createHash("sha256")
-      .update(JSON.stringify({ memoryRevision, entries: selected }))
+      .update(JSON.stringify({ memoryRevision, entries: selectedEntries }))
       .digest("hex");
     return MemoryContextSchema.parse({
-      entries: selected,
+      entries: selectedEntries,
+      selectionReasons: selected.map(({ entry, score }) => ({
+        entryId: entry.id,
+        score,
+        reason: selectionReason(entry, chapterText, plan.chapterNumber),
+      })),
       memoryRevision,
       contextHash,
       characterCount: serialized.length,
@@ -652,6 +680,76 @@ export class MemoryRepository {
     });
   }
 
+  rollbackManual(input: RollbackMemoryInput): MemoryEntry {
+    return this.withTransaction(() => {
+      const entry = this.get(input.entryId);
+      const book = this.getBookRevision(entry.bookId);
+      if (entry.revision !== input.expectedEntryRevision) {
+        throw new MemoryRevisionConflictError(
+          input.expectedEntryRevision,
+          entry.revision,
+        );
+      }
+      if (book.revision !== input.expectedBookRevision) {
+        throw new MemoryBookRevisionConflictError(
+          input.expectedBookRevision,
+          book.revision,
+        );
+      }
+      const target = this.history(input.entryId).find(
+        ({ revision }) => revision === input.targetRevision,
+      );
+      if (!target) {
+        throw new MemoryRevisionNotFoundError(input.entryId, input.targetRevision);
+      }
+      const updated = MemoryEntrySchema.parse({
+        ...entry,
+        subject: target.subject || entry.subject,
+        content: target.content,
+        status: target.status,
+        importance: target.importance,
+        locked: target.locked,
+        sourceChapterNumber: target.sourceChapterNumber,
+        validFromChapter: target.validFromChapter,
+        validToChapter: target.validToChapter,
+        source: "manual_edit",
+        sourceCandidateId: null,
+        revision: entry.revision + 1,
+        updatedAt: this.now(),
+      });
+      this.database
+        .prepare(
+          `UPDATE memory_entries SET subject = ?, content_json = ?, status = ?,
+           importance = ?, locked = ?, source_chapter_number = ?,
+           source_candidate_id = ?, valid_from_chapter = ?, valid_to_chapter = ?,
+           revision = ?, updated_at = ? WHERE id = ? AND revision = ?`,
+        )
+        .run(
+          updated.subject,
+          JSON.stringify(updated.content),
+          updated.status,
+          updated.importance,
+          updated.locked ? 1 : 0,
+          updated.sourceChapterNumber,
+          updated.sourceCandidateId,
+          updated.validFromChapter,
+          updated.validToChapter,
+          updated.revision,
+          updated.updatedAt,
+          updated.id,
+          entry.revision,
+        );
+      this.insertRevision(updated, "manual_edit", null);
+      this.database
+        .prepare(
+          `UPDATE books SET revision = revision + 1,
+           memory_revision = memory_revision + 1, updated_at = ? WHERE id = ?`,
+        )
+        .run(updated.updatedAt, entry.bookId);
+      return this.get(updated.id);
+    });
+  }
+
   private insertRevision(
     entry: MemoryEntry,
     source: MemoryRevision["source"],
@@ -660,19 +758,25 @@ export class MemoryRepository {
     this.database
       .prepare(
         `INSERT INTO memory_revisions (
-           id, memory_entry_id, revision, content_json, status, locked, source,
-           source_candidate_id, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           id, memory_entry_id, revision, subject, content_json, status,
+           importance, locked, source, source_candidate_id,
+           source_chapter_number, valid_from_chapter, valid_to_chapter, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         this.createId(),
         entry.id,
         entry.revision,
+        entry.subject,
         JSON.stringify(entry.content),
         entry.status,
+        entry.importance,
         entry.locked ? 1 : 0,
         source,
         sourceCandidateId,
+        entry.sourceChapterNumber,
+        entry.validFromChapter,
+        entry.validToChapter,
         entry.updatedAt,
       );
   }
@@ -736,11 +840,16 @@ function toMemoryRevision(row: MemoryRevisionRow): MemoryRevision {
     id: row.id,
     memoryEntryId: row.memory_entry_id,
     revision: row.revision,
+    subject: row.subject,
     content: parseJson<MemoryContent>(row.content_json),
     status: row.status,
+    importance: row.importance,
     locked: row.locked === 1,
     source: row.source,
     sourceCandidateId: row.source_candidate_id,
+    sourceChapterNumber: row.source_chapter_number,
+    validFromChapter: row.valid_from_chapter,
+    validToChapter: row.valid_to_chapter,
     createdAt: row.created_at,
   });
 }
@@ -767,9 +876,25 @@ function scoreEntry(
   );
 }
 
+function selectionReason(
+  entry: MemoryEntry,
+  chapterText: string,
+  chapterNumber: number,
+): string {
+  const inRange =
+    (entry.validFromChapter === null || entry.validFromChapter <= chapterNumber) &&
+    (entry.validToChapter === null || entry.validToChapter >= chapterNumber);
+  const subjectMatch = chapterText.includes(entry.subject.toLocaleLowerCase());
+  if (entry.locked) return "已锁定，始终注入";
+  if (subjectMatch && inRange) return "主题匹配且处于章节有效范围";
+  if (subjectMatch) return "章节主题匹配";
+  if (inRange) return "处于章节有效范围";
+  return "重要度优先补充";
+}
+
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
 
-export type { MemoryDelta, MemoryUpdate };
-export { MemoryDeltaSchema };
+export type { MemoryDelta, MemoryDeltaReview, MemoryUpdate };
+export { MemoryDeltaReviewSchema, MemoryDeltaSchema };

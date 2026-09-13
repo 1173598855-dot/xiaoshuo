@@ -5,6 +5,7 @@ import { migrate } from "../../src/server/db/migrations";
 import { BookRepository } from "../../src/server/repositories/book-repository";
 import { ProductionRepository } from "../../src/server/repositories/production-repository";
 import { ProductionService } from "../../src/server/services/production-service";
+import { NormalizedProviderError } from "../../src/server/providers/types";
 import type { ProviderConfig } from "../../src/shared/contracts";
 
 const databases: ReturnType<typeof createDatabase>[] = [];
@@ -13,7 +14,10 @@ afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
 
-function createFixture() {
+function createFixture(providerOverride?: {
+  readonly kind: "openai-compatible";
+  generate(input: { systemPrompt: string }): Promise<{ text: string; usage: null }>;
+}) {
   const database = createDatabase(":memory:");
   databases.push(database);
   migrate(database);
@@ -79,7 +83,7 @@ function createFixture() {
     "production",
     "production-1",
   );
-  const provider = {
+  const provider = providerOverride ?? {
     kind: "openai-compatible" as const,
     async generate(input: { systemPrompt: string }) {
       if (input.systemPrompt.includes("审稿人")) {
@@ -138,6 +142,54 @@ describe("ProductionService", () => {
     await expect(
       fixture.productionRepository.acceptCandidate(candidate.id, 1),
     ).rejects.toMatchObject({ code: "CANDIDATE_ALREADY_SETTLED" });
+  });
+
+  it("retries transient provider failures without creating duplicate candidates", async () => {
+    let calls = 0;
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(input: { systemPrompt: string }) {
+        calls += 1;
+        if (calls === 1) {
+          throw new NormalizedProviderError("RATE_LIMITED", "模型请求过于频繁，请稍后重试。");
+        }
+        if (input.systemPrompt.includes("审稿人")) {
+          return { text: JSON.stringify({ status: "passed", findings: [] }), usage: null };
+        }
+        return { text: "重试后生成的正文。", usage: null };
+      },
+    };
+    const fixture = createFixture(provider);
+    const completed = await new ProductionService(fixture).start(
+      fixture.run.id,
+      fixture.providerConfig,
+    );
+
+    expect(completed.status).toBe("completed");
+    expect(calls).toBe(5);
+    expect(fixture.productionRepository.getRunDetails(fixture.run.id).candidates).toHaveLength(2);
+  });
+
+  it("interrupts a transient retry backoff when the caller aborts", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        calls += 1;
+        controller.abort();
+        throw new NormalizedProviderError("UPSTREAM_UNAVAILABLE", "模型服务暂时不可用，请稍后重试。");
+      },
+    };
+    const fixture = createFixture(provider);
+    const paused = await new ProductionService(fixture).start(
+      fixture.run.id,
+      fixture.providerConfig,
+      controller.signal,
+    );
+
+    expect(paused.status).toBe("paused");
+    expect(calls).toBe(1);
   });
 });
 

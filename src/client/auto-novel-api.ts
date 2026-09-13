@@ -10,8 +10,10 @@ import {
   ProductionRunSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
+  UpdateCandidateMemoryReviewInputSchema,
   type Book,
   type BookDetails,
+  type ChapterCandidate,
   type CreateBookInput,
   type ProductionRun,
   type StoryDirection,
@@ -21,12 +23,14 @@ import {
   MemoryContextSchema,
   MemoryEntrySchema,
   MemoryRevisionSchema,
+  RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
   type MemoryBookSnapshot,
   type MemoryContext,
   type MemoryEntry,
   type MemoryRevision,
   type MemoryFilter,
+  type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
 import {
@@ -81,8 +85,16 @@ export interface AutoNovelApi {
   getMemoryContext(bookId: string, chapterNumber: number): Promise<MemoryContext>;
   getMemoryHistory(entryId: string): Promise<readonly MemoryRevision[]>;
   updateMemory(input: UpdateMemoryInput): Promise<MemoryEntry>;
+  rollbackMemory(input: RollbackMemoryInput): Promise<MemoryEntry>;
+  updateCandidateMemoryReview(
+    input: UpdateCandidateMemoryReviewInput,
+  ): Promise<ChapterCandidate>;
   refreshMemory(bookId: string): Promise<MemoryBookSnapshot>;
 }
+
+export type UpdateCandidateMemoryReviewInput = z.infer<
+  typeof UpdateCandidateMemoryReviewInputSchema
+>;
 
 export function createAutoNovelApi(
   fetchImpl: typeof fetch = globalThis.fetch,
@@ -160,6 +172,25 @@ export function createAutoNovelApi(
           method: "PATCH",
           body: JSON.stringify(parsed),
         }),
+      );
+    },
+    async rollbackMemory(input) {
+      const parsed = RollbackMemoryInputSchema.parse(input);
+      return MemoryEntrySchema.parse(
+        await requestJson(fetchImpl, `/api/memory/${parsed.entryId}/rollback`, {
+          method: "POST",
+          body: JSON.stringify(parsed),
+        }),
+      );
+    },
+    async updateCandidateMemoryReview(input) {
+      const parsed = UpdateCandidateMemoryReviewInputSchema.parse(input);
+      return ChapterCandidateSchema.parse(
+        await requestJson(
+          fetchImpl,
+          `/api/chapter-candidates/${parsed.candidateId}/memory-review`,
+          { method: "PATCH", body: JSON.stringify(parsed) },
+        ),
       );
     },
     async refreshMemory(bookId) {

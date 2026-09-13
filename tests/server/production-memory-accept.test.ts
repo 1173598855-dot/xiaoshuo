@@ -5,7 +5,9 @@ import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
 import { BookRepository } from "../../src/server/repositories/book-repository";
 import {
+  CandidateMemoryReviewRequiredError,
   CandidateStaleError,
+  ProductionRevisionConflictError,
   ProductionRepository,
 } from "../../src/server/repositories/production-repository";
 import { MemoryRepository } from "../../src/server/repositories/memory-repository";
@@ -61,6 +63,73 @@ afterEach(() => {
 });
 
 describe("production accept memory transaction", () => {
+  it("requires memory review and applies only the confirmed delta", async () => {
+    const fixtureData = fixture();
+    const context = fixtureData.memory.getContext(fixtureData.book.id, fixtureData.plan);
+    const candidate = fixtureData.production.createCandidate({
+      runId: fixtureData.run.id,
+      bookId: fixtureData.book.id,
+      chapterId: fixtureData.chapter.id,
+      baseRevision: 0,
+      contextHash: emptyChapterHash,
+      memoryRevision: context.memoryRevision,
+      memoryContextHash: context.contextHash,
+      candidateText: "只采纳第二条记忆。",
+      memoryDelta: {
+        add: [
+          {
+            kind: "fact",
+            subject: "应忽略的事实",
+            content: { statement: "不进入账本", evidence: null },
+            status: "active",
+            importance: 2,
+            locked: false,
+            sourceChapterNumber: null,
+            validFromChapter: 1,
+            validToChapter: null,
+          },
+          {
+            kind: "fact",
+            subject: "应采纳的事实",
+            content: { statement: "进入账本", evidence: null },
+            status: "active",
+            importance: 3,
+            locked: false,
+            sourceChapterNumber: null,
+            validFromChapter: 1,
+            validToChapter: null,
+          },
+        ],
+        update: [],
+        resolve: [],
+        conflicts: [],
+      },
+    });
+    fixtureData.production.updateCandidateReview(candidate.id, { status: "passed", findings: [] });
+
+    await expect(fixtureData.production.acceptCandidate(candidate.id, 0)).rejects.toBeInstanceOf(CandidateMemoryReviewRequiredError);
+
+    const ignored = fixtureData.production.updateCandidateMemoryReview(candidate.id, 0, {
+      approved: false,
+      ignoredAddIndices: [0],
+      ignoredUpdateIds: [],
+      ignoredResolveIds: [],
+    });
+    expect(ignored.memoryReviewRevision).toBe(1);
+    expect(() => fixtureData.production.updateCandidateMemoryReview(candidate.id, 0, ignored.memoryDeltaReview)).toThrow(ProductionRevisionConflictError);
+    await expect(fixtureData.production.acceptCandidate(candidate.id, 0)).rejects.toBeInstanceOf(CandidateMemoryReviewRequiredError);
+
+    fixtureData.production.updateCandidateMemoryReview(candidate.id, 1, {
+      approved: true,
+      ignoredAddIndices: [0],
+      ignoredUpdateIds: [],
+      ignoredResolveIds: [],
+    });
+    await fixtureData.production.acceptCandidate(candidate.id, 0);
+    expect(fixtureData.memory.list(fixtureData.book.id).some(({ subject }) => subject === "应忽略的事实")).toBe(false);
+    expect(fixtureData.memory.list(fixtureData.book.id).some(({ subject }) => subject === "应采纳的事实")).toBe(true);
+  });
+
   it("applies a candidate memory delta and records its history atomically", async () => {
     const fixtureData = fixture();
     const context = fixtureData.memory.getContext(fixtureData.book.id, fixtureData.plan);
@@ -73,6 +142,7 @@ describe("production accept memory transaction", () => {
       memoryRevision: context.memoryRevision,
       memoryContextHash: context.contextHash,
       candidateText: "主角把物证放进证物袋。",
+      memoryDeltaReview: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
       memoryDelta: {
         add: [{
           kind: "fact",
@@ -149,6 +219,7 @@ describe("production accept memory transaction", () => {
       memoryRevision: context.memoryRevision,
       memoryContextHash: context.contextHash,
       candidateText: "正文正常进入。",
+      memoryDeltaReview: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
       memoryDelta: {
         add: [],
         update: [{
@@ -190,6 +261,7 @@ describe("production accept memory transaction", () => {
       memoryRevision: context.memoryRevision,
       memoryContextHash: context.contextHash,
       candidateText: "更新后的正文。",
+      memoryDeltaReview: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
       memoryDelta: {
         add: [],
         update: [{
@@ -230,6 +302,7 @@ describe("production accept memory transaction", () => {
       memoryRevision: context.memoryRevision,
       memoryContextHash: context.contextHash,
       candidateText: "事务失败时不得留下正文。",
+      memoryDeltaReview: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
       memoryDelta: {
         add: [],
         update: [{

@@ -230,7 +230,7 @@ export function App() {
   if (page === "manuscript") {
     return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
 }
 
 function providerDialog(

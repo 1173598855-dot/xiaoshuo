@@ -55,6 +55,7 @@ function createApi() {
     }),
     getMemoryHistory: vi.fn(),
     updateMemory: vi.fn().mockResolvedValue({ ...world, locked: true, revision: 2 }),
+    rollbackMemory: vi.fn(),
     refreshMemory: vi.fn().mockResolvedValue(snapshot),
   } as unknown as AutoNovelApi;
   return { api, snapshot, world };
@@ -105,5 +106,67 @@ describe("MemoryPanel", () => {
 
     fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
     expect(await screen.findByText(/手动修正/)).toBeInTheDocument();
+  });
+
+  it("loads history and rolls an entry back with the current revisions", async () => {
+    const { api, snapshot, world } = createApi();
+    const current = { ...world, revision: 2, locked: true };
+    (api.listMemory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...snapshot,
+      entries: [current],
+    });
+    (api.getMemoryContext as ReturnType<typeof vi.fn>).mockResolvedValue({
+      entries: [current],
+      memoryRevision: 1,
+      contextHash: "a".repeat(64),
+      characterCount: 300,
+    });
+    (api.getMemoryHistory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "c2fcea89-9d4e-4f45-84d2-a0e40d86f706",
+        memoryEntryId: world.id,
+        revision: 1,
+        subject: world.subject,
+        content: world.content,
+        status: world.status,
+        importance: world.importance,
+        locked: false,
+        source: "foundation",
+        sourceCandidateId: null,
+        sourceChapterNumber: null,
+        validFromChapter: 1,
+        validToChapter: null,
+        createdAt: timestamp,
+      },
+      {
+        id: "d2fcea89-9d4e-4f45-84d2-a0e40d86f706",
+        memoryEntryId: world.id,
+        revision: 2,
+        subject: world.subject,
+        content: current.content,
+        status: current.status,
+        importance: current.importance,
+        locked: true,
+        source: "manual_edit",
+        sourceCandidateId: null,
+        sourceChapterNumber: null,
+        validFromChapter: 1,
+        validToChapter: null,
+        createdAt: timestamp,
+      },
+    ]);
+    (api.rollbackMemory as ReturnType<typeof vi.fn>).mockResolvedValue(world);
+    render(<MemoryPanel bookId={bookId} chapterNumber={1} api={api} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
+    await screen.findByText("城市会移动");
+    fireEvent.click(screen.getByRole("button", { name: "历史" }));
+    expect(await screen.findByText("v1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /回滚/ }));
+    await waitFor(() => expect(api.rollbackMemory).toHaveBeenCalledWith({
+      entryId: world.id,
+      expectedBookRevision: snapshot.bookRevision,
+      expectedEntryRevision: 2,
+      targetRevision: 1,
+    }));
   });
 });

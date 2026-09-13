@@ -103,6 +103,8 @@ const AUTO_NOVEL_SCHEMA = `
     memory_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_revision >= 0),
     memory_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
     memory_delta_json TEXT NOT NULL DEFAULT 'null',
+    memory_delta_review_json TEXT NOT NULL DEFAULT '{"approved":false,"ignoredAddIndices":[],"ignoredUpdateIds":[],"ignoredResolveIds":[]}',
+    memory_review_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_review_revision >= 0),
     candidate_text TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     review_json TEXT NOT NULL,
@@ -142,6 +144,12 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   if (!candidateColumns.some(({ name }) => name === "memory_delta_json")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_delta_json TEXT NOT NULL DEFAULT 'null'");
   }
+  if (!candidateColumns.some(({ name }) => name === "memory_delta_review_json")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_delta_review_json TEXT NOT NULL DEFAULT '{\"approved\":false,\"ignoredAddIndices\":[],\"ignoredUpdateIds\":[],\"ignoredResolveIds\":[]}'");
+  }
+  if (!candidateColumns.some(({ name }) => name === "memory_review_revision")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_review_revision INTEGER NOT NULL DEFAULT 0");
+  }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
   if (!columns.some(({ name }) => name === "memory_revision")) {
@@ -154,7 +162,7 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database
     .prepare(
       `INSERT INTO app_meta (key, value)
-       VALUES ('auto_novel_schema_version', '1')
+       VALUES ('auto_novel_schema_version', '2')
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
     .run();

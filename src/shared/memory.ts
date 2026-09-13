@@ -192,16 +192,49 @@ export const MemoryDeltaSchema = z
   .strict();
 export type MemoryDelta = z.infer<typeof MemoryDeltaSchema>;
 
+export const MemoryDeltaReviewSchema = z
+  .object({
+    approved: z.boolean().default(false),
+    ignoredAddIndices: z.array(z.number().int().min(0).max(99)).max(100).default([]),
+    ignoredUpdateIds: z.array(UuidSchema).max(100).default([]),
+    ignoredResolveIds: z.array(UuidSchema).max(100).default([]),
+  })
+  .strict();
+export type MemoryDeltaReview = z.infer<typeof MemoryDeltaReviewSchema>;
+
+export function filterMemoryDelta(
+  delta: MemoryDelta,
+  review: MemoryDeltaReview,
+): MemoryDelta {
+  const parsedReview = MemoryDeltaReviewSchema.parse(review);
+  const ignoredAdds = new Set(parsedReview.ignoredAddIndices);
+  const ignoredUpdates = new Set(parsedReview.ignoredUpdateIds);
+  const ignoredResolves = new Set(parsedReview.ignoredResolveIds);
+  return {
+    ...delta,
+    add: delta.add.filter((_, index) => !ignoredAdds.has(index)),
+    update: delta.update.filter(({ id }) => !ignoredUpdates.has(id)),
+    resolve: delta.resolve.filter(({ id }) => !ignoredResolves.has(id)),
+  };
+}
+
 export const MemoryRevisionSchema = z
   .object({
     id: UuidSchema,
     memoryEntryId: UuidSchema,
     revision: z.number().int().positive(),
+    // These fields make a history row sufficient to reconstruct the entry.
+    // Empty subject is accepted only for legacy rows created before v0.2.
+    subject: z.string().trim().max(200).default(""),
     content: MemoryContentSchema,
     status: MemoryStatusSchema,
+    importance: z.number().int().min(1).max(5).default(3),
     locked: z.boolean(),
     source: z.enum(["foundation", "accepted_candidate", "manual_edit"]),
     sourceCandidateId: UuidSchema.nullable(),
+    sourceChapterNumber: z.number().int().min(1).nullable().default(null),
+    validFromChapter: z.number().int().min(1).nullable().default(null),
+    validToChapter: z.number().int().min(1).nullable().default(null),
     createdAt: TimestampSchema,
   })
   .strict();
@@ -237,9 +270,29 @@ export const UpdateMemoryInputSchema = z
   );
 export type UpdateMemoryInput = z.infer<typeof UpdateMemoryInputSchema>;
 
+export const RollbackMemoryInputSchema = z
+  .object({
+    entryId: UuidSchema,
+    expectedBookRevision: z.number().int().nonnegative(),
+    expectedEntryRevision: z.number().int().positive(),
+    targetRevision: z.number().int().positive(),
+  })
+  .strict();
+export type RollbackMemoryInput = z.infer<typeof RollbackMemoryInputSchema>;
+
+export const MemoryContextSelectionSchema = z
+  .object({
+    entryId: UuidSchema,
+    score: z.number().int().nonnegative(),
+    reason: z.string().trim().min(1).max(200),
+  })
+  .strict();
+export type MemoryContextSelection = z.infer<typeof MemoryContextSelectionSchema>;
+
 export const MemoryContextSchema = z
   .object({
     entries: z.array(MemoryEntrySchema).max(500),
+    selectionReasons: z.array(MemoryContextSelectionSchema).max(500).default([]),
     memoryRevision: z.number().int().nonnegative(),
     contextHash: HashSchema,
     characterCount: z

@@ -16,6 +16,8 @@ export const AUTO_NOVEL_CHANNELS = {
   memoryHistory: "auto-novel:memory-history",
   memoryUpdate: "auto-novel:memory-update",
   memoryRefresh: "auto-novel:memory-refresh",
+  memoryRollback: "auto-novel:memory-rollback",
+  candidateMemoryReview: "auto-novel:candidate-memory-review",
 } as const;
 
 export type AutoNovelDesktopChannel =

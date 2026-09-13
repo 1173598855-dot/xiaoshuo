@@ -119,4 +119,63 @@ describe("production memory integration", () => {
     expect(fixture.memoryService.list(fixture.book.id)).toHaveLength(2);
     expect(fixture.productionRepository.getRun(fixture.run.id).status).toBe("failed");
   });
+
+  it("pauses before accept until the chapter memory delta is confirmed", async () => {
+    const fixture = setup();
+    const provider: TextGenerationProvider = {
+      kind: "openai-compatible",
+      async generate(input) {
+        if (input.systemPrompt.includes("审稿人")) {
+          return {
+            text: JSON.stringify({
+              status: "passed",
+              findings: [],
+              memoryDelta: {
+                add: [{
+                  kind: "fact",
+                  subject: "审核确认的事实",
+                  content: { statement: "本章确认了一个事实", evidence: "第一章" },
+                  status: "active",
+                  importance: 3,
+                  locked: false,
+                  sourceChapterNumber: null,
+                  validFromChapter: 1,
+                  validToChapter: null,
+                }],
+                update: [],
+                resolve: [],
+                conflicts: [],
+              },
+            }),
+            usage: null,
+          };
+        }
+        return { text: "主角记下这条事实。", usage: null };
+      },
+    };
+    const service = new ProductionService({
+      bookRepository: fixture.bookRepository,
+      productionRepository: fixture.productionRepository,
+      providerResolver: { resolve: () => provider },
+      memoryService: fixture.memoryService,
+    } as never);
+
+    const paused = await service.start(fixture.run.id, providerConfig);
+    expect(paused.status).toBe("paused");
+    expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(0);
+    const candidate = fixture.productionRepository.getCandidate(
+      fixture.productionRepository.getRunDetails(fixture.run.id).candidate!.id,
+    );
+    const reviewed = fixture.productionRepository.updateCandidateMemoryReview(candidate.id, 0, {
+      approved: true,
+      ignoredAddIndices: [],
+      ignoredUpdateIds: [],
+      ignoredResolveIds: [],
+    });
+    expect(reviewed.memoryDeltaReview.approved).toBe(true);
+
+    const completed = await service.resume(fixture.run.id, providerConfig);
+    expect(completed.status).toBe("completed");
+    expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(1);
+  });
 });

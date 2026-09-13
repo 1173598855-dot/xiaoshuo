@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
@@ -102,6 +103,9 @@ function fixture() {
       apiKey: "sk-test-only",
       baseUrl: "https://models.example.test/v1",
     },
+    bookRepository,
+    productionRepository,
+    memoryService: dependencies.memoryService,
   };
 }
 
@@ -211,7 +215,8 @@ describe("auto-novel HTTP app", () => {
       }),
     });
     expect(patched.status).toBe(200);
-    expect((await patched.json() as { locked: boolean }).locked).toBe(true);
+    const patchedBody = await patched.json() as { locked: boolean; revision: number };
+    expect(patchedBody.locked).toBe(true);
 
     const context = await app.request(`/api/books/${createdBody.book.id}/memory/context/1`);
     expect(context.status).toBe(200);
@@ -224,6 +229,20 @@ describe("auto-novel HTTP app", () => {
     const refreshed = await app.request(`/api/books/${createdBody.book.id}/memory/refresh`, { method: "POST" });
     expect(refreshed.status).toBe(200);
     expect((await refreshed.json() as { memoryRevision: number }).memoryRevision).toBe(snapshot.memoryRevision + 1);
+    const latest = await app.request(`/api/books/${createdBody.book.id}`);
+    const latestBody = await latest.json() as { book: { revision: number } };
+    const rolledBack = await app.request(`/api/memory/${entry.id}/rollback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entryId: entry.id,
+        expectedBookRevision: latestBody.book.revision,
+        expectedEntryRevision: patchedBody.revision,
+        targetRevision: 1,
+      }),
+    });
+    expect(rolledBack.status).toBe(200);
+    expect((await rolledBack.json() as { locked: boolean; revision: number })).toMatchObject({ locked: false, revision: 3 });
     const exported = await app.request(`/api/books/${createdBody.book.id}/export`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -233,5 +252,63 @@ describe("auto-novel HTTP app", () => {
     expect(JSON.stringify(await exported.json())).not.toContain("sk-test-only");
     const invalid = await app.request("/api/books/not-a-uuid/memory");
     expect(invalid.status).toBe(400);
+  });
+
+  it("reviews a chapter memory delta through HTTP before it can be accepted", async () => {
+    const { app, provider, bookRepository, productionRepository, memoryService } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "候选记忆审阅接口", provider, idempotencyKey: "memory-review-http" }),
+    });
+    const createdBody = await created.json() as { book: { id: string; revision: number }; directions: Array<{ id: string }> };
+    await app.request(`/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+    });
+    const plan = bookRepository.getNextChapterPlan(createdBody.book.id)!;
+    const chapter = productionRepository.getOrCreateChapter(createdBody.book.id, plan.title, 0);
+    const context = memoryService.getContext(createdBody.book.id, plan);
+    const run = productionRepository.createRun(createdBody.book.id, "production", "manual-memory-review-http");
+    const candidate = productionRepository.createCandidate({
+      runId: run.id,
+      bookId: createdBody.book.id,
+      chapterId: chapter.id,
+      baseRevision: chapter.revision,
+      contextHash: createHash("sha256").update(chapter.content).digest("hex"),
+      memoryRevision: context.memoryRevision,
+      memoryContextHash: context.contextHash,
+      candidateText: "候选正文。",
+      memoryDelta: {
+        add: [{
+          kind: "fact",
+          subject: "接口确认事实",
+          content: { statement: "已确认", evidence: null },
+          status: "active",
+          importance: 3,
+          locked: false,
+          sourceChapterNumber: null,
+          validFromChapter: 1,
+          validToChapter: null,
+        }],
+        update: [],
+        resolve: [],
+        conflicts: [],
+      },
+    });
+    productionRepository.updateCandidateReview(candidate.id, { status: "passed", findings: [] });
+    const response = await app.request(`/api/chapter-candidates/${candidate.id}/memory-review`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        candidateId: candidate.id,
+        expectedReviewRevision: 0,
+        review: { approved: true, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json() as { memoryDeltaReview: { approved: boolean } }).memoryDeltaReview.approved).toBe(true);
   });
 });
