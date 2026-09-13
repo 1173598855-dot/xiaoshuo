@@ -14,6 +14,7 @@ import {
   type CreateBookInput,
   type StoryDirection,
 } from "../../shared/auto-novel";
+import { MemoryContextConfigSchema } from "../../shared/memory";
 
 export type DirectionDraft = Omit<
   StoryDirection,
@@ -103,6 +104,7 @@ interface RunRow {
   current_chapter_number: number | null;
   version: number;
   idempotency_key: string;
+  memory_context_config_json: string;
   error_code: string | null;
   created_at: string;
   updated_at: string;
@@ -245,7 +247,8 @@ export class BookRepository {
     const runRow = this.database
       .prepare(
         `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                version, idempotency_key, error_code, created_at, updated_at
+                version, idempotency_key, memory_context_config_json,
+                error_code, created_at, updated_at
          FROM production_runs WHERE book_id = ? AND kind = ?
          ORDER BY updated_at DESC, id LIMIT 1`,
       )
@@ -603,6 +606,9 @@ function toRun(row: RunRow) {
     currentChapterNumber: row.current_chapter_number,
     version: row.version,
     idempotencyKey: row.idempotency_key,
+    memoryContextConfig: MemoryContextConfigSchema.parse(
+      parseJson<unknown>(row.memory_context_config_json),
+    ),
     errorCode: row.error_code,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

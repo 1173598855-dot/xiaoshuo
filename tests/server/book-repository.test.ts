@@ -7,6 +7,7 @@ import {
   DirectionAlreadySelectedError,
 } from "../../src/server/repositories/book-repository";
 import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
+import { ProductionRepository } from "../../src/server/repositories/production-repository";
 
 const databases: ReturnType<typeof createDatabase>[] = [];
 
@@ -19,10 +20,13 @@ function createRepository() {
   databases.push(database);
   migrate(database);
   new WorkspaceRepository(database);
-  return new BookRepository(database, {
-    createId: sequenceIds(),
-    now: () => "2026-09-11T00:00:00.000Z",
-  });
+  return {
+    database,
+    repository: new BookRepository(database, {
+      createId: sequenceIds(),
+      now: () => "2026-09-11T00:00:00.000Z",
+    }),
+  };
 }
 
 function sequenceIds() {
@@ -32,7 +36,7 @@ function sequenceIds() {
 
 describe("BookRepository", () => {
   it("creates a book from one idea without requiring manual cards", () => {
-    const repository = createRepository();
+    const { repository } = createRepository();
 
     const book = repository.createBook({
       idea: "暴雨夜，失忆的快递员收到自己的死亡通知",
@@ -50,7 +54,7 @@ describe("BookRepository", () => {
   });
 
   it("saves exactly three directions and returns them on an idempotent retry", () => {
-    const repository = createRepository();
+    const { repository } = createRepository();
     const book = repository.createBook({ idea: "一座会在凌晨移动的城市" });
     const drafts = [1, 2, 3].map((rank) => ({
       title: `方向 ${rank}`,
@@ -72,7 +76,7 @@ describe("BookRepository", () => {
   });
 
   it("allows one direction selection and rejects a second selection", () => {
-    const repository = createRepository();
+    const { repository } = createRepository();
     const book = repository.createBook({ idea: "海边小镇每晚少一个人" });
     const [direction] = repository.saveDirections(
       book.id,
@@ -101,7 +105,7 @@ describe("BookRepository", () => {
   });
 
   it("returns chapter plans in stable chapter order", () => {
-    const repository = createRepository();
+    const { repository } = createRepository();
     const book = repository.createBook({ idea: "旧火车站的时间循环" });
 
     repository.saveChapterPlans(book.id, [
@@ -131,5 +135,22 @@ describe("BookRepository", () => {
       1,
       3,
     ]);
+  });
+
+  it("returns the persisted production memory selection when reopening a book", () => {
+    const { database, repository } = createRepository();
+    const book = repository.createBook({ idea: "重新打开后仍保留记忆选择" });
+    const production = new ProductionRepository(database);
+    const selectedEntryId = "00000000-0000-4000-8000-000000000099";
+
+    production.createRun(book.id, "production", "selection-persisted", {
+      mode: "selected",
+      entryIds: [selectedEntryId],
+    });
+
+    expect(repository.getBook(book.id).run?.memoryContextConfig).toEqual({
+      mode: "selected",
+      entryIds: [selectedEntryId],
+    });
   });
 });

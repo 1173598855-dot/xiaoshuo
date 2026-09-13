@@ -39,11 +39,17 @@ function createApi() {
     content: { name: "林默", goal: "找回妹妹", relationships: [], state: "还在调查" },
     importance: 4,
   };
+  const archived = {
+    ...world,
+    id: "c2fcea89-9d4e-4f45-84d2-a0e40d86f706",
+    subject: "已归档规则",
+    status: "archived" as const,
+  };
   const snapshot = {
     bookId,
     bookRevision: 4,
     memoryRevision: 1,
-    entries: [world, character],
+    entries: [world, character, archived],
   };
   const api = {
     listMemory: vi.fn().mockResolvedValue(snapshot),
@@ -192,5 +198,23 @@ describe("MemoryPanel", () => {
       mode: "selected",
       entryIds: [world.id, characterId],
     });
+  });
+
+  it("does not offer archived memories in the explicit Provider allow-list", async () => {
+    const { api, world } = createApi();
+    render(
+      <MemoryPanel
+        bookId={bookId}
+        chapterNumber={1}
+        api={api}
+        memoryContextConfig={{ mode: "selected", entryIds: [world.id] }}
+        onMemoryContextConfigChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("城市会移动");
+    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
+    expect(screen.queryByRole("checkbox", { name: "发送“已归档规则”给当前 Provider" })).not.toBeInTheDocument();
   });
 });

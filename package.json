@@ -1,6 +1,6 @@
 {
   "name": "xiaoyi-novel-workbench",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "本地优先、候选先审后采纳的中文 AI 长篇小说工作台。",
   "author": "1173598855-dot",
   "private": true,
@@ -71,7 +71,7 @@
     "@google/genai": "^2.15.0",
     "@hono/node-server": "^2.0.12",
     "electron-updater": "^6.8.9",
-    "hono": "^4.12.33",
+    "hono": "^4.13.7",
     "lucide-react": "^1.28.0",
     "openai": "^7.3.0",
     "react": "^19.2.8",

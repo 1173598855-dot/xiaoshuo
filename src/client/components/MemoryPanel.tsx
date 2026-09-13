@@ -68,11 +68,16 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
   }, [bookId, chapterNumber, memoryContextConfig]);
 
   const entries = useMemo(
-    () => kind === "relevant"
-      ? memoryContextConfig.mode === "selected"
-        ? snapshot?.entries.filter((entry) => entry.status !== "archived") ?? []
-        : context?.entries ?? []
-      : snapshot?.entries.filter((entry) => entry.kind === kind) ?? [],
+    () => {
+      const visibleEntries = kind === "relevant"
+        ? memoryContextConfig.mode === "selected"
+          ? snapshot?.entries ?? []
+          : context?.entries ?? []
+        : snapshot?.entries.filter((entry) => entry.kind === kind) ?? [];
+      return memoryContextConfig.mode === "selected"
+        ? visibleEntries.filter((entry) => entry.status !== "archived")
+        : visibleEntries;
+    },
     [context, kind, memoryContextConfig.mode, snapshot],
   );
   const selectionReasons = useMemo(
