@@ -32,7 +32,7 @@
     "desktop:installed:test": "node scripts/assert-desktop-artifact.mjs && node scripts/installed-desktop-acceptance.mjs",
     "desktop:artifact": "node scripts/assert-desktop-artifact.mjs",
     "desktop:icon": "node scripts/create-desktop-icon.mjs",
-    "desktop:dist": "npm run desktop:icon && npm run desktop:build && electron-builder --win nsis --x64",
+    "desktop:dist": "npm run desktop:icon && npm run desktop:build && electron-builder --win nsis --x64 --publish never",
     "e2e": "playwright test"
   },
   "build": {
