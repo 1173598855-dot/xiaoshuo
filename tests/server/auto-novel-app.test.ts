@@ -110,6 +110,26 @@ function fixture() {
 }
 
 describe("auto-novel HTTP app", () => {
+  it("tests a provider connection without returning the transient key", async () => {
+    const { app } = fixture();
+    const response = await app.request("/api/providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providerId: "custom",
+        model: "test-model",
+        apiKey: "sk-transient-only",
+        baseUrl: "https://models.example.test/v1",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { model: string; latencyMs: number };
+    expect(body.model).toBe("test-model");
+    expect(body.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(body)).not.toContain("sk-transient-only");
+  });
+
   it("creates a book from an idea and returns three direction candidates", async () => {
     const { app, provider } = fixture();
     const response = await app.request("/api/books", {
@@ -194,6 +214,19 @@ describe("auto-novel HTTP app", () => {
     };
     expect(selectedBody.foundation).not.toBeNull();
     expect(selectedBody.chapterPlans).toHaveLength(1);
+
+    const retried = await app.request(
+      `/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // A lost response may be retried with the revision from the original
+        // request; a completed foundation must make that retry idempotent.
+        body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+      },
+    );
+    expect(retried.status).toBe(200);
+    expect((await retried.json() as { chapterPlans: unknown[] }).chapterPlans).toHaveLength(1);
   });
 
   it("rejects an empty idea before calling the model", async () => {

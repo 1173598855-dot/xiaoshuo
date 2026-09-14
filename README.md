@@ -1,17 +1,19 @@
 # 小奕小说生成工具
 
-小奕现在是一个本地优先的 AI 长篇小说生产工具：你只需要输入一句故事想法，AI 会先给出 3 套整本方向，再自动完成基础设定、卷章规划、逐章写作、审核修复和正文交付。
+小奕现在是一个本地优先的 AI 长篇小说生产工具：你只需要输入一句故事想法，AI 会先给出 3 套整本方向，再自动完成基础设定、卷章规划、逐章写作、审核修复和正文交付。模型配置支持一键测试连接、兼容端点拉取模型列表和自动选模型；配置好后可以直接“一键开写”。
 
 ## 使用流程
 
 ```text
-一句想法 → 3 套整本方向 → 选择方向 → 记忆选择 → 自动规划 → 逐章生产 → 审核修复 → 候选编辑/Diff → 记忆审阅 → 正式正文
+一句想法 → 一键开写 / 3 套整本方向 → 选择方向 → 记忆选择 → 自动规划 → 逐章生产 → 审核修复 → 候选编辑/Diff → 记忆审阅 → 正式正文
 ```
 
 - 角色、世界观、伏笔和时间线由 AI 自动生成并作为后台上下文维护，不要求手填角色卡；
 - 每一章先保存为候选，审核通过后才通过原子 accept 事务进入正式正文；
 - 生产任务会保存检查点，关闭应用后可以继续；
-- 生产室支持暂停、继续、停止和查看章节审核记录；
+- 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；
+- 生产室支持暂停、继续、停止、失败阶段重试和重新选择当前模型；应用启动时会自动恢复排队中/运行中的任务；
+- 生产室支持对当前章节发起 AI 重写，重写结果仍然是隔离候选，必须审核并采纳后才会进入正文；
 - 生产室提供独立的“长篇记忆中心”：自动维护世界规则、人物状态、事实、时间线、伏笔和文风约束，按当前章节筛选后注入 draft/review/repair；
 - 记忆中心支持“自动推荐”或“仅发送选中”：作者可逐条勾选本地记忆，只有选中的条目会进入当前生产任务的 Provider prompt，空选择表示不发送记忆；这项选择冻结在生产 run 和候选上，不改变本地记忆账本；
 - 章节审核会逐条展示 AI 提议的记忆新增、更新和解决，作者确认后才会与正文在同一事务中落盘；全部忽略也可以继续生产；
@@ -19,7 +21,7 @@
 - 记忆中心会显示每条注入记忆的选择原因，支持查看完整 revision 历史并把条目回滚为新的手动修正 revision；
 - 记忆条目带独立 revision 和历史快照，可锁定/解锁或进行 JSON 高级修正；锁定内容不会被 AI 自动覆盖，手动修改遇到并发变化会提示冲突；
 - 生产调用对限流和上游暂不可用执行有限次、可取消的重试，不重试鉴权、参数或取消错误；
-- 正式正文支持 Markdown、TXT 导出，DOCX 接口保留在扩展位；
+- 正式正文支持 Markdown、TXT 和可直接打开的 DOCX 导出，并提供正文搜索与章节目录；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 
 ## 界面方向
@@ -48,7 +50,7 @@ npm run dev
 
 打开 `http://127.0.0.1:5173`。服务端只监听 `127.0.0.1:4310`，数据库默认是 `data/xiaoyi.db`；可用 `XIAOYI_DATABASE_PATH` 和 `PORT` 覆盖。
 
-首次使用先点“模型设置”保存 Provider。浏览器模式的 API Key 只存在当前标签页 `sessionStorage` 和当前请求内存，不进入 SQLite、生产任务、日志、备份、导出或 API 响应。
+首次使用先点“模型设置”：选择 Provider 后可点击“测试连接”；OpenAI-compatible Provider 可拉取 `/models` 列表，点击“自动选模型”即可填入可用模型。浏览器模式的 API Key 只存在当前标签页 `sessionStorage` 和当前请求内存，不进入 SQLite、生产任务、日志、备份、导出或 API 响应。保存过的会话配置会自动复用匹配端点的 Key，切换端点不会误用旧 Key。
 
 本地自动化可以使用：
 
@@ -64,7 +66,9 @@ npm run dev
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/health` | 健康检查 |
-| `GET` | `/api/providers`、`/api/providers/models` | Provider 目录 / 拉取兼容端点模型列表 |
+| `GET` | `/api/providers` | Provider 目录（不含凭据） |
+| `POST` | `/api/providers/models` | 拉取兼容端点模型列表 |
+| `POST` | `/api/providers/test` | 用最小生成请求测试 Provider 连接 |
 | `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并生成 3 个方向 |
 | `GET` | `/api/books/:bookId` | 读取作品、基础设定、章纲和任务摘要 |
 | `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |
@@ -73,12 +77,13 @@ npm run dev
 | `POST` | `/api/books/:bookId/production` | 启动整本生产 |
 | `GET` | `/api/production-runs/:runId` | 查询生产进度、候选和检查点 |
 | `POST` | `/api/production-runs/:runId/pause\|resume\|cancel` | 控制任务 |
+| `POST` | `/api/production-runs/:runId/rewrite` | 为当前章节生成隔离重写候选 |
 | `GET` | `/api/chapter-candidates/:candidateId` | 读取候选及审核结果 |
 | `PATCH` | `/api/chapter-candidates/:candidateId/text\|memory-review` | 编辑候选或保存记忆审阅 |
 | `POST` | `/api/chapter-candidates/:candidateId/accept\|discard` | 原子采纳或丢弃候选 |
 | `GET` | `/api/books/:bookId/memory`、`/api/books/:bookId/memory/context/:chapterNumber` | 读取记忆账本 / 预览注入上下文 |
 | `GET` / `PATCH` / `POST` | `/api/memory/:entryId/history`、`/api/memory/:entryId`、`/api/memory/:entryId/rollback` | 查看历史、手动修正和回滚记忆 |
-| `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT |
+| `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT / DOCX |
 
 所有输入和返回值都经过共享 Zod 契约校验；失败统一返回 `{ "error": { "code", "message" } }`。Electron 桌面端使用同一业务语义的白名单 IPC，不让 Renderer 接触 API Key。
 
@@ -130,4 +135,12 @@ npm run desktop:package:test
 npm run desktop:installed:test
 ```
 
-浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、三方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。桌面测试覆盖 IPC、窗口安全、Vault 和打包产物。
+浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、三方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。若本机默认开发端口被系统占用，可用隔离端口运行：
+
+```powershell
+$env:XIAOYI_E2E_SERVER_PORT = "24310"
+$env:XIAOYI_E2E_WEB_PORT = "25173"
+npm run e2e
+```
+
+桌面测试覆盖 IPC、窗口安全、Vault 和打包产物。

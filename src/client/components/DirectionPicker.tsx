@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Compass, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Compass, Play, Sparkles } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
 
@@ -6,10 +6,11 @@ interface DirectionPickerProps {
   directions: readonly StoryDirection[];
   busy: boolean;
   onSelect: (direction: StoryDirection) => void;
+  onAutoSelect?: () => void;
   onBack: () => void;
 }
 
-export function DirectionPicker({ directions, busy, onSelect, onBack }: DirectionPickerProps) {
+export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack }: DirectionPickerProps) {
   return (
     <main className="director-page">
       <header className="page-topbar">
@@ -20,6 +21,7 @@ export function DirectionPicker({ directions, busy, onSelect, onBack }: Directio
         <span className="stage-label"><Compass size={14} /> 三条路，选一条</span>
         <h1>你的故事可以这样开始</h1>
         <p>这些不是角色卡。它们是三种整本书的命运：选定以后，AI 会自动把它写下去。</p>
+        {onAutoSelect ? <button className="primary-button direction-auto-button" type="button" disabled={busy || directions.length === 0} onClick={onAutoSelect}><Play size={15} /> 自动选第一方向并开写</button> : null}
       </section>
       <section className="direction-grid" aria-label="故事方向">
         {directions.map((direction) => (

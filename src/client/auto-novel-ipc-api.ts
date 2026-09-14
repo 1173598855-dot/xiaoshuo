@@ -12,6 +12,7 @@ import {
   StoryDirectionSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RewriteChapterInputSchema,
   type UpdateCandidateTextInput,
   type UpdateCandidateMemoryReviewInput,
 } from "../shared/auto-novel";
@@ -106,6 +107,17 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.candidates.accept({ candidateId, expectedRevision }),
         AcceptedChapterResultSchema,
+      );
+    },
+    async rewriteCurrentChapter(runId, provider, instruction) {
+      const parsed = RewriteChapterInputSchema.parse(instruction ? { instruction } : {});
+      return parseResult(
+        await api.production.rewrite({
+          runId,
+          providerId: providerId(provider),
+          ...parsed,
+        }),
+        ChapterCandidateSchema,
       );
     },
     async discardCandidate(candidateId) {

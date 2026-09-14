@@ -13,6 +13,7 @@ import type {
   StoryDirection,
   UpdateCandidateTextInput,
   UpdateCandidateMemoryReviewInput,
+  RewriteChapterInput,
 } from "../shared/auto-novel";
 import type {
   MemoryBookSnapshot,
@@ -64,6 +65,7 @@ export interface AutoNovelDesktopApiV2 {
     get(runId: string): Promise<DesktopResult<AutoNovelRunDetails>>;
     pause(runId: string): Promise<DesktopResult<ProductionRun>>;
     resume(input: { runId: string; providerId: ProviderId }): Promise<DesktopResult<ProductionRun>>;
+    rewrite(input: { runId: string; providerId: ProviderId } & RewriteChapterInput): Promise<DesktopResult<ChapterCandidate>>;
     cancel(runId: string): Promise<DesktopResult<ProductionRun>>;
   };
   readonly candidates: {
@@ -103,6 +105,7 @@ export function createAutoNovelPreloadApiV2(
       get: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionGet, { runId }),
       pause: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionPause, { runId }),
       resume: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionResume, input),
+      rewrite: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionRewrite, input),
       cancel: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionCancel, { runId }),
     },
     candidates: {

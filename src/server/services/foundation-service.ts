@@ -34,6 +34,12 @@ export class FoundationService {
         "请先选择一套整本方向。",
       );
     }
+    if (details.foundation && details.chapterPlans.length > 0) {
+      return {
+        foundation: details.foundation,
+        chapterPlans: details.chapterPlans,
+      };
+    }
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
     const foundationResult = await provider.generate(
       {

@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Square, Terminal } from "lucide-react";
+import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -16,6 +16,7 @@ interface ProductionRoomProps {
   onCancel: () => void;
   onOpenManuscript: () => void;
   onOpenMemory: () => void;
+  onConfigureProvider: () => void;
 }
 
 export function ProductionRoom({
@@ -30,6 +31,7 @@ export function ProductionRoom({
   onCancel,
   onOpenManuscript,
   onOpenMemory,
+  onConfigureProvider,
 }: ProductionRoomProps) {
   const accepted = run?.acceptedChapters.length ?? 0;
   const total = book.chapterPlans.length;
@@ -39,7 +41,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>
@@ -71,8 +73,10 @@ export function ProductionRoom({
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="run-actions">
             {!run ? <button className="primary-button" type="button" disabled={busy} onClick={onStart}><Play size={16} /> 开始整本生产</button> : null}
+            {run && ["queued", "running"].includes(run.run.status) ? <button className="ghost-button" type="button" disabled={busy} onClick={onResume}><RotateCcw size={15} /> {run.run.status === "queued" ? "启动当前任务" : "重新连接生产"}</button> : null}
             {run?.run.status === "running" ? <button className="secondary-button" type="button" disabled={busy} onClick={onPause}><Pause size={16} /> 暂停</button> : null}
             {run?.run.status === "paused" ? <button className="primary-button" type="button" disabled={busy} onClick={onResume}><RotateCcw size={16} /> 从检查点继续</button> : null}
+            {run?.run.status === "failed" ? <button className="primary-button" type="button" disabled={busy} onClick={onResume}><RotateCcw size={16} /> 重试当前阶段</button> : null}
             {run && !["completed", "cancelled", "failed"].includes(run.run.status) ? <button className="danger-button" type="button" disabled={busy} onClick={onCancel}><Square size={15} /> 停止任务</button> : null}
             {run?.run.status === "completed" ? <button className="primary-button" type="button" onClick={onOpenManuscript}>打开正式正文</button> : null}
           </div>

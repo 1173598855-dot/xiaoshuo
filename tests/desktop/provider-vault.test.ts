@@ -149,6 +149,35 @@ describe("desktop provider vault", () => {
     ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
   });
 
+  it("reuses a saved key when testing a fixed catalog endpoint", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-saved",
+    });
+
+    await expect(
+      vault.resolveConnectionTest({
+        providerId: "deepseek",
+        model: "deepseek-chat",
+      }),
+    ).resolves.toEqual({
+      kind: "openai-compatible",
+      model: "deepseek-chat",
+      apiKey: "sk-saved",
+      baseUrl: "https://api.deepseek.com",
+    });
+
+    await expect(
+      vault.resolveConnectionTest({
+        providerId: "deepseek",
+        model: "deepseek-chat",
+        baseUrl: "https://attacker.example.test/v1",
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
+  });
+
   it("keeps a key in Main memory only when OS encryption is unavailable", async () => {
     const temporaryDirectory = createTemporaryDirectory();
     const paths = getDesktopPaths(temporaryDirectory);

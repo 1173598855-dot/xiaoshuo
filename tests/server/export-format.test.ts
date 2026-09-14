@@ -53,13 +53,14 @@ describe("book export formats", () => {
     expect(txtBody.content).not.toContain("# 未命名故事");
   });
 
-  it("rejects DOCX until a real DOCX serializer is available", async () => {
+  it("exports a valid DOCX data URL", async () => {
     const fixture = createFixture();
     const response = await exportBook(fixture.app, fixture.book.id, "docx");
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: "UNSUPPORTED_EXPORT_FORMAT" },
-    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { format: string; content: string };
+    expect(body.format).toBe("docx");
+    expect(body.content).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document;base64,/);
+    expect(Buffer.from(body.content.split(",")[1] ?? "", "base64").readUInt32LE(0)).toBe(0x04034b50);
   });
 });

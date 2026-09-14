@@ -5,8 +5,10 @@ import {
   CreateChapterInputSchema,
   CreateProjectInputSchema,
   ListProviderModelsInputSchema,
+  ProviderConnectionResultSchema,
   ProviderIdSchema,
   SaveProviderSettingsInputSchema,
+  TestProviderConnectionInputSchema,
   UpdateChapterInputSchema,
   type ApiError,
   type DesktopResult,
@@ -36,8 +38,8 @@ export interface DesktopDialogAdapter {
 
 export interface DesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
-  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "runWrite" | "importDatabase" | "exportDatabase">;
-  readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing">;
+  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase">;
+  readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest">>;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
   readonly dialogs: DesktopDialogAdapter;
   readonly resolveClose?: (input: { requestId: string; canClose: boolean }) => void;
@@ -54,6 +56,16 @@ export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies)
   registerHandler(dependencies, DESKTOP_CHANNELS.chapterUpdate, ChapterUpdateRequestSchema, ({ chapterId, input }) => dependencies.databaseManager.runWrite((runtime) => runtime.workspaceRepository.updateChapter(chapterId, input)));
   registerHandler(dependencies, DESKTOP_CHANNELS.providerList, EmptyInputSchema, () => getProviderCatalog());
   registerHandler(dependencies, DESKTOP_CHANNELS.providerListModels, ListProviderModelsInputSchema, async (input) => (dependencies.providerModelLister ?? listOpenAICompatibleModels)(await dependencies.providerVault.resolveModelListing(input)));
+  registerHandler(dependencies, DESKTOP_CHANNELS.providerTestConnection, TestProviderConnectionInputSchema, async (input) => {
+    if (!dependencies.providerVault.resolveConnectionTest) {
+      throw new Error("Provider connection test is unavailable");
+    }
+    const provider = await dependencies.providerVault.resolveConnectionTest(input);
+    const result = await dependencies.databaseManager
+      .getAutoNovelServices()
+      .productionService.testConnection(provider);
+    return ProviderConnectionResultSchema.parse(result);
+  });
   registerHandler(dependencies, DESKTOP_CHANNELS.providerGetSettings, EmptyInputSchema, () => dependencies.providerVault.getSettings());
   registerHandler(dependencies, DESKTOP_CHANNELS.providerSaveSettings, SaveProviderSettingsInputSchema.strict(), (input) => dependencies.providerVault.saveSettings(input));
   registerHandler(dependencies, DESKTOP_CHANNELS.providerClearKey, ProviderClearKeyRequestSchema, ({ providerId }) => dependencies.providerVault.clearKey(providerId));

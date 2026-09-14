@@ -16,6 +16,7 @@ import {
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RewriteChapterInputSchema,
   type Book,
   type BookDetails,
   type BookChapters,
@@ -91,6 +92,11 @@ export interface AutoNovelApi {
   getRun(runId: string, signal?: AbortSignal): Promise<AutoNovelRunDetails>;
   pauseRun(runId: string): Promise<ProductionRun>;
   resumeRun(runId: string, provider: AutoNovelProviderInput): Promise<ProductionRun>;
+  rewriteCurrentChapter(
+    runId: string,
+    provider: AutoNovelProviderInput,
+    instruction?: string,
+  ): Promise<ChapterCandidate>;
   cancelRun(runId: string): Promise<ProductionRun>;
   acceptCandidate(candidateId: string, expectedRevision: number): Promise<AcceptedChapterResult>;
   discardCandidate(candidateId: string): Promise<ChapterCandidate>;
@@ -174,6 +180,18 @@ export function createAutoNovelApi(
     },
     async cancelRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/cancel`, { method: "POST", body: JSON.stringify({ action: "cancel" }) }));
+    },
+    async rewriteCurrentChapter(runId, provider, instruction) {
+      const parsed = RewriteChapterInputSchema.parse(instruction ? { instruction } : {});
+      return ChapterCandidateSchema.parse(
+        await requestJson(fetchImpl, `/api/production-runs/${runId}/rewrite`, {
+          method: "POST",
+          body: JSON.stringify({
+            ...parsed,
+            provider: providerForHttp(provider),
+          }),
+        }),
+      );
     },
     async acceptCandidate(candidateId, expectedRevision) {
       const parsed = AcceptCandidateInputSchema.parse({ expectedRevision });

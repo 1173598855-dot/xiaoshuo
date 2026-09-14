@@ -7,7 +7,9 @@ import {
   ProviderModelListSchema,
   SaveProviderSettingsInputSchema,
   ListProviderModelsInputSchema,
+  ProviderConnectionResultSchema,
   WorkspaceSchema,
+  TestProviderConnectionInputSchema,
   type ProviderId,
 } from "../../shared/contracts";
 import {
@@ -49,6 +51,25 @@ export function createHttpTransport(
       };
       return ProviderModelListSchema.parse(
         await requestJson(fetchImpl, "/api/providers/models", {
+          method: "POST",
+          body: JSON.stringify(request),
+          signal,
+        }),
+      );
+    },
+    async testProviderConnection(input, signal) {
+      const parsed = TestProviderConnectionInputSchema.parse(input);
+      const saved = loadProviderSettings();
+      const canReuseSavedKey =
+        saved?.providerId === parsed.providerId &&
+        saved.baseUrl === parsed.baseUrl;
+      const apiKey = parsed.apiKey ?? (canReuseSavedKey ? saved.apiKey : "");
+      const request = {
+        ...parsed,
+        ...(apiKey ? { apiKey } : {}),
+      };
+      return ProviderConnectionResultSchema.parse(
+        await requestJson(fetchImpl, "/api/providers/test", {
           method: "POST",
           body: JSON.stringify(request),
           signal,

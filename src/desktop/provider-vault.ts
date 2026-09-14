@@ -17,10 +17,12 @@ import {
   ProviderConfigSchema,
   ProviderIdSchema,
   SaveProviderSettingsInputSchema,
+  TestProviderConnectionInputSchema,
   type CreateGenerationInput,
   type DesktopGenerationInput,
   type ListProviderModelsInput,
   type ProviderId,
+  type ProviderConfig,
   type ProviderSettings,
   type SaveProviderSettingsInput,
 } from "../shared/contracts";
@@ -29,6 +31,7 @@ import {
   resolveOpenAICompatibleModelListConfig,
   type OpenAICompatibleModelListConfig,
 } from "../server/providers/openai-compatible-models";
+import { resolveProviderConnectionConfig } from "../server/providers/connection-test";
 import { ProviderConfigMismatchError } from "../server/providers/resolver";
 import type { DesktopPaths } from "./paths";
 
@@ -112,6 +115,25 @@ export class ProviderVault {
     }
 
     return resolveOpenAICompatibleModelListConfig(parsed.data, fallbackApiKey);
+  }
+
+  /** Resolve a one-shot probe without changing the saved provider settings. */
+  async resolveConnectionTest(
+    input: z.infer<typeof TestProviderConnectionInputSchema>,
+  ): Promise<ProviderConfig> {
+    const parsed = TestProviderConnectionInputSchema.safeParse(input);
+    if (!parsed.success) throw new ProviderConfigMismatchError();
+    const entry = getProviderCatalog().find(({ id }) => id === parsed.data.providerId);
+    if (!entry) throw new ProviderConfigMismatchError();
+    const saved = this.readSettings();
+    const sameEndpoint =
+      saved?.providerId === parsed.data.providerId &&
+      (entry.kind !== "openai-compatible" ||
+        (entry.baseUrlEditable
+          ? saved.baseUrl === parsed.data.baseUrl
+          : parsed.data.baseUrl === undefined));
+    const fallbackApiKey = sameEndpoint && saved ? this.getKey(saved) : undefined;
+    return resolveProviderConnectionConfig(parsed.data, fallbackApiKey);
   }
 
   async saveSettings(

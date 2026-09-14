@@ -10,6 +10,7 @@ const AUTO_NOVEL_SCHEMA = `
     genre TEXT NOT NULL DEFAULT '',
     target_chapters INTEGER NOT NULL DEFAULT 12 CHECK (target_chapters BETWEEN 1 AND 500),
     target_chapter_characters INTEGER NOT NULL DEFAULT 2500 CHECK (target_chapter_characters BETWEEN 200 AND 100000),
+    style TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'directions-generating',
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
     memory_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_revision >= 0),
@@ -171,6 +172,9 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   }
   if (!columns.some(({ name }) => name === "director_idempotency_key")) {
     database.exec("ALTER TABLE books ADD COLUMN director_idempotency_key TEXT");
+  }
+  if (!columns.some(({ name }) => name === "style")) {
+    database.exec("ALTER TABLE books ADD COLUMN style TEXT NOT NULL DEFAULT ''");
   }
   database.exec("CREATE UNIQUE INDEX IF NOT EXISTS books_director_idempotency_idx ON books(director_idempotency_key) WHERE director_idempotency_key IS NOT NULL");
   const runColumns = database.prepare("PRAGMA table_xinfo(production_runs)").all() as Array<{ name: string }>;

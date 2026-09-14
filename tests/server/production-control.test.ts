@@ -85,6 +85,24 @@ afterEach(() => {
 });
 
 describe("ProductionService control and recovery", () => {
+  it("reuses an active production run despite a new idempotency key", () => {
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        return { text: "不应被调用。", usage: null };
+      },
+    };
+    const fixture = createFixture(provider);
+
+    const reused = fixture.productionRepository.createProductionRun(
+      fixture.run.bookId,
+      "a-different-client-request",
+    );
+
+    expect(reused.id).toBe(fixture.run.id);
+    expect(reused.idempotencyKey).toBe(fixture.run.idempotencyKey);
+  });
+
   it("coalesces concurrent starts for the same run", async () => {
     const draftStarted = deferred();
     const releaseDraft = deferred();

@@ -7,7 +7,7 @@ import type {
   ProviderConfig,
   SaveProviderSettingsInput,
 } from "../shared/contracts";
-import type { Book, BookDetails, StoryDirection } from "../shared/auto-novel";
+import type { Book, BookDetails, CreateBookInput, StoryDirection } from "../shared/auto-novel";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   type MemoryContextConfig,
@@ -26,6 +26,7 @@ import { ProviderDialog } from "./components/ProviderDialog";
 import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
 import { MemoryPanel } from "./components/MemoryPanel";
+import { DataManagementDialog } from "./components/DataManagementDialog";
 
 type Page = "home" | "directions" | "production" | "manuscript";
 
@@ -43,6 +44,7 @@ export function App() {
   const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>([]);
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
   const [providerOpen, setProviderOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [memoryContextConfig, setMemoryContextConfig] = useState<MemoryContextConfig>(DEFAULT_MEMORY_CONTEXT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -73,6 +75,51 @@ export function App() {
       setProviders(nextProviders);
       setProviderSettings(nextSettings);
       setError(null);
+
+      // Rehydrate the most recently touched production run before showing the
+      // home screen. The run is persisted, so a renderer refresh or app restart
+      // must not make an in-progress book look lost.
+      const candidates = await Promise.all(
+        nextBooks
+          .filter((book) => book.selectedDirectionId !== null)
+          .map(async (book) => {
+            try {
+              return await autoApi.getBook(book.id);
+            } catch {
+              return null;
+            }
+          }),
+      );
+      const recoverable = candidates
+        .filter((details): details is BookDetails => details !== null && details.run !== null)
+        .filter(({ run }) => run !== null && ["queued", "running", "paused", "failed"].includes(run.status));
+      const recovered = recoverable[0];
+      if (recovered?.run) {
+        setBookDetails(recovered);
+        setRunId(recovered.run.id);
+        setMemoryContextConfig(recovered.run.memoryContextConfig);
+        setPage("production");
+
+        const recoveredProvider = apiClient.platform === "desktop"
+          ? nextSettings?.providerId
+            ? { providerId: nextSettings.providerId }
+            : null
+          : nextSettings?.platform === "web"
+            ? resolveProviderSettings(nextSettings, nextProviders)?.config ?? null
+            : null;
+        // Running/queued runs are normally interrupted by a restart; resume
+        // those automatically. An explicitly paused or failed run remains
+        // visible so the author can choose when and with which provider to retry.
+        if (recoveredProvider) {
+          await Promise.all(
+            recoverable
+              .filter(({ run }) => run !== null && ["queued", "running"].includes(run.status))
+              .map(({ run }) =>
+                autoApi.resumeRun(run!.id, recoveredProvider).catch(() => undefined),
+              ),
+          );
+        }
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
     } finally {
@@ -87,6 +134,7 @@ export function App() {
   useEffect(() => {
     return apiClient.onDesktopCommand((command: DesktopCommand) => {
       if (command.type === "provider-settings") setProviderOpen(true);
+      if (command.type === "import" || command.type === "export") setDataOpen(true);
       if (command.type === "shutdown-requested") {
         void apiClient.resolveClose({ requestId: command.requestId, canClose: true });
       }
@@ -100,13 +148,13 @@ export function App() {
     return null;
   };
 
-  const createIdea = async (idea: string) => {
+  const createIdea = async (input: CreateBookInput, autoStart = false) => {
     const config = requireProvider();
     if (!config) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await autoApi.createBook({ idea }, config, makeId());
+      const result = await autoApi.createBook(input, config, makeId());
       const details: BookDetails = {
         book: result.book,
         directions: [...result.directions],
@@ -118,7 +166,33 @@ export function App() {
       setBookDetails(details);
       setRunId(null);
       setMemoryContextConfig(DEFAULT_MEMORY_CONTEXT_CONFIG);
-      setPage("directions");
+      if (!autoStart) {
+        setPage("directions");
+        return;
+      }
+
+      const direction = [...result.directions].sort((left, right) => left.rank - right.rank)[0];
+      if (!direction) {
+        setError("导演没有返回可用方向，请重新尝试。" );
+        setPage("directions");
+        return;
+      }
+      const selected = await autoApi.selectDirection(
+        result.book.id,
+        direction.id,
+        result.book.revision,
+        config,
+      );
+      setBookDetails(selected);
+      setBooks((current) => current.map((book) => book.id === selected.book.id ? selected.book : book));
+      const run = await autoApi.startProduction(
+        selected.book.id,
+        config,
+        `quick-start:${selected.book.id}`,
+        DEFAULT_MEMORY_CONTEXT_CONFIG,
+      );
+      setRunId(run.id);
+      setPage("production");
     } catch (createError) {
       setError(errorMessage(createError));
     } finally {
@@ -134,7 +208,11 @@ export function App() {
       setBookDetails(details);
       setRunId(details.run?.id ?? null);
       setMemoryContextConfig(details.run?.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG);
-      setPage(details.book.selectedDirectionId ? "production" : "directions");
+      setPage(
+        details.book.selectedDirectionId && details.chapterPlans.length > 0
+          ? "production"
+          : "directions",
+      );
       setMemoryOpen(false);
     } catch (openError) {
       setError(errorMessage(openError));
@@ -160,6 +238,39 @@ export function App() {
       setPage("production");
     } catch (selectError) {
       setError(errorMessage(selectError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const autoSelectDirection = async () => {
+    if (!bookDetails) return;
+    const direction = [...bookDetails.directions].sort((left, right) => left.rank - right.rank)[0];
+    if (!direction) return;
+    const config = requireProvider();
+    if (!config) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const selected = await autoApi.selectDirection(
+        bookDetails.book.id,
+        direction.id,
+        bookDetails.book.revision,
+        config,
+      );
+      const run = await autoApi.startProduction(
+        selected.book.id,
+        config,
+        `quick-start:${selected.book.id}`,
+        DEFAULT_MEMORY_CONTEXT_CONFIG,
+      );
+      setBookDetails(selected);
+      setBooks((current) => current.map((book) => book.id === selected.book.id ? selected.book : book));
+      setMemoryContextConfig(DEFAULT_MEMORY_CONTEXT_CONFIG);
+      setRunId(run.id);
+      setPage("production");
+    } catch (autoError) {
+      setError(errorMessage(autoError));
     } finally {
       setBusy(false);
     }
@@ -232,18 +343,32 @@ export function App() {
     setError(null);
   };
 
+  const handleProviderClearKey = async (providerId: SaveProviderSettingsInput["providerId"]) => {
+    const next = await apiClient.clearProviderKey(providerId, { preserveSettings: true });
+    setProviderSettings(next);
+  };
+
+  const handleImported = async () => {
+    setBookDetails(null);
+    setRunId(null);
+    setMemoryOpen(false);
+    setPage("home");
+    await loadLibrary();
+  };
+
   if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
+  const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
   if (page === "home") {
-    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(idea) => void createIdea(idea)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(input, autoStart) => void createIdea(input, autoStart)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
   }
   if (!bookDetails) return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
   if (page === "directions") {
-    return <><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onBack={() => setPage("home")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+    return <><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onAutoSelect={() => void autoSelectDirection()} onBack={() => setPage("home")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
   }
   if (page === "manuscript") {
-    return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+    return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onConfigureProvider={() => setProviderOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
 }
 
 function providerDialog(
@@ -251,9 +376,10 @@ function providerDialog(
   settings: ClientProviderSettings | null,
   open: boolean,
   onSave: (input: SaveProviderSettingsInput) => Promise<void>,
+  onClearKey: (providerId: SaveProviderSettingsInput["providerId"]) => Promise<void>,
   onClose: (open: boolean) => void,
 ) {
-  return <ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onClearKey={(providerId) => apiClient.clearProviderKey(providerId, { preserveSettings: true }).then(() => undefined)} onClose={() => onClose(false)} />;
+  return <ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onTestConnection={(input, signal) => apiClient.testProviderConnection(input, signal)} onClearKey={onClearKey} onClose={() => onClose(false)} />;
 }
 
 function errorMessage(error: unknown): string {

@@ -13,7 +13,7 @@ const AUTO_MESSAGES: Record<string, string> = {
   CANDIDATE_TEXT_REVISION_CONFLICT: "候选正文已在其他位置修改，请重新加载后再保存。",
   MEMORY_CONTEXT_SELECTION_INVALID: "选择的记忆不可用于当前作品，请重新选择。",
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
-  UNSUPPORTED_EXPORT_FORMAT: "DOCX 导出尚未实现，请先使用 Markdown 或 TXT。",
+  UNSUPPORTED_EXPORT_FORMAT: "当前导出格式不受支持。",
   MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
 };
 

@@ -45,6 +45,7 @@ interface BookRow {
   genre: string;
   target_chapters: number;
   target_chapter_characters: number;
+  style: string;
   status: Book["status"];
   revision: number;
   selected_direction_id: string | null;
@@ -167,7 +168,7 @@ export class BookRepository {
     return this.withTransaction(() => {
       if (idempotencyKey) {
         const existing = this.database
-          .prepare("SELECT id, project_id, title, idea, genre, target_chapters, target_chapter_characters, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
+          .prepare("SELECT id, project_id, title, idea, genre, target_chapters, target_chapter_characters, style, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
           .get(idempotencyKey) as unknown as BookRow | undefined;
         if (existing) return toBook(existing);
       }
@@ -178,6 +179,7 @@ export class BookRepository {
       const genre = input.genre ?? "未定题材";
       const targetChapters = input.targetChapters ?? 12;
       const targetChapterCharacters = input.targetChapterCharacters ?? 2_500;
+      const style = input.style ?? "";
 
       this.database
         .prepare(
@@ -190,9 +192,9 @@ export class BookRepository {
           `INSERT INTO books (
              id, project_id, title, idea, director_idempotency_key, genre,
              target_chapters,
-             target_chapter_characters, status, revision,
+             target_chapter_characters, style, status, revision,
              selected_direction_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
         )
         .run(
           id,
@@ -202,7 +204,8 @@ export class BookRepository {
           idempotencyKey ?? null,
           genre,
           targetChapters,
-          targetChapterCharacters,
+           targetChapterCharacters,
+           style,
           timestamp,
           timestamp,
         );
@@ -215,7 +218,7 @@ export class BookRepository {
     const rows = this.database
       .prepare(
         `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
-                target_chapter_characters, status, revision,
+                target_chapter_characters, style, status, revision,
                 selected_direction_id, created_at, updated_at
          FROM books
          ORDER BY updated_at DESC, id`,
@@ -479,8 +482,28 @@ export class BookRepository {
     return row ? toChapterPlan(row) : null;
   }
 
+  getChapterPlan(bookId: string, chapterNumber: number): ChapterPlan | null {
+    const row = this.database
+      .prepare(
+        `SELECT id, book_id, volume_number, volume_title, chapter_number,
+                title, summary, objective, hook, foreshadowing_json, status,
+                created_at, updated_at
+         FROM chapter_plans WHERE book_id = ? AND chapter_number = ?`,
+      )
+      .get(bookId, chapterNumber) as ChapterPlanRow | undefined;
+    return row ? toChapterPlan(row) : null;
+  }
+
   getProjectId(bookId: string): string {
     return this.requireBookRow(bookId).project_id;
+  }
+
+  setStatus(bookId: string, status: Book["status"]): Book {
+    const timestamp = this.now();
+    this.database
+      .prepare("UPDATE books SET status = ?, updated_at = ? WHERE id = ?")
+      .run(status, timestamp, bookId);
+    return this.getBookSummary(bookId);
   }
 
   private getBookSummary(bookId: string): Book {
@@ -514,7 +537,7 @@ export class BookRepository {
     const row = this.database
       .prepare(
         `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
-                target_chapter_characters, status, revision,
+                target_chapter_characters, style, status, revision,
                 selected_direction_id, created_at, updated_at
          FROM books WHERE id = ?`,
       )
@@ -544,6 +567,7 @@ function toBook(row: BookRow): Book {
     genre: row.genre,
     targetChapters: row.target_chapters,
     targetChapterCharacters: row.target_chapter_characters,
+    style: row.style,
     status: row.status,
     revision: row.revision,
     selectedDirectionId: row.selected_direction_id,

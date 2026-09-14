@@ -18,7 +18,7 @@ function isCompleteDesktopApi(value: DesktopApi | undefined): value is DesktopAp
     workspace?: { get?: unknown };
     project?: { create?: unknown };
     chapter?: { create?: unknown; update?: unknown };
-    provider?: { list?: unknown; listModels?: unknown; getSettings?: unknown; saveSettings?: unknown; clearKey?: unknown };
+    provider?: { list?: unknown; listModels?: unknown; testConnection?: unknown; getSettings?: unknown; saveSettings?: unknown; clearKey?: unknown };
     database?: { status?: unknown; import?: unknown; export?: unknown };
     lifecycle?: { resolveClose?: unknown; onCommand?: unknown };
   } | undefined;
@@ -30,6 +30,7 @@ function isCompleteDesktopApi(value: DesktopApi | undefined): value is DesktopAp
       typeof candidate.chapter?.update === "function" &&
       typeof candidate.provider?.list === "function" &&
       typeof candidate.provider?.listModels === "function" &&
+      typeof candidate.provider?.testConnection === "function" &&
       typeof candidate.provider?.getSettings === "function" &&
       typeof candidate.provider?.saveSettings === "function" &&
       typeof candidate.provider?.clearKey === "function" &&

@@ -8,11 +8,13 @@ import {
   type DesktopCommand,
   type DesktopResult,
   type ListProviderModelsInput,
+  type ProviderConnectionResult,
   type ProviderCatalogEntry,
   type ProviderId,
   type ProviderModel,
   type ProviderSettings,
   type SaveProviderSettingsInput,
+  type TestProviderConnectionInput,
   type UpdateChapterInput,
   type Workspace,
 } from "../shared/contracts";
@@ -35,6 +37,7 @@ export interface DesktopApi {
   readonly provider: {
     list(): Promise<DesktopResult<readonly ProviderCatalogEntry[]>>;
     listModels(input: ListProviderModelsInput): Promise<DesktopResult<readonly ProviderModel[]>>;
+    testConnection(input: TestProviderConnectionInput): Promise<DesktopResult<ProviderConnectionResult>>;
     getSettings(): Promise<DesktopResult<ProviderSettings | null>>;
     saveSettings(input: SaveProviderSettingsInput): Promise<DesktopResult<ProviderSettings>>;
     clearKey(providerId: ProviderId): Promise<DesktopResult<ProviderSettings | null>>;
@@ -62,6 +65,7 @@ export function createPreloadApi(ipcRenderer: DesktopIpcRenderer): DesktopApi {
     provider: {
       list: () => invoke(ipcRenderer, DESKTOP_CHANNELS.providerList),
       listModels: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerListModels, input),
+      testConnection: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerTestConnection, input),
       getSettings: () => invoke(ipcRenderer, DESKTOP_CHANNELS.providerGetSettings),
       saveSettings: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerSaveSettings, input),
       clearKey: (providerId) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerClearKey, { providerId }),

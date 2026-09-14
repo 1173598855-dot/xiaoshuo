@@ -110,6 +110,29 @@ export type ListProviderModelsInput = z.infer<
   typeof ListProviderModelsInputSchema
 >;
 
+/** A transient provider probe. It is never persisted or returned with a key. */
+export const TestProviderConnectionInputSchema = z
+  .object({
+    providerId: ProviderIdSchema,
+    model: z.string().trim().min(1).max(200),
+    baseUrl: CompatibleBaseUrlSchema.optional(),
+    apiKey: z.string().trim().min(1).max(2_000).optional(),
+  })
+  .strict();
+export type TestProviderConnectionInput = z.infer<
+  typeof TestProviderConnectionInputSchema
+>;
+
+export const ProviderConnectionResultSchema = z
+  .object({
+    model: z.string().trim().min(1).max(200),
+    latencyMs: z.number().int().nonnegative().max(300_000),
+  })
+  .strict();
+export type ProviderConnectionResult = z.infer<
+  typeof ProviderConnectionResultSchema
+>;
+
 export const ProviderModelSchema = z
   .object({
     id: z.string().trim().min(1).max(200),

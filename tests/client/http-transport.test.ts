@@ -130,6 +130,70 @@ describe("HTTP workbench transport", () => {
     ).resolves.toEqual([{ id: "model-a" }]);
   });
 
+  it("tests a provider with the matching browser session key", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          providerId: "custom",
+          model: "saved-model",
+          baseUrl: "https://models.example.test/v1",
+          apiKey: "sk-session-key",
+        });
+        return new Response(
+          JSON.stringify({ model: "saved-model", latencyMs: 12 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    ) as unknown as typeof fetch;
+    const transport = createHttpTransport(fetchMock);
+    sessionStorage.setItem(
+      "xiaoyi.provider-config.v1",
+      JSON.stringify({
+        providerId: "custom",
+        model: "saved-model",
+        baseUrl: "https://models.example.test/v1",
+        apiKey: "sk-session-key",
+      }),
+    );
+
+    await expect(
+      transport.testProviderConnection({
+        providerId: "custom",
+        model: "saved-model",
+        baseUrl: "https://models.example.test/v1",
+      }),
+    ).resolves.toEqual({ model: "saved-model", latencyMs: 12 });
+  });
+
+  it("does not send a browser key to a different connection-test endpoint", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          providerId: "custom",
+          model: "other-model",
+          baseUrl: "https://other.example.test/v1",
+        });
+        return new Response(
+          JSON.stringify({ model: "other-model", latencyMs: 8 }),
+          { status: 200 },
+        );
+      },
+    ) as unknown as typeof fetch;
+    const transport = createHttpTransport(fetchMock);
+    await transport.saveProviderSettings({
+      providerId: "custom",
+      model: "saved-model",
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-session-key",
+    });
+
+    await transport.testProviderConnection({
+      providerId: "custom",
+      model: "other-model",
+      baseUrl: "https://other.example.test/v1",
+    });
+  });
+
   it("does not reuse a browser key for a changed endpoint", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {

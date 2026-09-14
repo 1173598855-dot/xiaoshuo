@@ -5,6 +5,7 @@ import {
   ListProviderModelsInputSchema,
   type DesktopResult,
   ProviderCatalogEntrySchema,
+  ProviderConnectionResultSchema,
   ProviderModelListSchema,
   ProviderSettingsSchema,
   WorkspaceSchema,
@@ -36,6 +37,12 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
           ListProviderModelsInputSchema.parse(input),
         ),
         ProviderModelListSchema,
+      );
+    },
+    async testProviderConnection(input) {
+      return parseResult(
+        await api.provider.testConnection(input),
+        ProviderConnectionResultSchema,
       );
     },
     async createChapter(projectId, title) {

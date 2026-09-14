@@ -2,7 +2,7 @@ export class UnsupportedExportFormatError extends Error {
   readonly code = "UNSUPPORTED_EXPORT_FORMAT";
 
   constructor() {
-    super("DOCX 导出尚未实现，请先使用 Markdown 或 TXT。");
+    super("当前导出格式不受支持。");
     this.name = "UnsupportedExportFormatError";
   }
 }

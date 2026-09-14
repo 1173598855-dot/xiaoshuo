@@ -108,6 +108,7 @@ export interface CreateCandidateInput {
   memoryDelta?: MemoryDelta | null;
   memoryDeltaReview?: MemoryDeltaReview;
   candidateText: string;
+  originalText?: string;
   repairCount?: number;
   memoryContextConfig?: MemoryContextConfig;
 }
@@ -234,42 +235,9 @@ export class ProductionRepository {
     idempotencyKey: string,
     memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
   ): ProductionRun {
-    return this.withTransaction(() => {
-      const parsedMemoryContextConfig = MemoryContextConfigSchema.parse(memoryContextConfig);
-      this.bookRepository.getBook(bookId);
-      const existing = this.database
-        .prepare(
-          `SELECT id, book_id, kind, status, stage, current_chapter_number,
-                  version, idempotency_key, memory_context_config_json,
-                  error_code, created_at, updated_at
-           FROM production_runs WHERE book_id = ? AND idempotency_key = ?`,
-        )
-        .get(bookId, idempotencyKey) as unknown as RunRow | undefined;
-      if (existing) return toRun(existing);
-
-      const id = this.createId();
-      const timestamp = this.now();
-      const stage = kind === "director" ? "directions" : kind === "foundation" ? "foundation" : "draft";
-      this.database
-        .prepare(
-          `INSERT INTO production_runs (
-             id, book_id, kind, status, stage, current_chapter_number,
-             version, idempotency_key, memory_context_config_json, error_code,
-             created_at, updated_at
-           ) VALUES (?, ?, ?, 'queued', ?, NULL, 0, ?, ?, NULL, ?, ?)`,
-        )
-        .run(
-          id,
-          bookId,
-          kind,
-          stage,
-          idempotencyKey,
-          JSON.stringify(parsedMemoryContextConfig),
-          timestamp,
-          timestamp,
-        );
-      return this.getRun(id);
-    });
+    return this.withTransaction(() =>
+      this.createRunInTransaction(bookId, kind, idempotencyKey, memoryContextConfig),
+    );
   }
 
   getRun(runId: string): ProductionRun {
@@ -428,7 +396,7 @@ export class ProductionRepository {
         input.memoryContextHash ?? "0".repeat(64),
         JSON.stringify(input.memoryDelta ?? null),
         JSON.stringify(input.memoryDeltaReview ?? emptyMemoryDeltaReview()),
-        input.candidateText,
+        input.originalText ?? input.candidateText,
         JSON.stringify(memoryContextConfig),
         input.candidateText,
         JSON.stringify({ status: "pending", findings: [] }),
@@ -542,6 +510,34 @@ export class ProductionRepository {
         candidateId,
       );
     return this.getCandidate(candidateId);
+  }
+
+  createProductionRun(
+    bookId: string,
+    idempotencyKey: string,
+    memoryContextConfig: MemoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG,
+  ): ProductionRun {
+    return this.withTransaction(() => {
+      this.bookRepository.getBook(bookId);
+      const active = this.database
+        .prepare(
+          `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                  version, idempotency_key, memory_context_config_json,
+                  error_code, created_at, updated_at
+           FROM production_runs
+           WHERE book_id = ? AND kind = 'production'
+             AND status IN ('queued', 'running', 'paused')
+           ORDER BY updated_at DESC, id LIMIT 1`,
+        )
+        .get(bookId) as unknown as RunRow | undefined;
+      if (active) return toRun(active);
+      return this.createRunInTransaction(
+        bookId,
+        "production",
+        idempotencyKey,
+        memoryContextConfig,
+      );
+    });
   }
 
   editCandidateText(input: UpdateCandidateTextInput): ChapterCandidate {
@@ -857,6 +853,52 @@ export class ProductionRepository {
       this.database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  private createRunInTransaction(
+    bookId: string,
+    kind: ProductionRun["kind"],
+    idempotencyKey: string,
+    memoryContextConfig: MemoryContextConfig,
+  ): ProductionRun {
+    const parsedMemoryContextConfig = MemoryContextConfigSchema.parse(memoryContextConfig);
+    this.bookRepository.getBook(bookId);
+    const existing = this.database
+      .prepare(
+        `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                version, idempotency_key, memory_context_config_json,
+                error_code, created_at, updated_at
+         FROM production_runs WHERE book_id = ? AND idempotency_key = ?`,
+      )
+      .get(bookId, idempotencyKey) as unknown as RunRow | undefined;
+    if (existing) return toRun(existing);
+
+    const id = this.createId();
+    const timestamp = this.now();
+    const stage = kind === "director"
+      ? "directions"
+      : kind === "foundation"
+        ? "foundation"
+        : "draft";
+    this.database
+      .prepare(
+        `INSERT INTO production_runs (
+           id, book_id, kind, status, stage, current_chapter_number,
+           version, idempotency_key, memory_context_config_json, error_code,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, 'queued', ?, NULL, 0, ?, ?, NULL, ?, ?)`,
+      )
+      .run(
+        id,
+        bookId,
+        kind,
+        stage,
+        idempotencyKey,
+        JSON.stringify(parsedMemoryContextConfig),
+        timestamp,
+        timestamp,
+      );
+    return this.getRun(id);
   }
 }
 

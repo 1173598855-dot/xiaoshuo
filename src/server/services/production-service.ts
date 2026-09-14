@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import type { ProviderConfig } from "../../shared/contracts";
-import type { ChapterPlan, ProductionRun } from "../../shared/auto-novel";
+import type { ChapterCandidate, ChapterPlan, ProductionRun } from "../../shared/auto-novel";
 import {
   filterMemoryDelta,
   type MemoryContext,
@@ -16,6 +16,7 @@ import type { ProviderResolver } from "../providers/resolver";
 import type { MemoryService } from "./memory-service";
 import { buildMemoryPrompt, parseStructuredProviderResult } from "./auto-novel-prompts";
 import { MemoryDeltaSchema } from "../../shared/memory";
+import { testProviderConnection } from "../providers/connection-test";
 
 const ReviewOutputSchema = z
   .object({
@@ -45,6 +46,117 @@ export class ProductionService {
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   constructor(private readonly dependencies: ProductionServiceDependencies) {}
+
+  testConnection(
+    providerConfig: ProviderConfig,
+    signal?: AbortSignal,
+  ) {
+    return testProviderConnection(
+      this.dependencies.providerResolver,
+      providerConfig,
+      signal,
+    );
+  }
+
+  async rewriteCurrentChapter(
+    runId: string,
+    providerConfig: ProviderConfig,
+    instruction = "",
+    signal?: AbortSignal,
+  ): Promise<ChapterCandidate> {
+    const run = this.dependencies.productionRepository.getRun(runId);
+    if (run.kind !== "production") {
+      throw new NormalizedProviderError("REQUEST_INVALID", "只有正文生产任务可以重写章节。" );
+    }
+    if (run.status === "cancelled") {
+      throw new NormalizedProviderError("REQUEST_INVALID", "生产任务已经取消，不能重写章节。" );
+    }
+    if (this.activeRuns.has(runId)) {
+      throw new NormalizedProviderError("REQUEST_INVALID", "生产任务正在运行，请等待当前阶段完成。" );
+    }
+    const details = this.dependencies.productionRepository.getRunDetails(runId);
+    const sourceCandidate = details.candidate;
+    const sourceChapter = sourceCandidate
+      ? this.dependencies.productionRepository.getChapter(sourceCandidate.chapterId)
+      : null;
+    const lastAcceptedChapter = details.acceptedChapters.at(-1);
+    const chapterNumber =
+      run.currentChapterNumber ??
+      (sourceCandidate
+        ? sourceChapter!.position + 1
+        : lastAcceptedChapter
+          ? lastAcceptedChapter.position + 1
+          : this.dependencies.bookRepository.getNextChapterPlan(run.bookId)?.chapterNumber);
+    if (!chapterNumber) {
+      throw new NormalizedProviderError("REQUEST_INVALID", "当前没有可重写的章节。" );
+    }
+    const plan = this.dependencies.bookRepository.getChapterPlan(run.bookId, chapterNumber);
+    if (!plan) {
+      throw new NormalizedProviderError("REQUEST_INVALID", "当前章节规划不存在，不能重写。" );
+    }
+    const chapter = sourceChapter?.position === chapterNumber - 1
+      ? sourceChapter
+      : this.dependencies.productionRepository.getOrCreateChapter(
+          run.bookId,
+          plan.title,
+          chapterNumber - 1,
+        );
+    const memoryContext = this.dependencies.memoryService
+      ? this.dependencies.memoryService.getContext(run.bookId, plan, run.memoryContextConfig)
+      : emptyMemoryContext();
+    const book = this.dependencies.bookRepository.getBook(run.bookId);
+    const candidateText = await generateDraft(
+      this.dependencies.providerResolver.resolve(providerConfig),
+      providerConfig.model,
+      book.book.idea,
+      plan,
+      chapter.content,
+      memoryContext,
+      signal,
+      instruction,
+      book.book.style,
+      book.book.targetChapterCharacters,
+    );
+    const candidate = this.dependencies.productionRepository.createCandidate({
+      runId,
+      bookId: run.bookId,
+      chapterId: chapter.id,
+      baseRevision: chapter.revision,
+      contextHash: hashContext(chapter.content),
+      memoryRevision: memoryContext.memoryRevision,
+      memoryContextHash: memoryContext.contextHash,
+      memoryContextConfig: run.memoryContextConfig,
+      originalText: chapter.content,
+      candidateText,
+    });
+    this.dependencies.productionRepository.appendCheckpoint({
+      runId,
+      stage: "draft",
+      inputHash: hashContext(chapter.content),
+      outputId: candidate.id,
+    });
+    const review = await reviewDraft(
+      this.dependencies.providerResolver.resolve(providerConfig),
+      providerConfig.model,
+      book.book.idea,
+      plan,
+      candidateText,
+      memoryContext,
+      signal,
+      book.book.style,
+      book.book.targetChapterCharacters,
+    );
+    const { memoryDelta, ...reviewResult } = review;
+    this.dependencies.productionRepository.updateCandidateReview(candidate.id, reviewResult);
+    this.dependencies.productionRepository.updateCandidateMemoryDelta(candidate.id, memoryDelta);
+    this.dependencies.productionRepository.appendCheckpoint({
+      runId,
+      stage: "review",
+      inputHash: hashContext(candidateText),
+      outputId: candidate.id,
+    });
+    return this.dependencies.productionRepository.getCandidate(candidate.id);
+  }
 
   start(
     runId: string,
@@ -82,6 +194,7 @@ export class ProductionService {
     this.dependencies.productionRepository.updateRun(runId, {
       status: "running",
     });
+    this.dependencies.bookRepository.setStatus(run.bookId, "drafting");
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
 
     try {
@@ -99,11 +212,13 @@ export class ProductionService {
               "章节规划尚未完成，不能开始正文生产。",
             );
           }
-          return this.dependencies.productionRepository.updateRun(runId, {
+          const completed = this.dependencies.productionRepository.updateRun(runId, {
             status: "completed",
             stage: "accept",
             currentChapterNumber: null,
           });
+          this.dependencies.bookRepository.setStatus(run.bookId, "completed");
+          return completed;
         }
 
         const memoryContext = this.dependencies.memoryService
@@ -144,6 +259,9 @@ export class ProductionService {
             chapter.content,
             memoryContext,
             signal,
+            "",
+            bookDetails.book.style,
+            bookDetails.book.targetChapterCharacters,
           );
           const stoppedAfterDraft = this.getStoppedRun(runId, signal);
           if (stoppedAfterDraft) return stoppedAfterDraft;
@@ -191,6 +309,8 @@ export class ProductionService {
               candidate.review.findings,
               memoryContext,
               signal,
+              bookDetails.book.style,
+              bookDetails.book.targetChapterCharacters,
             );
             const stoppedAfterRepair = this.getStoppedRun(runId, signal);
             if (stoppedAfterRepair) return stoppedAfterRepair;
@@ -220,6 +340,8 @@ export class ProductionService {
             candidate.candidateText,
             memoryContext,
             signal,
+            bookDetails.book.style,
+            bookDetails.book.targetChapterCharacters,
           );
           const stoppedAfterReview = this.getStoppedRun(runId, signal);
           if (stoppedAfterReview) return stoppedAfterReview;
@@ -251,6 +373,7 @@ export class ProductionService {
           hasMemoryChanges(pendingMemoryDelta) &&
           !candidate.memoryDeltaReview.approved
         ) {
+          this.dependencies.bookRepository.setStatus(run.bookId, "paused");
           return this.dependencies.productionRepository.updateRun(runId, {
             status: "paused",
             stage: "review",
@@ -277,15 +400,18 @@ export class ProductionService {
       if (isAbortError(error) || signal.aborted) {
         const current = this.dependencies.productionRepository.getRun(runId);
         if (current.status === "cancelled" || current.status === "paused") return current;
-        return this.dependencies.productionRepository.updateRun(runId, {
+        const paused = this.dependencies.productionRepository.updateRun(runId, {
           status: "paused",
         });
+        this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
+        return paused;
       }
       const code = isKnownErrorCode(error) ? error.code : "UNKNOWN_PROVIDER_ERROR";
       this.dependencies.productionRepository.updateRun(runId, {
         status: "failed",
         errorCode: code,
       });
+      this.dependencies.bookRepository.setStatus(run.bookId, "failed");
       throw error;
     }
   }
@@ -294,9 +420,11 @@ export class ProductionService {
     const current = this.dependencies.productionRepository.getRun(runId);
     if (["completed", "cancelled", "failed"].includes(current.status)) return current;
     this.activeRuns.get(runId)?.controller.abort();
-    return this.dependencies.productionRepository.updateRun(runId, {
+    const paused = this.dependencies.productionRepository.updateRun(runId, {
       status: "paused",
     });
+    this.dependencies.bookRepository.setStatus(current.bookId, "paused");
+    return paused;
   }
 
   resume(
@@ -311,9 +439,11 @@ export class ProductionService {
     const current = this.dependencies.productionRepository.getRun(runId);
     if (["completed", "cancelled"].includes(current.status)) return current;
     this.activeRuns.get(runId)?.controller.abort();
-    return this.dependencies.productionRepository.updateRun(runId, {
+    const cancelled = this.dependencies.productionRepository.updateRun(runId, {
       status: "cancelled",
     });
+    this.dependencies.bookRepository.setStatus(current.bookId, "cancelled");
+    return cancelled;
   }
 
   async cancelActiveRuns(): Promise<void> {
@@ -345,6 +475,9 @@ async function generateDraft(
   currentContent: string,
   memoryContext: MemoryContext,
   signal?: AbortSignal,
+  instruction = "",
+  style = "",
+  targetChapterCharacters = 2_500,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -361,6 +494,9 @@ async function generateDraft(
         `章节摘要：${plan.summary}`,
         `章节钩子：${plan.hook}`,
         `上一版正文：${currentContent || "无"}`,
+        `目标字数：约 ${targetChapterCharacters} 字。`,
+        ...(style.trim() ? [`文风要求：${style.trim()}`] : []),
+        ...(instruction.trim() ? [`重写要求：${instruction.trim()}`] : []),
       ].join("\n"),
       maxOutputTokens: 12_000,
   }, signal);
@@ -382,6 +518,8 @@ async function reviewDraft(
   draft: string,
   memoryContext: MemoryContext,
   signal?: AbortSignal,
+  style = "",
+  targetChapterCharacters = 2_500,
 ) {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -397,6 +535,8 @@ async function reviewDraft(
         `故事想法：${idea}`,
         `章节任务：${plan.objective}`,
         `章节正文：${draft}`,
+        `目标字数：约 ${targetChapterCharacters} 字。`,
+        ...(style.trim() ? [`文风要求：${style.trim()}`] : []),
         "检查人物、事实、时间线、章节目标、伏笔和文风；没有硬伤就通过。",
       ].join("\n"),
       maxOutputTokens: 2_000,
@@ -411,6 +551,8 @@ async function repairDraft(
   findings: readonly string[],
   memoryContext: MemoryContext,
   signal?: AbortSignal,
+  style = "",
+  targetChapterCharacters = 2_500,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -423,6 +565,8 @@ async function repairDraft(
         ...memoryPrompt.userPrompt.split("\n"),
         `原章节：${draft}`,
         `审核问题：${findings.join("；")}`,
+        `目标字数：约 ${targetChapterCharacters} 字。`,
+        ...(style.trim() ? [`文风要求：${style.trim()}`] : []),
       ].join("\n"),
       maxOutputTokens: 12_000,
   }, signal);

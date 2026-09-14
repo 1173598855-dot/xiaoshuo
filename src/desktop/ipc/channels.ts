@@ -5,6 +5,7 @@ export const DESKTOP_CHANNELS = {
   chapterUpdate: "chapter:update",
   providerList: "provider:list",
   providerListModels: "provider:list-models",
+  providerTestConnection: "provider:test-connection",
   providerGetSettings: "provider:get-settings",
   providerSaveSettings: "provider:save-settings",
   providerClearKey: "provider:clear-key",

@@ -82,6 +82,80 @@ afterEach(() => {
 });
 
 describe("auto-novel full client flow", () => {
+  it("takes the one-click path straight to production", async () => {
+    const selectedBook = {
+      ...baseBook,
+      status: "ready-to-draft" as const,
+      revision: 2,
+      selectedDirectionId: direction.id,
+    };
+    const run = {
+      id: "c2fcea89-9d4e-4f45-8c55-777777777777",
+      bookId: baseBook.id,
+      kind: "production" as const,
+      status: "completed" as const,
+      stage: "accept" as const,
+      currentChapterNumber: null,
+      version: 2,
+      idempotencyKey: "quick-start",
+      errorCode: null,
+      createdAt: baseBook.createdAt,
+      updatedAt: baseBook.updatedAt,
+    };
+    const runDetails = {
+      run,
+      checkpoints: [],
+      candidate: null,
+      book: { ...selectedBook, status: "completed" as const },
+      candidates: [],
+      acceptedChapters: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/books") && init?.method === "POST") {
+        return json({ book: baseBook, directions: [direction] }, 201);
+      }
+      if (url.endsWith("/api/books")) return json([]);
+      if (url.endsWith("/api/providers")) return json([provider]);
+      if (url.includes("/directions/") && url.endsWith("/select")) {
+        return json({
+          book: selectedBook,
+          directions: [{ ...direction, selected: true }],
+          foundation: {
+            id: "17f8d4d5-517b-45fb-8c55-777777777777",
+            bookId: baseBook.id,
+            worldRules: ["规则"],
+            characters: [],
+            styleGuide: "克制",
+            facts: [],
+            revision: 1,
+            createdAt: baseBook.createdAt,
+            updatedAt: baseBook.updatedAt,
+          },
+          chapterPlans: [plan],
+          run: null,
+        });
+      }
+      if (url.endsWith("/production") && init?.method === "POST") return json(run, 202);
+      if (url.includes("/api/production-runs/")) return json(runDetails);
+      throw new Error(`Unhandled request ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    fireEvent.change(await screen.findByRole("textbox", { name: "故事想法" }), {
+      target: { value: baseBook.idea },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "一键开写" }));
+
+    expect(await screen.findByText("这本书已经写完了")).toBeInTheDocument();
+    expect(screen.queryByText("你的故事可以这样开始")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/books/" + baseBook.id + "/production"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("takes one idea through directions, production, and formal manuscript", async () => {
     const selectedBook = {
       ...baseBook,

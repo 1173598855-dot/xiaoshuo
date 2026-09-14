@@ -62,6 +62,7 @@ export function buildDirectorPrompt(book: Book): {
       `故事想法：${book.idea}`,
       `作者未指定题材时请自行判断，当前题材提示：${book.genre || "自动判断"}`,
       `目标章节数：${book.targetChapters}`,
+      ...(book.style.trim() ? [`文风提示：${book.style}`] : []),
       "请给出三种不同的整本书走向。",
     ].join("\n"),
   };
@@ -77,6 +78,7 @@ export function buildFoundationPrompt(book: Book, direction: StoryDirection) {
       `主线：${direction.logline}`,
       `核心冲突：${direction.centralConflict}`,
       `结局倾向：${direction.endingDirection}`,
+      ...(book.style.trim() ? [`作者文风提示：${book.style}`] : []),
       "不要要求作者手动填写角色卡；请自动补齐必要信息。",
     ].join("\n"),
   };

@@ -76,6 +76,7 @@ export const BookSchema = z
     genre: z.string().max(80),
     targetChapters: z.number().int().min(1).max(500),
     targetChapterCharacters: z.number().int().min(200).max(100_000),
+    style: z.string().max(2_000).default(""),
     status: BookStatusSchema,
     revision: z.number().int().nonnegative(),
     selectedDirectionId: UuidSchema.nullable(),
@@ -334,6 +335,13 @@ export const StartProductionInputSchema = z
   })
   .strict();
 export type StartProductionInput = z.infer<typeof StartProductionInputSchema>;
+
+export const RewriteChapterInputSchema = z
+  .object({
+    instruction: z.string().trim().max(4_000).optional(),
+  })
+  .strict();
+export type RewriteChapterInput = z.infer<typeof RewriteChapterInputSchema>;
 
 export const AcceptCandidateInputSchema = z
   .object({ expectedRevision: z.number().int().nonnegative() })

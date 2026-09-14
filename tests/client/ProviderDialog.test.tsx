@@ -80,6 +80,44 @@ describe("ProviderDialog", () => {
     expect(screen.getByLabelText("模型 ID")).toHaveValue("");
   });
 
+  it("auto-selects a fetched model before testing an empty form", async () => {
+    const onListModels = vi.fn().mockResolvedValue([{ id: "model-from-endpoint" }]);
+    const onTestConnection = vi.fn().mockResolvedValue({
+      model: "model-from-endpoint",
+      latencyMs: 15,
+    });
+    render(
+      <ProviderDialog
+        open
+        platform="web"
+        providers={[compatibleProvider]}
+        settings={null}
+        onSave={vi.fn()}
+        onListModels={onListModels}
+        onTestConnection={onTestConnection}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("服务地址"), {
+      target: { value: "https://models.example.test/v1" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() =>
+      expect(onTestConnection).toHaveBeenCalledWith(
+        {
+          providerId: "custom",
+          model: "model-from-endpoint",
+          baseUrl: "https://models.example.test/v1",
+        },
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("model-from-endpoint");
+    expect(await screen.findByRole("status")).toHaveTextContent("连接成功");
+  });
+
   it("does not show model refresh for native providers", () => {
     render(
       <ProviderDialog

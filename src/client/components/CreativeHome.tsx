@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ArrowUpRight, BookOpen, Plus, Settings2, Sparkles } from "lucide-react";
 
-import type { Book } from "../../shared/auto-novel";
+import type { Book, CreateBookInput } from "../../shared/auto-novel";
 
 interface CreativeHomeProps {
   books: readonly Book[];
   busy: boolean;
   error: string | null;
-  onCreateIdea: (idea: string) => void;
+  onCreateIdea: (input: CreateBookInput, autoStart?: boolean) => void;
   onOpenBook: (book: Book) => void;
   onConfigureProvider: () => void;
 }
@@ -90,17 +90,32 @@ function IdeaForm({
 }: {
   busy: boolean;
   error: string | null;
-  onSubmit: (idea: string) => void;
+  onSubmit: (input: CreateBookInput, autoStart?: boolean) => void;
 }) {
+  const presets = [
+    { label: "悬疑短篇", idea: "一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……", genre: "悬疑", targetChapters: 8, targetChapterCharacters: 2_000, style: "冷峻、紧凑，每章结尾留下一个可追查的新线索。" },
+    { label: "都市连载", idea: "一座会在凌晨移动的城市，只有一个快递员记得它原来的位置。", genre: "都市异闻", targetChapters: 24, targetChapterCharacters: 2_500, style: "节奏明快，场景具体，章末保留强钩子。" },
+    { label: "东方幻想", idea: "落魄的纸扎匠发现，给死人烧的每一封信都会在第二天收到回信。", genre: "东方幻想", targetChapters: 16, targetChapterCharacters: 2_800, style: "克制、诡丽，用民俗细节推动人物选择。" },
+  ];
   const [idea, setIdea] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState<(typeof presets)[number] | null>(null);
   return (
-    <form className="idea-form" onSubmit={(event) => { event.preventDefault(); if (idea.trim()) onSubmit(idea.trim()); }}>
+    <form className="idea-form" onSubmit={(event) => { event.preventDefault(); if (idea.trim()) onSubmit({ idea: idea.trim(), ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, false); }}>
       <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>START WITH A SENTENCE</span></div>
       <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
+      <div className="idea-presets" aria-label="创作预设">
+        <span className="idea-presets-label">快速起步</span>
+        {presets.map((preset) => (
+          <button className={`preset-chip${selectedPreset?.label === preset.label ? " active" : ""}`} type="button" key={preset.label} disabled={busy} onClick={() => { setIdea(preset.idea); setSelectedPreset(preset); }}>{preset.label}</button>
+        ))}
+      </div>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="idea-form-footer">
         <span><i className="status-dot" /> 一句话就够，细节交给导演</span>
-        <button className="primary-button" type="submit" disabled={busy || !idea.trim()}><Plus size={17} />{busy ? "导演正在思考…" : "开始开书"}</button>
+        <div className="idea-form-actions">
+          <button className="secondary-button" type="submit" disabled={busy || !idea.trim()}>{busy ? "处理中…" : "开始开书"}</button>
+          <button className="primary-button" type="button" disabled={busy || !idea.trim()} onClick={() => onSubmit({ idea: idea.trim(), ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, true)}><Plus size={17} />{busy ? "导演正在思考…" : "一键开写"}</button>
+        </div>
       </div>
     </form>
   );

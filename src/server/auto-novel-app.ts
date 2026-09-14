@@ -11,6 +11,7 @@ import {
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RewriteChapterInputSchema,
 } from "../shared/auto-novel";
 import {
   MemoryFilterSchema,
@@ -19,11 +20,17 @@ import {
   RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
 } from "../shared/memory";
-import { ListProviderModelsInputSchema, ProviderConfigSchema } from "../shared/contracts";
+import {
+  ListProviderModelsInputSchema,
+  ProviderConfigSchema,
+  ProviderConnectionResultSchema,
+  TestProviderConnectionInputSchema,
+} from "../shared/contracts";
 import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
-import { UnsupportedExportFormatError } from "./export-errors";
+import { exportBook } from "./services/export-service";
+import { resolveProviderConnectionConfig } from "./providers/connection-test";
 import type { BookRepository } from "./repositories/book-repository";
 import type { ProductionRepository } from "./repositories/production-repository";
 import type { DirectorService } from "./services/director-service";
@@ -58,6 +65,9 @@ const MemoryQuerySchema = z
       .optional(),
   })
   .strict();
+const RewriteRequestSchema = RewriteChapterInputSchema.extend({
+  provider: ProviderConfigSchema,
+}).strict();
 
 const MemoryPathIdSchema = z.string().uuid();
 
@@ -82,6 +92,17 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     if (!parsed.success) return context.json(parsed.error, 400);
     const config = resolveOpenAICompatibleModelListConfig(parsed.data);
     return context.json(await listOpenAICompatibleModels(config, context.req.raw.signal));
+  });
+
+  app.post("/api/providers/test", async (context) => {
+    const parsed = await parseJson(context.req.raw, TestProviderConnectionInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    const provider = resolveProviderConnectionConfig(parsed.data);
+    const result = await dependencies.productionService.testConnection(
+      provider,
+      context.req.raw.signal,
+    );
+    return context.json(ProviderConnectionResultSchema.parse(result));
   });
 
   app.get("/api/books", (context) =>
@@ -240,11 +261,18 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       SelectDirectionRequestSchema,
     );
     if (!parsed.success) return context.json(parsed.error, 400);
-    const book = dependencies.directorService.selectDirection(
-      context.req.param("bookId"),
-      context.req.param("directionId"),
-      parsed.data.expectedBookRevision,
-    );
+    const currentDetails = dependencies.bookRepository.getBook(context.req.param("bookId"));
+    const sameDirection = currentDetails.book.selectedDirectionId === context.req.param("directionId");
+    const foundationReady = currentDetails.foundation !== null && currentDetails.chapterPlans.length > 0;
+    if (sameDirection && foundationReady) return context.json(currentDetails);
+    const book = sameDirection &&
+      ["foundation-generating", "outline-generating"].includes(currentDetails.book.status)
+      ? currentDetails.book
+      : dependencies.directorService.selectDirection(
+        context.req.param("bookId"),
+        context.req.param("directionId"),
+        parsed.data.expectedBookRevision,
+      );
     const run = dependencies.productionRepository.createRun(
       book.id,
       "foundation",
@@ -289,9 +317,8 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       StartProductionInputSchema.and(ProviderRequestSchema),
     );
     if (!parsed.success) return context.json(parsed.error, 400);
-    const run = dependencies.productionRepository.createRun(
+    const run = dependencies.productionRepository.createProductionRun(
       context.req.param("bookId"),
-      "production",
       parsed.data.idempotencyKey,
       parsed.data.memoryContextConfig,
     );
@@ -327,6 +354,18 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       ))
       .catch(() => undefined);
     return context.json(run, 202);
+  });
+
+  app.post("/api/production-runs/:runId/rewrite", async (context) => {
+    const parsed = await parseJson(context.req.raw, RewriteRequestSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    const candidate = await dependencies.productionService.rewriteCurrentChapter(
+      context.req.param("runId"),
+      parsed.data.provider,
+      parsed.data.instruction,
+      context.req.raw.signal,
+    );
+    return context.json(candidate, 201);
   });
 
   app.post("/api/production-runs/:runId/cancel", async (context) => {
@@ -397,7 +436,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     if (!parsed.success) return context.json(parsed.error, 400);
     return context.json({
       format: parsed.data.format,
-      content: buildExport(dependencies, context.req.param("bookId"), parsed.data.format),
+      content: exportBook(dependencies, context.req.param("bookId"), parsed.data.format),
     });
   });
 
@@ -432,6 +471,7 @@ function errorCodeOf(error: unknown): "AUTHENTICATION_FAILED" | "RATE_LIMITED" |
   if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code as ReturnType<typeof errorCodeOf>;
   return "UNKNOWN_PROVIDER_ERROR";
 }
+
 type ParseResult<T> =
   | { success: true; data: T }
   | { success: false; error: ReturnType<typeof apiError> };
@@ -476,33 +516,6 @@ function apiError(
         : {}),
     },
   };
-}
-
-function buildExport(
-  dependencies: AutoNovelAppDependencies,
-  bookId: string,
-  format: "markdown" | "txt" | "docx",
-): string {
-  if (format === "docx") throw new UnsupportedExportFormatError();
-  const details = dependencies.bookRepository.getBook(bookId);
-  const chapters = dependencies.productionRepository.getChapters(bookId);
-  if (format === "markdown") {
-    return [
-      "# " + details.book.title,
-      "",
-      ...chapters.flatMap((chapter) => [
-        "## " + chapter.title,
-        "",
-        chapter.content,
-        "",
-      ]),
-    ].join("\n");
-  }
-  return [
-    details.book.title,
-    "",
-    ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
-  ].join("\n");
 }
 
 function requireMemoryService(

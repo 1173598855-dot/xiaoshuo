@@ -14,9 +14,11 @@ interface ChapterReviewProps {
   details: AutoNovelRunDetails | null;
   api: AutoNovelApi;
   onResume: () => Promise<void>;
+  onRewrite?: (instruction?: string) => Promise<void>;
+  onAccept?: () => Promise<void>;
 }
 
-export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
+export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: ChapterReviewProps) {
   const candidate = details?.candidate;
   const [review, setReview] = useState<MemoryDeltaReview | null>(null);
   const [reviewRevision, setReviewRevision] = useState(0);
@@ -25,6 +27,8 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
+  const [rewriteInstruction, setRewriteInstruction] = useState("");
+  const [rewriteOpen, setRewriteOpen] = useState(false);
 
   useEffect(() => {
     if (!candidate) {
@@ -37,6 +41,8 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
     setDecisions(new Set());
     setEditing(false);
     setDraftText(candidate.candidateText);
+    setRewriteInstruction("");
+    setRewriteOpen(false);
     // Review edits are local to a candidate and must survive polling refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate?.id]);
@@ -143,7 +149,15 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
       <div className="candidate-text-toolbar">
         <span><CheckCircle2 size={14} /> 候选已隔离 · 正文版本 v{candidate.candidateTextRevision}</span>
         {!editing ? <button className="ghost-button" type="button" disabled={busy || candidate.status !== "completed"} onClick={() => { setDraftText(candidate.candidateText); setEditing(true); }}><Edit3 size={14} /> 编辑候选</button> : null}
+        {onRewrite ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setRewriteOpen((open) => !open)}><Edit3 size={14} /> AI 重写当前章</button> : null}
       </div>
+      {rewriteOpen && onRewrite ? (
+        <div className="rewrite-box">
+          <label htmlFor="rewrite-instruction">重写要求（可选）</label>
+          <input id="rewrite-instruction" value={rewriteInstruction} onChange={(event) => setRewriteInstruction(event.target.value)} placeholder="例如：加强开场冲突，保留人物关系和事实。" disabled={busy} />
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => void onRewrite(rewriteInstruction.trim() || undefined).then(() => setRewriteOpen(false)).catch((rewriteError) => setError(rewriteError instanceof Error ? rewriteError.message : "章节重写失败。"))}>生成隔离候选</button>
+        </div>
+      ) : null}
       {editing ? (
         <div className="candidate-editor">
           <textarea className="candidate-textarea" value={draftText} onChange={(event) => setDraftText(event.target.value)} aria-label="编辑候选正文" />
@@ -155,6 +169,7 @@ export function ChapterReview({ details, api, onResume }: ChapterReviewProps) {
       ) : <p className="review-copy">{candidate.candidateText}</p>}
       <CandidateDiff originalText={candidate.originalText || candidate.candidateText} candidateText={candidate.candidateText} />
       <div className="review-meta"><span>修复 {candidate.repairCount} 次</span><span>{candidate.review.status === "pending" ? "等待重新审核" : "审核结果可追溯"}</span></div>
+      {onAccept && candidate.status === "completed" && candidate.review.status === "passed" ? <button className="primary-button review-accept-button" type="button" disabled={busy} onClick={() => void onAccept().catch((acceptError) => setError(acceptError instanceof Error ? acceptError.message : "重写候选采纳失败。"))}><CheckCircle2 size={15} /> 采纳当前候选进入正文</button> : null}
       {delta ? (
         <div className="review-memory-panel">
           <div className="review-memory-heading">

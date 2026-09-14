@@ -5,10 +5,12 @@ import type {
   DesktopCommand,
   ListProviderModelsInput,
   ProviderCatalogEntry,
+  ProviderConnectionResult,
   ProviderId,
   ProviderModel,
   ProviderSettings,
   SaveProviderSettingsInput,
+  TestProviderConnectionInput,
   UpdateChapterInput,
   Workspace,
 } from "../../shared/contracts";
@@ -45,6 +47,10 @@ export interface WorkbenchTransport {
     input: ListProviderModelsInput,
     signal?: AbortSignal,
   ): Promise<readonly ProviderModel[]>;
+  testProviderConnection(
+    input: TestProviderConnectionInput,
+    signal?: AbortSignal,
+  ): Promise<ProviderConnectionResult>;
   createChapter(projectId: string, title: string): Promise<Chapter>;
   updateChapter(chapterId: string, input: UpdateChapterInput): Promise<Chapter>;
   getProviderSettings(): Promise<ClientProviderSettings | null>;

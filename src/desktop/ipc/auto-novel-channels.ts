@@ -9,6 +9,7 @@ export const AUTO_NOVEL_CHANNELS = {
   productionGet: "auto-novel:production-get",
   productionPause: "auto-novel:production-pause",
   productionResume: "auto-novel:production-resume",
+  productionRewrite: "auto-novel:production-rewrite",
   productionCancel: "auto-novel:production-cancel",
   candidateAccept: "auto-novel:candidate-accept",
   candidateGet: "auto-novel:candidate-get",

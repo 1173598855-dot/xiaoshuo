@@ -200,6 +200,7 @@ describe("production memory integration", () => {
 
     const paused = await service.start(fixture.run.id, providerConfig);
     expect(paused.status).toBe("paused");
+    expect(fixture.bookRepository.getBook(fixture.book.id).book.status).toBe("paused");
     expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(0);
     const candidate = fixture.productionRepository.getCandidate(
       fixture.productionRepository.getRunDetails(fixture.run.id).candidate!.id,

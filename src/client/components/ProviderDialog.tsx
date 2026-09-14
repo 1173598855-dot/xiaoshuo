@@ -14,6 +14,7 @@ import type {
   ProviderId,
   ListProviderModelsInput,
   ProviderModel,
+  ProviderConnectionResult,
   SaveProviderSettingsInput,
 } from "../../shared/contracts";
 import { ApiRequestError, type ClientProviderSettings } from "../api/transport";
@@ -32,6 +33,10 @@ interface ProviderDialogProps {
     input: ListProviderModelsInput,
     signal?: AbortSignal,
   ) => Promise<readonly ProviderModel[]>;
+  onTestConnection?: (
+    input: SaveProviderSettingsInput,
+    signal?: AbortSignal,
+  ) => Promise<ProviderConnectionResult>;
   onClose: () => void;
 }
 
@@ -43,6 +48,7 @@ export function ProviderDialog({
   onSave,
   onClearKey,
   onListModels,
+  onTestConnection,
   onClose,
 }: ProviderDialogProps) {
   const titleId = useId();
@@ -60,6 +66,8 @@ export function ProviderDialog({
   );
   const [modelListLoading, setModelListLoading] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
+  const [connectionTestLoading, setConnectionTestLoading] = useState(false);
+  const [connectionTestMessage, setConnectionTestMessage] = useState<string | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const providerSelectRef = useRef<HTMLSelectElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -105,6 +113,7 @@ export function ProviderDialog({
     );
     setKeyVisible(false);
     setError(null);
+    setConnectionTestMessage(null);
     invalidateModelList();
   }, [invalidateModelList, open, providers, settings]);
 
@@ -132,6 +141,7 @@ export function ProviderDialog({
     setApiKeyLoadedFromSettings(false);
     setBaseUrl(entry?.baseUrl ?? "");
     setError(null);
+    setConnectionTestMessage(null);
     invalidateModelList();
   };
 
@@ -148,17 +158,17 @@ export function ProviderDialog({
     onClose();
   };
 
-  const loadModels = async () => {
+  const loadModels = async (): Promise<readonly ProviderModel[]> => {
     if (
       !selectedProvider ||
       selectedProvider.kind !== "openai-compatible" ||
       !onListModels
     ) {
-      return;
+      return [];
     }
     if (selectedProvider.baseUrlEditable && !baseUrl.trim()) {
       setModelListError("请输入服务地址后再拉取模型列表。");
-      return;
+      return [];
     }
 
     const input: ListProviderModelsInput = {
@@ -179,8 +189,9 @@ export function ProviderDialog({
       if (modelListRequestRef.current === requestId) {
         setDynamicModels(models);
       }
+      return models;
     } catch (requestError) {
-      if (modelListRequestRef.current !== requestId) return;
+      if (modelListRequestRef.current !== requestId) return [];
       setModelListError(
         requestError instanceof ApiRequestError &&
           requestError.code === "REQUEST_INVALID"
@@ -189,11 +200,71 @@ export function ProviderDialog({
             ? requestError.message
             : "模型列表获取失败，请稍后重试。",
       );
+      return [];
     } finally {
       if (modelListRequestRef.current === requestId) {
         modelListAbortRef.current = null;
         setModelListLoading(false);
       }
+    }
+  };
+
+  const chooseModelAutomatically = async (): Promise<string | null> => {
+    const suggested =
+      selectedProvider?.models.find(({ role }) => role === "balanced") ??
+      selectedProvider?.models[0];
+    if (suggested) {
+      setModel(suggested.id);
+      setError(null);
+      return suggested.id;
+    }
+    const models = await loadModels();
+    if (models[0]) {
+      setModel(models[0].id);
+      setError(null);
+      return models[0].id;
+    } else if (!model.trim()) {
+      setError("当前端点没有返回模型，请输入模型 ID。" );
+    }
+    return null;
+  };
+
+  const testConnection = async () => {
+    if (!selectedProvider || !onTestConnection) return;
+    let selectedModel = model.trim();
+    if (!selectedModel) {
+      selectedModel = (await chooseModelAutomatically()) ?? "";
+    }
+    if (!selectedModel) {
+      return;
+    }
+    if (selectedProvider.kind === "openai-compatible" && selectedProvider.baseUrlEditable && !baseUrl.trim()) {
+      setError("请输入服务地址后再测试连接。" );
+      return;
+    }
+    const input: SaveProviderSettingsInput = {
+      providerId: selectedProvider.id,
+      model: selectedModel,
+      ...(selectedProvider.kind === "openai-compatible" && selectedProvider.baseUrlEditable
+        ? { baseUrl: baseUrl.trim() }
+        : {}),
+      ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    };
+    const controller = new AbortController();
+    setConnectionTestLoading(true);
+    setConnectionTestMessage(null);
+    setError(null);
+    try {
+      const result = await onTestConnection(input, controller.signal);
+      setConnectionTestMessage(`连接成功 · ${result.model} · ${result.latencyMs} ms`);
+    } catch (testError) {
+      setError(
+        testError instanceof Error && testError.message
+          ? testError.message
+          : "连接测试失败，请检查模型、地址和 API Key。",
+      );
+    } finally {
+      setConnectionTestLoading(false);
     }
   };
 
@@ -203,7 +274,11 @@ export function ProviderDialog({
       return;
     }
 
-    const modelValue = model.trim();
+    const modelValue =
+      model.trim() ||
+      dynamicModels[0]?.id ||
+      selectedProvider.models.find(({ role }) => role === "balanced")?.id ||
+      selectedProvider.defaultModel;
     if (!modelValue) {
       setError("请输入模型 ID。");
       return;
@@ -472,12 +547,33 @@ export function ProviderDialog({
           ) : null}
 
           {error ? <div className="form-error" role="alert">{error}</div> : null}
+          {connectionTestMessage ? (
+            <div className="provider-test-success" role="status">
+              <Check size={14} /> {connectionTestMessage}
+            </div>
+          ) : null}
         </div>
 
         <footer className="dialog-actions">
           <button className="secondary-button" type="button" onClick={closeDialog}>
             取消
           </button>
+          {onTestConnection ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={connectionTestLoading}
+              onClick={() => void testConnection()}
+            >
+              <RefreshCw className={connectionTestLoading ? "is-spinning" : undefined} size={15} />
+              {connectionTestLoading ? "测试中…" : "测试连接"}
+            </button>
+          ) : null}
+          {selectedProvider?.kind === "openai-compatible" && !model.trim() ? (
+            <button className="ghost-button" type="button" disabled={modelListLoading} onClick={() => void chooseModelAutomatically()}>
+              自动选模型
+            </button>
+          ) : null}
           <button className="primary-button" type="button" onClick={() => void submit()}>
             <Check size={16} />
             <span>保存模型配置</span>

@@ -6,6 +6,7 @@ import {
   ExportBookInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RewriteChapterInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
 import {
@@ -17,7 +18,7 @@ import {
 import type { ProviderVault } from "../provider-vault";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
-import { UnsupportedExportFormatError } from "../../server/export-errors";
+import { exportBook } from "../../server/services/export-service";
 import { AUTO_NOVEL_CHANNELS, type AutoNovelDesktopChannel } from "./auto-novel-channels";
 import type { DesktopIpcMain } from "./handlers";
 
@@ -46,6 +47,10 @@ const RunRequestSchema = z.object({ runId: z.string().uuid() }).strict();
 const ResumeRequestSchema = z
   .object({ runId: z.string().uuid(), providerId: ProviderIdSchema })
   .strict();
+const RewriteRequestSchema = RewriteChapterInputSchema.extend({
+  runId: z.string().uuid(),
+  providerId: ProviderIdSchema,
+}).strict();
 const CandidateAcceptRequestSchema = z
   .object({ candidateId: z.string().uuid(), expectedRevision: z.number().int().nonnegative() })
   .strict();
@@ -111,13 +116,21 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.directionsSelect, SelectRequestSchema, async ({ bookId, directionId, expectedBookRevision, providerId }) => {
     const services = dependencies.getServices();
-    const book = services.directorService.selectDirection(bookId, directionId, expectedBookRevision);
+    const currentDetails = services.bookRepository.getBook(bookId);
+    const current = currentDetails.book;
+    const sameDirection = current.selectedDirectionId === directionId;
+    const foundationReady = currentDetails.foundation !== null && currentDetails.chapterPlans.length > 0;
+    if (sameDirection && foundationReady) return currentDetails;
+    const book = sameDirection &&
+      ["foundation-generating", "outline-generating"].includes(current.status)
+      ? current
+      : services.directorService.selectDirection(bookId, directionId, expectedBookRevision);
     await services.foundationService.generate(book.id, await resolveProvider(dependencies.providerVault, providerId));
     return services.bookRepository.getBook(book.id);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, providerId, idempotencyKey, memoryContextConfig }) => {
     const services = dependencies.getServices();
-    const run = services.productionRepository.createRun(bookId, "production", idempotencyKey, memoryContextConfig);
+    const run = services.productionRepository.createProductionRun(bookId, idempotencyKey, memoryContextConfig);
     void services.productionService.start(run.id, await resolveProvider(dependencies.providerVault, providerId)).catch(() => undefined);
     return run;
   });
@@ -137,6 +150,14 @@ export function registerAutoNovelIpcHandlers(
       ))
       .catch(() => undefined);
     return run;
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionRewrite, RewriteRequestSchema, async ({ runId, providerId, instruction }) => {
+    const services = dependencies.getServices();
+    return services.productionService.rewriteCurrentChapter(
+      runId,
+      await resolveProvider(dependencies.providerVault, providerId),
+      instruction,
+    );
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionCancel, RunRequestSchema, ({ runId }) =>
     dependencies.getServices().productionService.cancel(runId),
@@ -172,7 +193,7 @@ export function registerAutoNovelIpcHandlers(
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
     format,
-    content: buildExport(dependencies.getServices(), bookId, format),
+    content: exportBook(dependencies.getServices(), bookId, format),
   }));
   register(dependencies, AUTO_NOVEL_CHANNELS.memoryList, MemoryListRequestSchema, ({ bookId, filter }) =>
     dependencies.getServices().memoryService.snapshot(bookId, filter),
@@ -232,31 +253,4 @@ function register<T extends z.ZodType>(
 
 function failure(code: string, message: string): DesktopResult<never> {
   return { ok: false, error: { code, message } satisfies ApiError["error"] };
-}
-
-function buildExport(
-  services: AutoNovelServices,
-  bookId: string,
-  format: "markdown" | "txt" | "docx",
-): string {
-  if (format === "docx") throw new UnsupportedExportFormatError();
-  const details = services.bookRepository.getBook(bookId);
-  const chapters = services.productionRepository.getChapters(bookId);
-  if (format === "markdown") {
-    return [
-      "# " + details.book.title,
-      "",
-      ...chapters.flatMap((chapter) => [
-        "## " + chapter.title,
-        "",
-        chapter.content,
-        "",
-      ]),
-    ].join("\n");
-  }
-  return [
-    details.book.title,
-    "",
-    ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
-  ].join("\n");
 }

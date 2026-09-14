@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createDatabase } from "../../src/server/db/database";
@@ -114,6 +115,85 @@ function createFixture(providerOverride?: {
 }
 
 describe("ProductionService", () => {
+  it("rewrites the current chapter into an isolated candidate", async () => {
+    const prompts: string[] = [];
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(input: { systemPrompt: string; userPrompt?: string }) {
+        prompts.push(`${input.systemPrompt}\n${input.userPrompt ?? ""}`);
+        return input.systemPrompt.includes("审稿人")
+          ? { text: JSON.stringify({ status: "passed", findings: [] }), usage: null }
+          : { text: "重写后的第一章正文。", usage: null };
+      },
+    };
+    const fixture = createFixture(provider);
+    const service = new ProductionService(fixture);
+
+    const candidate = await service.rewriteCurrentChapter(
+      fixture.run.id,
+      fixture.providerConfig,
+      "加强开场冲突",
+    );
+
+    expect(candidate.status).toBe("completed");
+    expect(candidate.review.status).toBe("passed");
+    expect(candidate.candidateText).toBe("重写后的第一章正文。");
+    expect(candidate.originalText).toBe("");
+    expect(prompts.some((prompt) => prompt.includes("重写要求：加强开场冲突"))).toBe(true);
+    expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(0);
+
+    const accepted = await fixture.productionRepository.acceptCandidate(
+      candidate.id,
+      candidate.baseRevision,
+    );
+    expect(accepted.chapter.revision).toBe(1);
+    expect(accepted.chapter.content).toBe("重写后的第一章正文。");
+  });
+
+  it("uses the current chapter instead of the previous accepted candidate", async () => {
+    const fixture = createFixture();
+    const firstChapter = fixture.productionRepository.getOrCreateChapter(
+      fixture.run.bookId,
+      "第一封信",
+      0,
+    );
+    const firstCandidate = fixture.productionRepository.createCandidate({
+      runId: fixture.run.id,
+      bookId: fixture.run.bookId,
+      chapterId: firstChapter.id,
+      baseRevision: 0,
+      contextHash: createHash("sha256").update("").digest("hex"),
+      candidateText: "已经采纳的第一章。",
+    });
+    fixture.productionRepository.updateCandidateReview(firstCandidate.id, {
+      status: "passed",
+      findings: [],
+    });
+    await fixture.productionRepository.acceptCandidate(firstCandidate.id, 0);
+    fixture.productionRepository.updateRun(fixture.run.id, {
+      status: "paused",
+      stage: "draft",
+      currentChapterNumber: 2,
+    });
+
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(input: { systemPrompt: string }) {
+        return input.systemPrompt.includes("审稿人")
+          ? { text: JSON.stringify({ status: "passed", findings: [] }), usage: null }
+          : { text: "重写后的第二章正文。", usage: null };
+      },
+    };
+    const candidate = await new ProductionService({
+      ...fixture,
+      providerResolver: { resolve: () => provider },
+    }).rewriteCurrentChapter(fixture.run.id, fixture.providerConfig);
+
+    expect(fixture.productionRepository.getChapter(candidate.chapterId).position).toBe(1);
+    expect(candidate.originalText).toBe("");
+    expect(candidate.candidateText).toBe("重写后的第二章正文。");
+  });
+
   it("drafts, reviews, and accepts every planned chapter without overwriting directly", async () => {
     const fixture = createFixture();
     const service = new ProductionService(fixture);
