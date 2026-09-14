@@ -4,6 +4,7 @@ import { createDatabase } from "./db/database";
 import { migrate } from "./db/migrations";
 import { ProviderRegistry } from "./providers/provider-registry";
 import type { ProviderResolver } from "./providers/resolver";
+import type { ProviderConfig } from "../shared/contracts";
 import { BookRepository } from "./repositories/book-repository";
 import { ProductionRepository } from "./repositories/production-repository";
 import { MemoryRepository } from "./repositories/memory-repository";
@@ -12,10 +13,23 @@ import { FoundationService } from "./services/foundation-service";
 import { ProductionService } from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
+import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
+import { MetricsRegistry, StructuredLogger } from "./enterprise/observability";
+import { createOperationalProviderResolver } from "./enterprise/provider-stack";
 
 export interface AutoNovelRuntimeOptions {
   databasePath?: string;
   providerResolver?: ProviderResolver;
+  fallbackProviders?: readonly ProviderConfig[];
+  maxConcurrentRuns?: number;
+  monthlyTokenLimit?: number;
+  monthlyBudgetMicros?: number;
+  modelPricing?: Readonly<Record<string, {
+    readonly inputPerMillionMicros: number;
+    readonly outputPerMillionMicros: number;
+  }>>;
+  logger?: StructuredLogger;
+  metrics?: MetricsRegistry;
 }
 
 export interface AutoNovelRuntime {
@@ -27,6 +41,10 @@ export interface AutoNovelRuntime {
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
   readonly memoryService: MemoryService;
+  readonly auditRepository: AuditRepository;
+  readonly usageRepository: UsageRepository;
+  readonly metrics: MetricsRegistry;
+  readonly logger: StructuredLogger;
   close(): void;
 }
 
@@ -41,12 +59,34 @@ export function createAutoNovelRuntime(
     const productionRepository = new ProductionRepository(database);
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
+    const logger = options.logger ?? new StructuredLogger();
+    const metrics = options.metrics ?? new MetricsRegistry({ logger });
+    const auditRepository = new AuditRepository(database);
+    const usageRepository = new UsageRepository(database);
+    const providerResolver = createOperationalProviderResolver({
+      baseResolver: options.providerResolver ?? new ProviderRegistry(),
+      fallbackProviders: options.fallbackProviders,
+      usageRepository,
+      metrics,
+      logger,
+      modelPricing: options.modelPricing,
+      monthlyTokenLimit: options.monthlyTokenLimit,
+      monthlyBudgetMicros: options.monthlyBudgetMicros,
+    });
     const shared = {
       bookRepository,
       productionRepository,
-      providerResolver: options.providerResolver ?? new ProviderRegistry(),
+      providerResolver,
       memoryService,
+      maxConcurrentRuns: options.maxConcurrentRuns,
+      metrics,
+      auditRepository,
+      logger,
     };
+    const productionService = new ProductionService(shared);
+    for (const run of productionRepository.recoverInterruptedRuns()) {
+      bookRepository.setStatus(run.bookId, "paused");
+    }
     return {
       database,
       bookRepository,
@@ -54,8 +94,12 @@ export function createAutoNovelRuntime(
       memoryRepository,
       directorService: new DirectorService(shared),
       foundationService: new FoundationService(shared),
-      productionService: new ProductionService(shared),
+      productionService,
       memoryService,
+      auditRepository,
+      usageRepository,
+      metrics,
+      logger,
       close: () => database.close(),
     };
   } catch (error) {

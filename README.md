@@ -144,3 +144,18 @@ npm run e2e
 ```
 
 桌面测试覆盖 IPC、窗口安全、Vault 和打包产物。
+
+## 企业内网 P0 基线
+
+当前版本的企业目标是单用户 / 单租户内网部署，不包含多人协作、多租户和云端协作。已补齐生产所需的访问令牌保护、持久化生产队列、Provider 用量与额度、显式故障转移、审计日志、结构化指标、告警、完整性校验备份及安全恢复脚本。
+
+详细变量、健康探针、备份恢复和升级回滚步骤见 [`docs/operations/enterprise-p0.md`](docs/operations/enterprise-p0.md)。服务端生产启动时设置 `NODE_ENV=production` 和至少 16 位的 `XIAOYI_ACCESS_TOKEN`；`/api/health` 与 `/api/ready` 作为无令牌探针，其余 HTTP API 使用 Bearer 令牌。
+
+企业运维接口：`GET /api/metrics`、`GET /api/admin/metrics`、`GET /api/admin/audit`、`GET|POST /api/admin/backups` 和 `POST /api/admin/backups/verify`。成本价格通过 `XIAOYI_MODEL_PRICING_JSON` 注入，备用 Provider 通过 `XIAOYI_FALLBACK_PROVIDERS_JSON` 注入，密钥不写入 SQLite、日志、备份或接口响应。
+
+数据库恢复命令：
+
+```powershell
+npm run backup:verify -- <backup.db>
+npm run backup:restore -- <backup.db> <target.db>
+```

@@ -144,6 +144,7 @@ function statusForCode(code: string): number {
   }
   if (code === "REQUEST_ABORTED") return 408;
   if (code === "RATE_LIMITED") return 429;
+  if (code === "QUOTA_EXCEEDED") return 429;
   if (code === "AUTHENTICATION_FAILED") return 401;
   if (code === "UPSTREAM_UNAVAILABLE") return 503;
   if (code === "CONTEXT_TOO_LARGE" || code === "CONTENT_TOO_LARGE") {

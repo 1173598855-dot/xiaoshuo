@@ -17,6 +17,7 @@ import {
   loadProviderSettings,
   storeProviderSettings,
 } from "../provider-session";
+import { loadAccessToken } from "../access-token";
 import {
   ApiRequestError,
   type ClientProviderSettings,
@@ -154,6 +155,8 @@ async function requestJson(
 ): Promise<unknown> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) headers.set("content-type", "application/json");
+  const accessToken = loadAccessToken();
+  if (accessToken) headers.set("authorization", `Bearer ${accessToken}`);
   const response = await fetchImpl(path, { ...init, headers });
   let body: unknown;
   try {

@@ -205,6 +205,7 @@ export type GenerationStatus = z.infer<typeof GenerationStatusSchema>;
 export const ProviderErrorCodeSchema = z.enum([
   "AUTHENTICATION_FAILED",
   "RATE_LIMITED",
+  "QUOTA_EXCEEDED",
   "UPSTREAM_UNAVAILABLE",
   "REQUEST_INVALID",
   "REQUEST_ABORTED",
@@ -216,6 +217,7 @@ export type ProviderErrorCode = z.infer<typeof ProviderErrorCodeSchema>;
 export const PROVIDER_ERROR_MESSAGES: Record<ProviderErrorCode, string> = {
   AUTHENTICATION_FAILED: "模型服务拒绝了当前凭据。",
   RATE_LIMITED: "模型请求过于频繁，请稍后重试。",
+  QUOTA_EXCEEDED: "本月模型额度已用尽，请检查额度策略。",
   UPSTREAM_UNAVAILABLE: "模型服务暂时不可用，请稍后重试。",
   REQUEST_INVALID: "模型、端点或请求参数不受当前服务支持。",
   REQUEST_ABORTED: "生成请求已取消。",

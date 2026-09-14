@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -37,6 +38,21 @@ import type { DirectorService } from "./services/director-service";
 import type { FoundationService } from "./services/foundation-service";
 import type { ProductionService } from "./services/production-service";
 import type { MemoryService } from "./services/memory-service";
+import type { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
+import {
+  MetricsRegistry,
+  requestContextStorage,
+  StructuredLogger,
+} from "./enterprise/observability";
+import type { BackupService } from "./enterprise/backup-service";
+import {
+  extractAccessToken,
+  isAccessTokenValid,
+  isAllowedOrigin,
+  resolveClientIdentity,
+  SlidingWindowRateLimiter,
+  type RateLimitDecision,
+} from "./enterprise/http-security";
 
 const CreateBookRequestSchema = CreateBookInputSchema.extend({
   provider: ProviderConfigSchema,
@@ -79,12 +95,180 @@ export interface AutoNovelAppDependencies {
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
   readonly memoryService?: MemoryService;
+  readonly database?: DatabaseSync;
+  readonly auditRepository?: AuditRepository;
+  readonly usageRepository?: UsageRepository;
+  readonly metrics?: MetricsRegistry;
+  readonly logger?: StructuredLogger;
+  readonly backupService?: BackupService;
+  readonly accessToken?: string;
+  readonly allowedOrigin?: string;
+  readonly trustProxy?: boolean;
+  readonly rateLimitPerMinute?: number;
 }
 
 export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   const app = new Hono();
+  const metrics = dependencies.metrics ?? new MetricsRegistry();
+  const logger = dependencies.logger ?? new StructuredLogger({ sink: () => undefined });
+  const rateLimiter = dependencies.rateLimitPerMinute === undefined
+    ? undefined
+    : new SlidingWindowRateLimiter(dependencies.rateLimitPerMinute);
+
+  app.use("*", async (context, next) => {
+    const startedAt = Date.now();
+    const requestId = safeRequestId(context.req.header("x-request-id"));
+    const path = context.req.path;
+    const method = context.req.method;
+    let rateDecision: RateLimitDecision | undefined;
+    const response = await requestContextStorage.run(
+      {
+        requestId,
+        principal: dependencies.accessToken ? "single-tenant" : "anonymous",
+      },
+      async () => {
+        if (!isAllowedOrigin(context.req.raw, dependencies.allowedOrigin)) {
+          return context.json(apiError("ORIGIN_NOT_ALLOWED", "当前来源不在允许列表中。"), 403);
+        }
+        if (context.req.method === "OPTIONS") {
+          return new Response(null, { status: 204 });
+        }
+        const isPublicProbe = path === "/api/health" || path === "/api/ready";
+        if (!isPublicProbe && dependencies.accessToken) {
+          if (!isAccessTokenValid(extractAccessToken(context.req.raw), dependencies.accessToken)) {
+            return context.json(apiError("AUTHENTICATION_REQUIRED", "需要有效的访问令牌。"), 401);
+          }
+        }
+        if (!isPublicProbe && rateLimiter) {
+          rateDecision = rateLimiter.check(
+            resolveClientIdentity(context.req.raw, dependencies.trustProxy),
+          );
+          if (!rateDecision.allowed) {
+            const limited = context.json(apiError("RATE_LIMITED", "请求过于频繁，请稍后重试。"), 429);
+            limited.headers.set("retry-after", String(rateDecision.retryAfterSeconds));
+            return limited;
+          }
+        }
+        await next();
+        return context.res;
+      },
+    );
+    response.headers.set("x-request-id", requestId);
+    if (rateDecision) {
+      response.headers.set("x-ratelimit-limit", String(rateDecision.limit));
+      response.headers.set("x-ratelimit-remaining", String(rateDecision.remaining));
+    }
+    if (dependencies.allowedOrigin && context.req.header("origin") === dependencies.allowedOrigin) {
+      response.headers.set("access-control-allow-origin", dependencies.allowedOrigin);
+      response.headers.set("access-control-allow-headers", "content-type, authorization, x-xiaoyi-access-token, x-request-id");
+      response.headers.set("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
+      response.headers.append("vary", "Origin");
+    }
+    const status = response.status;
+    const durationMs = Date.now() - startedAt;
+    metrics.recordHttp({ method, route: path, status, durationMs });
+    safeRecordAudit(dependencies.auditRepository, {
+      requestId,
+      actor: dependencies.accessToken ? "single-tenant" : "anonymous",
+      action: `${method} ${path}`,
+      resourceType: resourceTypeOf(path),
+      resourceId: resourceIdOf(path),
+      outcome: status >= 400 ? "failure" : "success",
+      metadata: { status, durationMs },
+    }, logger);
+    logger.info("http.request", {
+      method,
+      route: path,
+      status,
+      durationMs,
+    });
+    return response;
+  });
 
   app.get("/api/health", (context) => context.json({ status: "ok" }));
+  app.get("/api/ready", (context) => {
+    let databaseReady = true;
+    try {
+      dependencies.database?.prepare("SELECT 1 AS ok").get();
+    } catch {
+      databaseReady = false;
+    }
+    const queue = dependencies.productionService.getQueueStatus?.() ?? {
+      running: 0,
+      queued: 0,
+      maxConcurrentRuns: 1,
+    };
+    metrics.setQueue(queue);
+    const ready = databaseReady;
+    const backupStatus = dependencies.backupService?.getStatus();
+    return context.json({
+      status: ready ? "ready" : "not_ready",
+      checks: { database: databaseReady },
+      queue,
+      ...(backupStatus
+        ? {
+            backup: {
+              configured: true,
+              remoteConfigured: backupStatus.remoteDirectory !== null,
+              lastSuccessAt: backupStatus.lastSuccessAt,
+              lastFailureAt: backupStatus.lastFailureAt,
+            },
+          }
+        : { backup: { configured: false } }),
+    }, ready ? 200 : 503);
+  });
+  app.get("/api/metrics", () => new Response(metrics.toPrometheus(), {
+    status: 200,
+    headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8" },
+  }));
+  app.get("/api/admin/metrics", (context) => context.json({
+    metrics: metrics.snapshot(),
+    usage: dependencies.usageRepository?.getMonthlySummary() ?? null,
+  }));
+  app.get("/api/admin/audit", (context) => {
+    const query = context.req.query();
+    const limit = query.limit === undefined ? undefined : Number(query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 200)) {
+      return context.json(apiError("VALIDATION_ERROR", "审计日志条数无效。"), 400);
+    }
+    return context.json(dependencies.auditRepository?.list({ limit, before: query.before }) ?? []);
+  });
+  app.get("/api/admin/usage", (context) => {
+    const query = context.req.query();
+    if (!query.from && !query.to) {
+      return context.json(dependencies.usageRepository?.getMonthlySummary() ?? null);
+    }
+    const from = parseDateQuery(query.from);
+    const to = parseDateQuery(query.to);
+    if (!from || !to || from >= to) {
+      return context.json(apiError("VALIDATION_ERROR", "usage 时间范围无效。"), 400);
+    }
+    return context.json(dependencies.usageRepository?.getSummary(from, to) ?? null);
+  });
+  app.get("/api/admin/backups", (context) => {
+    if (!dependencies.backupService) {
+      return context.json(apiError("BACKUP_NOT_CONFIGURED", "备份服务尚未配置。"), 503);
+    }
+    return context.json(dependencies.backupService.getStatus());
+  });
+  app.post("/api/admin/backups", async (context) => {
+    if (!dependencies.backupService) {
+      return context.json(apiError("BACKUP_NOT_CONFIGURED", "备份服务尚未配置。"), 503);
+    }
+    const result = await dependencies.backupService.createBackup();
+    return context.json(result, 201);
+  });
+  app.post("/api/admin/backups/verify", async (context) => {
+    if (!dependencies.backupService) {
+      return context.json(apiError("BACKUP_NOT_CONFIGURED", "备份服务尚未配置。"), 503);
+    }
+    const parsed = await parseJson(
+      context.req.raw,
+      z.object({ fileName: z.string().trim().min(1).max(240), remote: z.boolean().optional() }).strict(),
+    );
+    if (!parsed.success) return context.json(parsed.error, 400);
+    return context.json(await dependencies.backupService.verifyBackup(parsed.data.fileName, parsed.data.remote));
+  });
   app.get("/api/providers", (context) => context.json(getProviderCatalog()));
 
   app.post("/api/providers/models", async (context) => {
@@ -467,7 +651,7 @@ function hashStageInput(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function errorCodeOf(error: unknown): "AUTHENTICATION_FAILED" | "RATE_LIMITED" | "UPSTREAM_UNAVAILABLE" | "REQUEST_INVALID" | "REQUEST_ABORTED" | "CONTENT_TOO_LARGE" | "UNKNOWN_PROVIDER_ERROR" {
+function errorCodeOf(error: unknown): "AUTHENTICATION_FAILED" | "RATE_LIMITED" | "QUOTA_EXCEEDED" | "UPSTREAM_UNAVAILABLE" | "REQUEST_INVALID" | "REQUEST_ABORTED" | "CONTENT_TOO_LARGE" | "UNKNOWN_PROVIDER_ERROR" {
   if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code as ReturnType<typeof errorCodeOf>;
   return "UNKNOWN_PROVIDER_ERROR";
 }
@@ -516,6 +700,56 @@ function apiError(
         : {}),
     },
   };
+}
+
+function safeRequestId(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && /^[a-zA-Z0-9._-]{1,100}$/.test(trimmed)
+    ? trimmed
+    : cryptoRandomId();
+}
+
+function cryptoRandomId(): string {
+  return randomUUID();
+}
+
+function resourceTypeOf(path: string): string {
+  const segment = path.split("/").filter(Boolean)[1];
+  return segment ? segment.slice(0, 80) : "http";
+}
+
+function resourceIdOf(path: string): string | undefined {
+  const id = path
+    .split("/")
+    .find((segment) => /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment));
+  return id;
+}
+
+function parseDateQuery(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function safeRecordAudit(
+  repository: AuditRepository | undefined,
+  input: Parameters<AuditRepository["record"]>[0],
+  logger: StructuredLogger,
+): void {
+  try {
+    repository?.record(input);
+  } catch (error) {
+    // An audit sink failure must not turn a successful author request into a
+    // retryable application failure, but it must remain observable.
+    try {
+      logger.warn("audit.record_failed", {
+        action: input.action,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    } catch {
+      // A failing telemetry sink must not mask the original request result.
+    }
+  }
 }
 
 function requireMemoryService(

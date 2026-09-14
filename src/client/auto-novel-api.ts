@@ -50,6 +50,7 @@ import {
   type ProviderId,
 } from "../shared/contracts";
 import { ApiRequestError } from "./api/transport";
+import { loadAccessToken } from "./access-token";
 
 export type AutoNovelProviderInput = ProviderConfig | { providerId: ProviderId };
 
@@ -284,6 +285,8 @@ function providerForHttp(provider: AutoNovelProviderInput): ProviderConfig {
 async function requestJson(fetchImpl: typeof fetch, path: string, init: RequestInit = {}): Promise<unknown> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) headers.set("content-type", "application/json");
+  const accessToken = loadAccessToken();
+  if (accessToken) headers.set("authorization", `Bearer ${accessToken}`);
   const response = await fetchImpl(path, { ...init, headers });
   let body: unknown;
   try { body = await response.json(); } catch { body = undefined; }

@@ -1,0 +1,16 @@
+node_modules
+data
+dist
+release
+output
+playwright-report
+test-results
+.git
+.worktrees
+.playwright-cli
+*.db
+*.db-wal
+*.db-shm
+*.log
+.env
+.env.*

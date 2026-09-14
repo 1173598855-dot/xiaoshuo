@@ -293,7 +293,7 @@ export class ProductionRepository {
       status?: ProductionRun["status"];
       stage?: ProductionRun["stage"];
       currentChapterNumber?: number | null;
-      errorCode?: ProviderErrorCode | null;
+      errorCode?: ProviderErrorCode | "WORKER_INTERRUPTED" | null;
     },
   ): ProductionRun {
     const current = this.getRun(runId);
@@ -510,6 +510,42 @@ export class ProductionRepository {
         candidateId,
       );
     return this.getCandidate(candidateId);
+  }
+
+  /** Convert abandoned in-process work into resumable runs after a restart. */
+  recoverInterruptedRuns(): ProductionRun[] {
+    return this.withTransaction(() => {
+      const rows = this.database
+        .prepare(
+          `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                  version, idempotency_key, memory_context_config_json,
+                  error_code, created_at, updated_at
+           FROM production_runs WHERE status = 'running'`,
+        )
+        .all() as unknown as RunRow[];
+      const recovered: ProductionRun[] = [];
+      for (const row of rows) {
+        const timestamp = this.now();
+        this.database
+          .prepare(
+            `UPDATE production_runs
+             SET status = 'paused', error_code = 'WORKER_INTERRUPTED',
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ?`,
+          )
+          .run(timestamp, row.id, row.version);
+        recovered.push(
+          toRun({
+            ...row,
+            status: "paused",
+            error_code: "WORKER_INTERRUPTED",
+            version: row.version + 1,
+            updated_at: timestamp,
+          }),
+        );
+      }
+      return recovered;
+    });
   }
 
   createProductionRun(

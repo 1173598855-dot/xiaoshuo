@@ -15,6 +15,9 @@ const AUTO_MESSAGES: Record<string, string> = {
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
   UNSUPPORTED_EXPORT_FORMAT: "当前导出格式不受支持。",
   MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
+  BACKUP_FAILED: "数据库备份失败，请检查备份目标和磁盘空间。",
+  BACKUP_VERIFICATION_FAILED: "数据库备份校验失败，未将其视为可恢复副本。",
+  BACKUP_NOT_CONFIGURED: "备份服务尚未配置。",
 };
 
 export function toAutoNovelPublicError(error: unknown): ApiError["error"] {
@@ -28,6 +31,7 @@ export function autoNovelErrorStatus(error: unknown): PublicErrorStatus {
   if (hasKnownAutoCode(error)) {
     if (error.code === "NOT_FOUND") return 404;
     if (error.code === "REVISION_CONFLICT" || error.code === "MEMORY_REVISION_CONFLICT" || error.code.includes("CANDIDATE") || error.code.includes("DIRECTION") || error.code.includes("STATE")) return 409;
+    if (error.code.startsWith("BACKUP_")) return 503;
     return 400;
   }
   return publicErrorStatus(error);

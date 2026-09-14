@@ -17,6 +17,12 @@ import type { MemoryService } from "./memory-service";
 import { buildMemoryPrompt, parseStructuredProviderResult } from "./auto-novel-prompts";
 import { MemoryDeltaSchema } from "../../shared/memory";
 import { testProviderConnection } from "../providers/connection-test";
+import {
+  currentRequestContext,
+  type MetricsRegistry,
+  type StructuredLogger,
+} from "../enterprise/observability";
+import type { AuditRepository } from "../enterprise/operational-repository";
 
 const ReviewOutputSchema = z
   .object({
@@ -35,17 +41,42 @@ export interface ProductionServiceDependencies {
   readonly productionRepository: ProductionRepository;
   readonly providerResolver: ProviderResolver;
   readonly memoryService?: MemoryService;
+  /** Maximum number of book production runs executing at once. */
+  readonly maxConcurrentRuns?: number;
+  readonly metrics?: MetricsRegistry;
+  readonly auditRepository?: AuditRepository;
+  readonly logger?: StructuredLogger;
 }
 
 interface ActiveRun {
   readonly controller: AbortController;
   readonly promise: Promise<ProductionRun>;
+  readonly queued: boolean;
+}
+
+interface PendingRun {
+  readonly runId: string;
+  readonly providerConfig: ProviderConfig;
+  readonly controller: AbortController;
+  readonly unlinkAbort: () => void;
+  readonly promise: Promise<ProductionRun>;
+  readonly resolve: (run: ProductionRun) => void;
+  readonly reject: (error: unknown) => void;
 }
 
 export class ProductionService {
   private readonly activeRuns = new Map<string, ActiveRun>();
+  private readonly pendingRuns: PendingRun[] = [];
+  private readonly maxConcurrentRuns: number;
+  private runningRuns = 0;
 
-  constructor(private readonly dependencies: ProductionServiceDependencies) {}
+  constructor(private readonly dependencies: ProductionServiceDependencies) {
+    this.maxConcurrentRuns = Math.max(
+      1,
+      Math.min(8, Math.trunc(dependencies.maxConcurrentRuns ?? 1)),
+    );
+    this.updateQueueMetrics();
+  }
 
   testConnection(
     providerConfig: ProviderConfig,
@@ -168,13 +199,43 @@ export class ProductionService {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(signal, controller);
-    const promise = this.run(runId, providerConfig, controller.signal).finally(() => {
-      unlinkAbort();
-      if (this.activeRuns.get(runId)?.promise === promise) this.activeRuns.delete(runId);
+    let resolve!: (run: ProductionRun) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<ProductionRun>((promiseResolve, promiseReject) => {
+      resolve = promiseResolve;
+      reject = promiseReject;
     });
-    const activeRun: ActiveRun = { controller, promise };
+    const pending: PendingRun = {
+      runId,
+      providerConfig,
+      controller,
+      unlinkAbort,
+      promise,
+      resolve,
+      reject,
+    };
+    const activeRun: ActiveRun = { controller, promise, queued: true };
     this.activeRuns.set(runId, activeRun);
+    this.pendingRuns.push(pending);
+    this.recordAudit("production.queued", runId, "success", {
+      queued: this.pendingRuns.length,
+      maxConcurrentRuns: this.maxConcurrentRuns,
+    });
+    this.updateQueueMetrics();
+    this.drainQueue();
     return promise;
+  }
+
+  getQueueStatus(): {
+    readonly running: number;
+    readonly queued: number;
+    readonly maxConcurrentRuns: number;
+  } {
+    return {
+      running: this.runningRuns,
+      queued: this.pendingRuns.length,
+      maxConcurrentRuns: this.maxConcurrentRuns,
+    };
   }
 
   private async run(
@@ -194,6 +255,7 @@ export class ProductionService {
     this.dependencies.productionRepository.updateRun(runId, {
       status: "running",
     });
+    this.recordAudit("production.started", runId, "success");
     this.dependencies.bookRepository.setStatus(run.bookId, "drafting");
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
 
@@ -218,6 +280,7 @@ export class ProductionService {
             currentChapterNumber: null,
           });
           this.dependencies.bookRepository.setStatus(run.bookId, "completed");
+          this.recordAudit("production.completed", runId, "success");
           return completed;
         }
 
@@ -404,6 +467,7 @@ export class ProductionService {
           status: "paused",
         });
         this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
+        this.recordAudit("production.paused", runId, "success");
         return paused;
       }
       const code = isKnownErrorCode(error) ? error.code : "UNKNOWN_PROVIDER_ERROR";
@@ -412,6 +476,7 @@ export class ProductionService {
         errorCode: code,
       });
       this.dependencies.bookRepository.setStatus(run.bookId, "failed");
+      this.recordAudit("production.failed", runId, "failure", { errorCode: code });
       throw error;
     }
   }
@@ -419,11 +484,28 @@ export class ProductionService {
   pause(runId: string): ProductionRun {
     const current = this.dependencies.productionRepository.getRun(runId);
     if (["completed", "cancelled", "failed"].includes(current.status)) return current;
+    const pendingIndex = this.pendingRuns.findIndex((item) => item.runId === runId);
+    if (pendingIndex >= 0) {
+      const [pending] = this.pendingRuns.splice(pendingIndex, 1);
+      pending?.controller.abort();
+      pending?.unlinkAbort();
+      const paused = this.dependencies.productionRepository.updateRun(runId, {
+        status: "paused",
+      });
+      this.dependencies.bookRepository.setStatus(current.bookId, "paused");
+      this.activeRuns.delete(runId);
+      pending?.resolve(paused);
+      this.recordAudit("production.paused", runId, "success");
+      this.updateQueueMetrics();
+      this.drainQueue();
+      return paused;
+    }
     this.activeRuns.get(runId)?.controller.abort();
     const paused = this.dependencies.productionRepository.updateRun(runId, {
       status: "paused",
     });
     this.dependencies.bookRepository.setStatus(current.bookId, "paused");
+    this.recordAudit("production.paused", runId, "success");
     return paused;
   }
 
@@ -438,18 +520,52 @@ export class ProductionService {
   cancel(runId: string): ProductionRun {
     const current = this.dependencies.productionRepository.getRun(runId);
     if (["completed", "cancelled"].includes(current.status)) return current;
+    const pendingIndex = this.pendingRuns.findIndex((item) => item.runId === runId);
+    if (pendingIndex >= 0) {
+      const [pending] = this.pendingRuns.splice(pendingIndex, 1);
+      pending?.controller.abort();
+      pending?.unlinkAbort();
+      const cancelled = this.dependencies.productionRepository.updateRun(runId, {
+        status: "cancelled",
+      });
+      this.dependencies.bookRepository.setStatus(current.bookId, "cancelled");
+      this.activeRuns.delete(runId);
+      pending?.resolve(cancelled);
+      this.recordAudit("production.cancelled", runId, "success");
+      this.updateQueueMetrics();
+      this.drainQueue();
+      return cancelled;
+    }
     this.activeRuns.get(runId)?.controller.abort();
     const cancelled = this.dependencies.productionRepository.updateRun(runId, {
       status: "cancelled",
     });
     this.dependencies.bookRepository.setStatus(current.bookId, "cancelled");
+    this.recordAudit("production.cancelled", runId, "success");
     return cancelled;
   }
 
   async cancelActiveRuns(): Promise<void> {
     const activeRuns = [...this.activeRuns.values()];
     for (const activeRun of activeRuns) activeRun.controller.abort();
-    await Promise.allSettled(activeRuns.map(({ promise }) => promise));
+    for (const pending of [...this.pendingRuns]) {
+      const index = this.pendingRuns.indexOf(pending);
+      if (index >= 0) this.pendingRuns.splice(index, 1);
+      const current = this.dependencies.productionRepository.getRun(pending.runId);
+      const paused = ["completed", "cancelled", "failed"].includes(current.status)
+        ? current
+        : this.dependencies.productionRepository.updateRun(pending.runId, { status: "paused" });
+      this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
+      pending.unlinkAbort();
+      pending.resolve(paused);
+      this.activeRuns.delete(pending.runId);
+    }
+    this.updateQueueMetrics();
+    await Promise.allSettled(
+      activeRuns
+        .filter(({ queued }) => !queued)
+        .map(({ promise }) => promise),
+    );
   }
 
   getDetails(runId: string): ProductionRunDetailsSnapshot {
@@ -464,6 +580,91 @@ export class ProductionService {
     if (current.status === "paused" || current.status === "cancelled") return current;
     throwIfAborted(signal);
     return null;
+  }
+
+  private drainQueue(): void {
+    while (this.runningRuns < this.maxConcurrentRuns && this.pendingRuns.length > 0) {
+      const pending = this.pendingRuns.shift();
+      if (!pending) break;
+      const active = this.activeRuns.get(pending.runId);
+      if (!active || active.promise !== pending.promise) continue;
+      if (pending.controller.signal.aborted) {
+        pending.unlinkAbort();
+        const current = this.dependencies.productionRepository.getRun(pending.runId);
+        const paused = ["completed", "cancelled", "failed"].includes(current.status)
+          ? current
+          : this.dependencies.productionRepository.updateRun(pending.runId, { status: "paused" });
+        if (paused.status === "paused") this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
+        this.recordAudit("production.paused", pending.runId, "success");
+        pending.resolve(paused);
+        this.activeRuns.delete(pending.runId);
+        continue;
+      }
+      this.runningRuns += 1;
+      this.activeRuns.set(pending.runId, {
+        controller: pending.controller,
+        promise: pending.promise,
+        queued: false,
+      });
+      void this.run(pending.runId, pending.providerConfig, pending.controller.signal).then(
+        (result) => {
+          this.finishQueuedRun(pending);
+          pending.resolve(result);
+        },
+        (error: unknown) => {
+          this.finishQueuedRun(pending);
+          pending.reject(error);
+        },
+      );
+    }
+    this.updateQueueMetrics();
+  }
+
+  private updateQueueMetrics(): void {
+    this.dependencies.metrics?.setQueue(this.getQueueStatus());
+  }
+
+  private recordAudit(
+    action: string,
+    runId: string,
+    outcome: "success" | "failure",
+    metadata: Record<string, unknown> = {},
+  ): void {
+    try {
+      const requestId = currentRequestContext()?.requestId;
+      this.dependencies.auditRepository?.record({
+        actor: "system",
+        action,
+        resourceType: "production_run",
+        resourceId: runId,
+        outcome,
+        ...(requestId ? { requestId } : {}),
+        ...(metadata.errorCode && typeof metadata.errorCode === "string"
+          ? { errorCode: metadata.errorCode }
+          : {}),
+        metadata,
+      });
+    } catch (error) {
+      // Operational telemetry must not change the transactional writer path.
+      try {
+        this.dependencies.logger?.warn("audit.record_failed", {
+          action,
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      } catch {
+        // A failing telemetry sink must not mask the production result.
+      }
+    }
+  }
+
+  private finishQueuedRun(pending: PendingRun): void {
+    pending.unlinkAbort();
+    if (this.activeRuns.get(pending.runId)?.promise === pending.promise) {
+      this.activeRuns.delete(pending.runId);
+    }
+    this.runningRuns = Math.max(0, this.runningRuns - 1);
+    this.updateQueueMetrics();
+    this.drainQueue();
   }
 }
 
@@ -665,6 +866,7 @@ function isKnownErrorCode(
   code:
     | "AUTHENTICATION_FAILED"
     | "RATE_LIMITED"
+    | "QUOTA_EXCEEDED"
     | "UPSTREAM_UNAVAILABLE"
     | "REQUEST_INVALID"
     | "REQUEST_ABORTED"

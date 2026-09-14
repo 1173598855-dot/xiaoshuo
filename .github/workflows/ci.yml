@@ -21,9 +21,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run security:dependencies
       - run: npm run typecheck
       - run: npm run test:run
       - run: npm run build
+      - name: Build container image
+        run: docker build -t xiaoyi-novel-workbench:p0 .
 
   windows-release:
     name: Windows package and release

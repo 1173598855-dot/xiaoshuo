@@ -33,6 +33,32 @@ const V1_SCHEMA = `
     value TEXT NOT NULL
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS audit_events (
+    id TEXT PRIMARY KEY,
+    request_id TEXT,
+    actor TEXT NOT NULL CHECK (actor IN ('anonymous', 'single-tenant', 'system')),
+    action TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT,
+    outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure')),
+    error_code TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id TEXT PRIMARY KEY,
+    request_id TEXT,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    estimated_cost_micros INTEGER NOT NULL DEFAULT 0 CHECK (estimated_cost_micros >= 0),
+    status TEXT NOT NULL CHECK (status IN ('success', 'error', 'blocked')),
+    error_code TEXT,
+    created_at TEXT NOT NULL
+  ) STRICT;
+
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -77,6 +103,15 @@ const V1_SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS generations_chapter_created_idx
     ON generations(chapter_id, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS audit_events_created_idx
+    ON audit_events(created_at DESC, id DESC);
+
+  CREATE INDEX IF NOT EXISTS usage_events_created_idx
+    ON usage_events(created_at DESC, id DESC);
+
+  CREATE INDEX IF NOT EXISTS usage_events_provider_created_idx
+    ON usage_events(provider, created_at DESC);
 `;
 
 export function migrate(database: DatabaseSync): void {

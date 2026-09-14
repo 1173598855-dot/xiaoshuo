@@ -27,6 +27,7 @@ import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { DataManagementDialog } from "./components/DataManagementDialog";
+import { storeAccessToken } from "./access-token";
 
 type Page = "home" | "directions" | "production" | "manuscript";
 
@@ -50,6 +51,8 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessTokenPrompt, setAccessTokenPrompt] = useState(false);
+  const [accessTokenInput, setAccessTokenInput] = useState("");
   const providerConfig = useMemo<ProviderConfig | null>(() => {
     if (!providerSettings || providerSettings.platform !== "web") return null;
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
@@ -121,6 +124,9 @@ export function App() {
         }
       }
     } catch (loadError) {
+      if (loadError instanceof ApiRequestError && loadError.code === "AUTHENTICATION_REQUIRED") {
+        setAccessTokenPrompt(true);
+      }
       setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
     } finally {
       setLoading(false);
@@ -357,6 +363,35 @@ export function App() {
   };
 
   if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
+  if (accessTokenPrompt) {
+    return (
+      <main className="app-error" role="dialog" aria-labelledby="access-token-title">
+        <span className="brand-mark">奕</span>
+        <h1 id="access-token-title">连接内网工作台</h1>
+        <p>请输入本次会话的访问令牌。令牌只保存在当前浏览器会话，不会写入作品库。</p>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (!accessTokenInput.trim()) return;
+          storeAccessToken(accessTokenInput);
+          setAccessTokenInput("");
+          setAccessTokenPrompt(false);
+          setLoading(true);
+          void loadLibrary();
+        }}>
+          <input
+            type="password"
+            value={accessTokenInput}
+            onChange={(event) => setAccessTokenInput(event.target.value)}
+            placeholder="XIAOYI_ACCESS_TOKEN"
+            autoComplete="off"
+            autoFocus
+          />
+          <button type="submit" disabled={!accessTokenInput.trim()}>连接</button>
+        </form>
+        {error ? <p role="alert">{error}</p> : null}
+      </main>
+    );
+  }
   const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
   if (page === "home") {
     return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(input, autoStart) => void createIdea(input, autoStart)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;

@@ -57,6 +57,7 @@ export function publicErrorStatus(error: unknown): PublicErrorStatus {
     switch (error.code) {
       case "AUTHENTICATION_FAILED": return 401;
       case "RATE_LIMITED": return 429;
+      case "QUOTA_EXCEEDED": return 429;
       case "REQUEST_INVALID": return 400;
       case "REQUEST_ABORTED": return 408;
       case "CONTENT_TOO_LARGE": return 413;

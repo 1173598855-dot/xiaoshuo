@@ -29,6 +29,7 @@ interface DatabaseSchemaProfile {
 let canonicalProfile: DatabaseSchemaProfile | undefined;
 let legacyV1Profile: DatabaseSchemaProfile | undefined;
 let legacyV2Profile: DatabaseSchemaProfile | undefined;
+let legacyPreOperationalProfile: DatabaseSchemaProfile | undefined;
 
 export class DatabaseSchemaError extends Error {
   constructor() {
@@ -55,6 +56,7 @@ export function assertSupportedDatabaseSchemaBeforeMigration(
     getCanonicalProfile(),
     getLegacyV1Profile(),
     getLegacyV2Profile(),
+    getLegacyPreOperationalProfile(),
   ];
   if (!supported.some((profile) => isDeepStrictEqual(actual, profile))) {
     throw new DatabaseSchemaError();
@@ -75,7 +77,7 @@ function getCanonicalProfile(): DatabaseSchemaProfile {
 
 function getLegacyV1Profile(): DatabaseSchemaProfile {
   if (legacyV1Profile) return legacyV1Profile;
-  const database = createCanonicalDatabase();
+  const database = createPreOperationalDatabase();
   try {
     database.exec("ALTER TABLE generations DROP COLUMN provider_id");
     legacyV1Profile = readSchemaProfile(database);
@@ -87,7 +89,7 @@ function getLegacyV1Profile(): DatabaseSchemaProfile {
 
 function getLegacyV2Profile(): DatabaseSchemaProfile {
   if (legacyV2Profile) return legacyV2Profile;
-  const database = createCanonicalDatabase();
+  const database = createPreOperationalDatabase();
   try {
     database.exec(`
       ALTER TABLE generations DROP COLUMN provider_id;
@@ -101,9 +103,32 @@ function getLegacyV2Profile(): DatabaseSchemaProfile {
   }
 }
 
+/**
+ * v0.3.1 databases predate the operational audit/usage tables.  Keep this
+ * profile separate from the generation-table compatibility profiles so an
+ * existing desktop workspace can be migrated before the new P0 tables are
+ * created.
+ */
+function getLegacyPreOperationalProfile(): DatabaseSchemaProfile {
+  if (legacyPreOperationalProfile) return legacyPreOperationalProfile;
+  const database = createPreOperationalDatabase();
+  try {
+    legacyPreOperationalProfile = readSchemaProfile(database);
+    return legacyPreOperationalProfile;
+  } finally {
+    database.close();
+  }
+}
+
 function createCanonicalDatabase(): DatabaseSyncType {
   const database = createDatabase(":memory:");
   migrate(database);
+  return database;
+}
+
+function createPreOperationalDatabase(): DatabaseSyncType {
+  const database = createCanonicalDatabase();
+  database.exec("DROP TABLE audit_events; DROP TABLE usage_events;");
   return database;
 }
 
