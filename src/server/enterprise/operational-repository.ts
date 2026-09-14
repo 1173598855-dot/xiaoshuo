@@ -30,6 +30,11 @@ export interface AuditListOptions {
   readonly before?: string;
 }
 
+export interface RetentionResult {
+  readonly before: string;
+  readonly deleted: number;
+}
+
 export class AuditRepository {
   private readonly now: () => Date;
   private readonly createId: () => string;
@@ -98,6 +103,13 @@ export class AuditRepository {
           )
           .all(limit);
     return (rows as unknown as AuditRow[]).map(toAuditEvent);
+  }
+
+  pruneBefore(before: string): RetentionResult {
+    const result = this.database
+      .prepare("DELETE FROM audit_events WHERE created_at < ?")
+      .run(before);
+    return { before, deleted: Number(result.changes) };
   }
 }
 
@@ -218,6 +230,13 @@ export class UsageRepository {
         estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
       })),
     };
+  }
+
+  pruneBefore(before: string): RetentionResult {
+    const result = this.database
+      .prepare("DELETE FROM usage_events WHERE created_at < ?")
+      .run(before);
+    return { before, deleted: Number(result.changes) };
   }
 }
 

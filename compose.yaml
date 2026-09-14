@@ -1,0 +1,104 @@
+name: xiaoyi-novel-workbench
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${XIAOYI_IMAGE:-xiaoyi-novel-workbench:local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      XIAOYI_HOST: 0.0.0.0
+      PORT: "4310"
+      XIAOYI_DATABASE_PATH: /var/lib/xiaoyi/xiaoyi.db
+      XIAOYI_BACKUP_DIR: /var/lib/xiaoyi/backups
+      XIAOYI_STATIC_DIR: /app/dist/client
+      XIAOYI_ACCESS_TOKEN: ${XIAOYI_ACCESS_TOKEN:?Set XIAOYI_ACCESS_TOKEN in .env (at least 16 characters)}
+      XIAOYI_ALLOWED_ORIGIN: ${XIAOYI_ALLOWED_ORIGIN:-http://localhost:8080}
+      XIAOYI_TRUST_PROXY: "1"
+      XIAOYI_MAX_CONCURRENT_RUNS: ${XIAOYI_MAX_CONCURRENT_RUNS:-1}
+      XIAOYI_RATE_LIMIT_PER_MINUTE: ${XIAOYI_RATE_LIMIT_PER_MINUTE:-120}
+      XIAOYI_BACKUP_INTERVAL_MINUTES: ${XIAOYI_BACKUP_INTERVAL_MINUTES:-60}
+      XIAOYI_BACKUP_RETENTION: ${XIAOYI_BACKUP_RETENTION:-30}
+      XIAOYI_REMOTE_BACKUP_DIR: ${XIAOYI_REMOTE_BACKUP_DIR:-}
+      XIAOYI_MONTHLY_TOKEN_LIMIT: ${XIAOYI_MONTHLY_TOKEN_LIMIT:-}
+      XIAOYI_MONTHLY_BUDGET_MICROS: ${XIAOYI_MONTHLY_BUDGET_MICROS:-}
+      XIAOYI_MODEL_PRICING_JSON: ${XIAOYI_MODEL_PRICING_JSON:-{}}
+      XIAOYI_FALLBACK_PROVIDERS_JSON: ${XIAOYI_FALLBACK_PROVIDERS_JSON:-[]}
+      XIAOYI_SERVER_PROVIDERS_JSON: ${XIAOYI_SERVER_PROVIDERS_JSON:-[]}
+      XIAOYI_ALERT_WEBHOOK_URL: ${XIAOYI_ALERT_WEBHOOK_URL:-}
+      XIAOYI_AUDIT_RETENTION_DAYS: ${XIAOYI_AUDIT_RETENTION_DAYS:-180}
+      XIAOYI_USAGE_RETENTION_DAYS: ${XIAOYI_USAGE_RETENTION_DAYS:-365}
+    expose:
+      - "4310"
+    volumes:
+      - xiaoyi-data:/var/lib/xiaoyi
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4310/api/ready')
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${XIAOYI_HTTP_BIND:-127.0.0.1}:${XIAOYI_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+  https-proxy:
+    profiles: ["https"]
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${XIAOYI_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./deploy/nginx-tls.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/tls:/etc/nginx/tls:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O /dev/null https://127.0.0.1:8443/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+volumes:
+  xiaoyi-data:
+    name: ${XIAOYI_DATA_VOLUME:-xiaoyi-novel-workbench-data}

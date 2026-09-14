@@ -36,6 +36,15 @@ describe("enterprise server configuration", () => {
             baseUrl: "https://fallback.example.test/v1",
           },
         ]),
+        XIAOYI_SERVER_PROVIDERS_JSON: JSON.stringify({ providers: [
+          {
+            kind: "openai-compatible",
+            model: "primary-model",
+            apiKey: "primary-secret",
+            baseUrl: "https://primary.example.test/v1",
+          },
+        ] }),
+        XIAOYI_ALERT_WEBHOOK_URL: "https://alerts.example.test/xiaoyi",
       },
       "C:/xiaoyi",
     );
@@ -49,6 +58,8 @@ describe("enterprise server configuration", () => {
       fallbackProviders: [
         expect.objectContaining({ kind: "openai-compatible", model: "fallback-model" }),
       ],
+      alertWebhookUrl: "https://alerts.example.test/xiaoyi",
+      serverProviders: [expect.objectContaining({ model: "primary-model" })],
     });
     expect(JSON.stringify(config)).toContain("fallback-secret");
   });
@@ -59,6 +70,12 @@ describe("enterprise server configuration", () => {
     ).toThrow(EnterpriseConfigError);
     expect(() =>
       loadEnterpriseConfig({ XIAOYI_MAX_CONCURRENT_RUNS: "0" }),
+    ).toThrow(EnterpriseConfigError);
+    expect(() =>
+      loadEnterpriseConfig({ XIAOYI_ALERT_WEBHOOK_URL: "http://alerts.example.test/hook" }),
+    ).toThrow(EnterpriseConfigError);
+    expect(() =>
+      loadEnterpriseConfig({ XIAOYI_SERVER_PROVIDERS_JSON: "{}" }),
     ).toThrow(EnterpriseConfigError);
   });
 });

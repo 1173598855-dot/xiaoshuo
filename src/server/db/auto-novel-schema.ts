@@ -75,6 +75,16 @@ const AUTO_NOVEL_SCHEMA = `
     version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     idempotency_key TEXT NOT NULL,
     memory_context_config_json TEXT NOT NULL DEFAULT '{"mode":"automatic","entryIds":[]}',
+    -- The worker stores only a provider descriptor here.  Credentials stay in
+    -- the process environment/Vault and are never persisted in SQLite.
+    provider_descriptor_json TEXT NOT NULL DEFAULT 'null',
+    retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+    max_retries INTEGER NOT NULL DEFAULT 3 CHECK (max_retries BETWEEN 0 AND 100),
+    next_attempt_at TEXT,
+    lease_owner TEXT,
+    lease_token TEXT,
+    lease_expires_at TEXT,
+    heartbeat_at TEXT,
     error_code TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -126,6 +136,10 @@ const AUTO_NOVEL_SCHEMA = `
     ON chapter_plans(book_id, chapter_number);
   CREATE INDEX IF NOT EXISTS production_runs_book_idx
     ON production_runs(book_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS production_runs_queue_idx
+    ON production_runs(status, next_attempt_at, updated_at);
+  CREATE INDEX IF NOT EXISTS production_runs_lease_idx
+    ON production_runs(lease_expires_at);
   CREATE UNIQUE INDEX IF NOT EXISTS production_runs_book_idempotency_idx
     ON production_runs(book_id, idempotency_key);
   CREATE INDEX IF NOT EXISTS production_checkpoints_run_idx
@@ -181,10 +195,36 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   if (!runColumns.some(({ name }) => name === "memory_context_config_json")) {
     database.exec("ALTER TABLE production_runs ADD COLUMN memory_context_config_json TEXT NOT NULL DEFAULT '{\"mode\":\"automatic\",\"entryIds\":[]}'");
   }
+  if (!runColumns.some(({ name }) => name === "provider_descriptor_json")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN provider_descriptor_json TEXT NOT NULL DEFAULT 'null'");
+  }
+  if (!runColumns.some(({ name }) => name === "retry_count")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0)");
+  }
+  if (!runColumns.some(({ name }) => name === "max_retries")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 3 CHECK (max_retries BETWEEN 0 AND 100)");
+  }
+  if (!runColumns.some(({ name }) => name === "next_attempt_at")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN next_attempt_at TEXT");
+  }
+  if (!runColumns.some(({ name }) => name === "lease_owner")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN lease_owner TEXT");
+  }
+  if (!runColumns.some(({ name }) => name === "lease_token")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN lease_token TEXT");
+  }
+  if (!runColumns.some(({ name }) => name === "lease_expires_at")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN lease_expires_at TEXT");
+  }
+  if (!runColumns.some(({ name }) => name === "heartbeat_at")) {
+    database.exec("ALTER TABLE production_runs ADD COLUMN heartbeat_at TEXT");
+  }
+  database.exec("CREATE INDEX IF NOT EXISTS production_runs_queue_idx ON production_runs(status, next_attempt_at, updated_at)");
+  database.exec("CREATE INDEX IF NOT EXISTS production_runs_lease_idx ON production_runs(lease_expires_at)");
   database
     .prepare(
       `INSERT INTO app_meta (key, value)
-       VALUES ('auto_novel_schema_version', '3')
+       VALUES ('auto_novel_schema_version', '4')
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
     .run();

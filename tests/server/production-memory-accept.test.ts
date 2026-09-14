@@ -7,6 +7,7 @@ import { BookRepository } from "../../src/server/repositories/book-repository";
 import {
   CandidateMemoryReviewRequiredError,
   CandidateStaleError,
+  ProductionRunLeaseLostError,
   ProductionRevisionConflictError,
   ProductionRepository,
 } from "../../src/server/repositories/production-repository";
@@ -128,6 +129,38 @@ describe("production accept memory transaction", () => {
     await fixtureData.production.acceptCandidate(candidate.id, 0);
     expect(fixtureData.memory.list(fixtureData.book.id).some(({ subject }) => subject === "应忽略的事实")).toBe(false);
     expect(fixtureData.memory.list(fixtureData.book.id).some(({ subject }) => subject === "应采纳的事实")).toBe(true);
+  });
+
+  it("fences the atomic accept transaction when a worker lease has changed", async () => {
+    const fixtureData = fixture();
+    const start = new Date().toISOString();
+    const oldLease = fixtureData.production.claimNextRun("old-worker", 1_000, start)!.lease;
+    const context = fixtureData.memory.getContext(fixtureData.book.id, fixtureData.plan);
+    const candidate = fixtureData.production.createCandidate({
+      runId: fixtureData.run.id,
+      bookId: fixtureData.book.id,
+      chapterId: fixtureData.chapter.id,
+      baseRevision: 0,
+      contextHash: emptyChapterHash,
+      memoryRevision: context.memoryRevision,
+      memoryContextHash: context.contextHash,
+      candidateText: "失效租约不得采纳正文。",
+      lease: oldLease,
+    });
+    fixtureData.production.updateCandidateReview(candidate.id, { status: "passed", findings: [] }, oldLease);
+    const expiredAt = new Date(Date.parse(oldLease.expiresAt) + 1).toISOString();
+    fixtureData.production.recoverExpiredLeases(expiredAt, 0, 0);
+    const replacement = fixtureData.production.claimNextRun(
+      "new-worker",
+      10_000,
+      new Date(Date.parse(expiredAt) + 1).toISOString(),
+    );
+    expect(replacement).not.toBeNull();
+
+    await expect(fixtureData.production.acceptCandidate(candidate.id, 0, oldLease))
+      .rejects.toBeInstanceOf(ProductionRunLeaseLostError);
+    expect(fixtureData.production.getChapter(fixtureData.chapter.id).content).toBe("");
+    expect(fixtureData.production.getCandidate(candidate.id).status).toBe("completed");
   });
 
   it("applies a candidate memory delta and records its history atomically", async () => {

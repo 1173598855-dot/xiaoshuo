@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { z } from "zod";
 
 import {
   ChapterSchema,
   type Chapter,
+  CompatibleBaseUrlSchema,
+  ProviderConfigSchema,
+  type ProviderConfig,
   type ProviderErrorCode,
 } from "../../shared/contracts";
 import {
@@ -34,6 +38,57 @@ interface RepositoryOptions {
   now?: () => string;
 }
 
+/**
+ * The part of a provider configuration that is safe to persist with a run.
+ * API keys deliberately do not have a representation in this type.
+ */
+export const PersistedProviderDescriptorSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("openai"), model: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ kind: z.literal("anthropic"), model: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ kind: z.literal("google"), model: z.string().trim().min(1).max(200) }).strict(),
+  z.object({
+    kind: z.literal("openai-compatible"),
+    model: z.string().trim().min(1).max(200),
+    baseUrl: CompatibleBaseUrlSchema,
+  }).strict(),
+]);
+export type PersistedProviderDescriptor = z.infer<
+  typeof PersistedProviderDescriptorSchema
+>;
+
+export interface ProductionRunLease {
+  readonly runId: string;
+  readonly owner: string;
+  readonly token: string;
+  readonly expiresAt: string;
+  readonly heartbeatAt: string;
+}
+
+export interface ProductionRunQueueState {
+  readonly runId: string;
+  readonly providerDescriptor: PersistedProviderDescriptor | null;
+  readonly retryCount: number;
+  readonly maxRetries: number;
+  readonly nextAttemptAt: string | null;
+  readonly leaseOwner: string | null;
+  readonly leaseToken: string | null;
+  readonly leaseExpiresAt: string | null;
+  readonly heartbeatAt: string | null;
+}
+
+export interface ProductionRunSummary {
+  readonly run: ProductionRun;
+  readonly queue: Omit<ProductionRunQueueState, "leaseToken">;
+}
+
+export interface WorkerFailureResult {
+  readonly run: ProductionRun;
+  readonly leaseOwned: boolean;
+  readonly retryScheduled: boolean;
+  readonly retryCount: number;
+  readonly nextAttemptAt: string | null;
+}
+
 interface RunRow {
   id: string;
   book_id: string;
@@ -47,6 +102,17 @@ interface RunRow {
   error_code: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface QueueRunRow extends RunRow {
+  provider_descriptor_json: string | null;
+  retry_count: number;
+  max_retries: number;
+  next_attempt_at: string | null;
+  lease_owner: string | null;
+  lease_token: string | null;
+  lease_expires_at: string | null;
+  heartbeat_at: string | null;
 }
 
 interface CheckpointRow {
@@ -111,6 +177,7 @@ export interface CreateCandidateInput {
   originalText?: string;
   repairCount?: number;
   memoryContextConfig?: MemoryContextConfig;
+  lease?: ProductionRunLease;
 }
 
 export interface ProductionRunDetailsSnapshot {
@@ -253,6 +320,457 @@ export class ProductionRepository {
     return ProductionRunSchema.parse(toRun(row));
   }
 
+  listRunSummaries(options: {
+    readonly status?: ProductionRun["status"];
+    readonly bookId?: string;
+    readonly errorCode?: string;
+    readonly limit?: number;
+    readonly before?: string;
+  } = {}): ProductionRunSummary[] {
+    const limit = Math.max(1, Math.min(200, Math.trunc(options.limit ?? 50)));
+    const clauses = ["1 = 1"];
+    const parameters: Array<string | number> = [];
+    if (options.status) {
+      clauses.push("status = ?");
+      parameters.push(options.status);
+    }
+    if (options.bookId) {
+      clauses.push("book_id = ?");
+      parameters.push(options.bookId);
+    }
+    if (options.errorCode) {
+      clauses.push("error_code = ?");
+      parameters.push(options.errorCode);
+    }
+    if (options.before) {
+      clauses.push("updated_at < ?");
+      parameters.push(options.before);
+    }
+    parameters.push(limit);
+    const rows = this.database
+      .prepare(
+        `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                version, idempotency_key, memory_context_config_json,
+                provider_descriptor_json, retry_count, max_retries,
+                next_attempt_at, lease_owner, lease_token, lease_expires_at,
+                heartbeat_at, error_code, created_at, updated_at
+         FROM production_runs WHERE ${clauses.join(" AND ")}
+         ORDER BY updated_at DESC, id DESC LIMIT ?`,
+      )
+      .all(...parameters) as unknown as QueueRunRow[];
+    return rows.map((row) => ({
+      run: ProductionRunSchema.parse(toRun(row)),
+      queue: withoutLeaseToken(toQueueState(row)),
+    }));
+  }
+
+  /** Persist the non-secret portion of the provider used by a run. */
+  setProviderDescriptor(
+    runId: string,
+    input: ProviderConfig | PersistedProviderDescriptor,
+    lease?: ProductionRunLease,
+  ): ProductionRun {
+    const descriptor = toPersistedProviderDescriptor(input);
+    const current = this.getRun(runId);
+    const leaseClause = lease
+      ? " AND status = 'running' AND lease_owner = ? AND lease_token = ? AND lease_expires_at > ?"
+      : "";
+    const parameters: Array<string> = [JSON.stringify(descriptor), this.now(), runId];
+    if (lease) parameters.push(lease.owner, lease.token, this.now());
+    const result = this.database
+      .prepare(
+        `UPDATE production_runs
+         SET provider_descriptor_json = ?, version = version + 1, updated_at = ?
+         WHERE id = ? AND version = ?${leaseClause}`,
+      )
+      .run(...parameters.slice(0, 3), current.version, ...parameters.slice(3));
+    if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
+    return this.getRun(runId);
+  }
+
+  setMaxRetries(runId: string, maxRetries: number): ProductionRun {
+    this.getRun(runId);
+    const normalized = Math.max(0, Math.min(100, Math.trunc(maxRetries)));
+    this.database
+      .prepare(
+        `UPDATE production_runs
+         SET max_retries = ?, version = version + 1, updated_at = ? WHERE id = ?`,
+      )
+      .run(normalized, this.now(), runId);
+    return this.getRun(runId);
+  }
+
+  assertRunLease(lease: ProductionRunLease, now = this.now()): void {
+    const row = this.database
+      .prepare(
+        `SELECT 1 AS owned FROM production_runs
+         WHERE id = ? AND status = 'running' AND lease_owner = ?
+           AND lease_token = ? AND lease_expires_at > ?`,
+      )
+      .get(lease.runId, lease.owner, lease.token, now);
+    if (!row) throw new ProductionRunLeaseLostError();
+  }
+
+  getProviderDescriptor(runId: string): PersistedProviderDescriptor | null {
+    const row = this.getQueueRunRow(runId);
+    return parsePersistedProviderDescriptor(row.provider_descriptor_json);
+  }
+
+  getQueueState(runId: string): ProductionRunQueueState {
+    const row = this.getQueueRunRow(runId);
+    return toQueueState(row);
+  }
+
+  /**
+   * Return runs that can be claimed by a worker at the supplied instant.
+   * Running rows are included only after their lease has expired (or when a
+   * legacy row has no lease), which prevents two processes from doing work on
+   * the same run.
+   */
+  listRunnableRuns(now = this.now(), limit = 100): ProductionRun[] {
+    const rows = this.database
+      .prepare(
+        `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                version, idempotency_key, memory_context_config_json,
+                error_code, created_at, updated_at
+         FROM production_runs
+         WHERE kind = 'production'
+           AND status IN ('queued', 'running')
+           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+         ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END,
+                  updated_at, id LIMIT ?`,
+      )
+      .all(now, now, Math.max(1, Math.min(1_000, Math.trunc(limit)))) as unknown as RunRow[];
+    return rows.map((row) => ProductionRunSchema.parse(toRun(row)));
+  }
+
+  /**
+   * Atomically claim the oldest runnable run.  SQLite's IMMEDIATE transaction
+   * makes this safe when two service processes point at the same database.
+   */
+  claimNextRun(
+    owner: string,
+    leaseDurationMs: number,
+    now = this.now(),
+  ): { readonly run: ProductionRun; readonly lease: ProductionRunLease } | null {
+    return this.withTransaction(() => {
+      const row = this.database
+        .prepare(
+          `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                  version, idempotency_key, memory_context_config_json,
+                  provider_descriptor_json, retry_count, max_retries,
+                  next_attempt_at, lease_owner, lease_token, lease_expires_at,
+                  heartbeat_at, error_code, created_at, updated_at
+           FROM production_runs
+           WHERE kind = 'production'
+             AND status IN ('queued', 'running')
+             AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+             AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+           ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END,
+                    updated_at, id LIMIT 1`,
+        )
+        .get(now, now) as unknown as QueueRunRow | undefined;
+      if (!row) return null;
+      const token = this.createId();
+      const heartbeatAt = now;
+      const expiresAt = addMilliseconds(now, leaseDurationMs);
+      const result = this.database
+        .prepare(
+          `UPDATE production_runs
+           SET status = 'running', lease_owner = ?, lease_token = ?,
+               lease_expires_at = ?, heartbeat_at = ?,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND status IN ('queued', 'running')
+             AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+             AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+        )
+        .run(owner, token, expiresAt, heartbeatAt, now, row.id, now, now);
+      if (Number(result.changes) !== 1) return null;
+      return {
+        run: this.getRun(row.id),
+        lease: {
+          runId: row.id,
+          owner,
+          token,
+          expiresAt,
+          heartbeatAt,
+        },
+      };
+    });
+  }
+
+  /** Atomically claim one specific run, primarily for explicit retries. */
+  claimRun(
+    runId: string,
+    owner: string,
+    leaseDurationMs: number,
+    now = this.now(),
+  ): ProductionRunLease | null {
+    return this.withTransaction(() => {
+      this.getRun(runId);
+      const token = this.createId();
+      const heartbeatAt = now;
+      const expiresAt = addMilliseconds(now, leaseDurationMs);
+      const result = this.database
+        .prepare(
+          `UPDATE production_runs
+           SET status = 'running', lease_owner = ?, lease_token = ?,
+               lease_expires_at = ?, heartbeat_at = ?,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND kind = 'production'
+             AND status IN ('queued', 'running')
+             AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+             AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+        )
+        .run(owner, token, expiresAt, heartbeatAt, now, runId, now, now);
+      return Number(result.changes) === 1
+        ? { runId, owner, token, expiresAt, heartbeatAt }
+        : null;
+    });
+  }
+
+  renewRunLease(
+    lease: ProductionRunLease,
+    leaseDurationMs: number,
+    now = this.now(),
+  ): ProductionRunLease | null {
+    const expiresAt = addMilliseconds(now, leaseDurationMs);
+    const result = this.database
+      .prepare(
+        `UPDATE production_runs
+         SET lease_expires_at = ?, heartbeat_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'running' AND lease_owner = ?
+           AND lease_token = ?
+           AND (lease_expires_at IS NULL OR lease_expires_at > ?)`,
+      )
+      .run(expiresAt, now, now, lease.runId, lease.owner, lease.token, now);
+    return Number(result.changes) === 1
+      ? { ...lease, expiresAt, heartbeatAt: now }
+      : null;
+  }
+
+  /** Release a lease without allowing a stale worker to mutate a new owner. */
+  releaseRunLease(
+    lease: ProductionRunLease,
+    status?: ProductionRun["status"],
+  ): ProductionRun {
+    return this.releaseRunLeaseWithResult(lease, status).run;
+  }
+
+  releaseRunLeaseWithResult(
+    lease: ProductionRunLease,
+    status?: ProductionRun["status"],
+  ): { readonly run: ProductionRun; readonly leaseOwned: boolean } {
+    return this.withTransaction(() => {
+      const current = this.getRun(lease.runId);
+      const nextStatus = status ?? current.status;
+      const now = this.now();
+      const result = this.database
+        .prepare(
+          `UPDATE production_runs
+           SET status = ?, lease_owner = NULL, lease_token = NULL,
+               lease_expires_at = NULL, heartbeat_at = NULL,
+               next_attempt_at = CASE WHEN ? = 'queued' THEN NULL ELSE next_attempt_at END,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND lease_owner = ? AND lease_token = ?
+             AND lease_expires_at > ?`,
+        )
+        .run(nextStatus, nextStatus, now, lease.runId, lease.owner, lease.token, now);
+      const leaseOwned = Number(result.changes) === 1;
+      const updated = this.getRun(lease.runId);
+      if (leaseOwned && updated.kind === "production") {
+        this.bookRepository.setStatus(updated.bookId, bookStatusForRun(updated));
+      }
+      return { run: updated, leaseOwned };
+    });
+  }
+
+  pauseRunLease(lease: ProductionRunLease): ProductionRun {
+    return this.releaseRunLease(lease, "paused");
+  }
+
+  /** Queue a run for immediate execution (used by explicit resume/retry). */
+  queueRun(runId: string, resetRetries = false): ProductionRun {
+    const current = this.getRun(runId);
+    if (["completed", "cancelled"].includes(current.status)) return current;
+    this.database
+      .prepare(
+        `UPDATE production_runs
+         SET status = 'queued', error_code = NULL, next_attempt_at = NULL,
+             lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+             heartbeat_at = NULL,
+             retry_count = CASE WHEN ? = 1 THEN 0 ELSE retry_count END,
+             version = version + 1, updated_at = ? WHERE id = ?`,
+      )
+      .run(resetRetries ? 1 : 0, this.now(), runId);
+    return this.getRun(runId);
+  }
+
+  /**
+   * Turn expired running leases into queued work, or into a terminal failed
+   * run after the retry budget is exhausted.  This is safe to call on every
+   * worker poll and is the crash/stuck recovery boundary.
+   */
+  recoverExpiredLeases(
+    now = this.now(),
+    retryBaseDelayMs = 1_000,
+    retryMaxDelayMs = 60_000,
+  ): ProductionRun[] {
+    return this.withTransaction(() => {
+      const rows = this.database
+        .prepare(
+          `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                  version, idempotency_key, memory_context_config_json,
+                  provider_descriptor_json, retry_count, max_retries,
+                  next_attempt_at, lease_owner, lease_token, lease_expires_at,
+                  heartbeat_at, error_code, created_at, updated_at
+           FROM production_runs
+           WHERE kind = 'production' AND status = 'running'
+             AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+           ORDER BY updated_at, id`,
+        )
+        .all(now) as unknown as QueueRunRow[];
+      const recovered: ProductionRun[] = [];
+      for (const row of rows) {
+        const retryCount = row.retry_count + 1;
+        const stuckCode = row.lease_expires_at === null
+          ? "WORKER_INTERRUPTED"
+          : "WORKER_STUCK";
+        const retry = retryCount <= row.max_retries;
+        const baseDelay = Math.max(0, Math.trunc(retryBaseDelayMs));
+        const maxDelay = Math.max(baseDelay, Math.trunc(retryMaxDelayMs));
+        const delay = Math.min(maxDelay, baseDelay * 2 ** Math.max(0, retryCount - 1));
+        const nextAttemptAt = retry ? addMilliseconds(now, delay) : null;
+        const result = this.database
+          .prepare(
+            `UPDATE production_runs
+             SET status = ?, error_code = ?, retry_count = ?,
+                 next_attempt_at = ?, lease_owner = NULL, lease_token = NULL,
+                 lease_expires_at = NULL, heartbeat_at = NULL,
+                 version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ?
+               AND status = 'running'
+               AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+          )
+          .run(
+            retry ? "queued" : "failed",
+            stuckCode,
+            retryCount,
+            nextAttemptAt,
+            now,
+            row.id,
+            row.version,
+            now,
+          );
+        if (Number(result.changes) === 1) {
+          const recoveredRun = this.getRun(row.id);
+          this.bookRepository.setStatus(row.book_id, retry ? "drafting" : "failed");
+          recovered.push(recoveredRun);
+        }
+      }
+      return recovered;
+    });
+  }
+
+  /** Record a worker-level failure and schedule a bounded retry if allowed. */
+  recordWorkerFailure(input: {
+    readonly lease: ProductionRunLease;
+    readonly errorCode: string;
+    readonly retryable: boolean;
+    readonly retryBaseDelayMs?: number;
+    readonly retryMaxDelayMs?: number;
+    readonly now?: string;
+  }): WorkerFailureResult {
+    const now = input.now ?? this.now();
+    return this.withTransaction(() => {
+      const row = this.getQueueRunRow(input.lease.runId);
+      const ownsLease =
+        row.lease_owner === input.lease.owner &&
+        row.lease_token === input.lease.token &&
+        row.lease_expires_at !== null &&
+        row.lease_expires_at > now;
+      if (!ownsLease) {
+        return {
+          run: this.getRun(input.lease.runId),
+          leaseOwned: false,
+          retryScheduled: false,
+          retryCount: row.retry_count,
+          nextAttemptAt: row.next_attempt_at,
+        };
+      }
+      const retryCount = row.retry_count + 1;
+      const retry = input.retryable && retryCount <= row.max_retries;
+      const baseDelay = Math.max(0, Math.trunc(input.retryBaseDelayMs ?? 1_000));
+      const maxDelay = Math.max(baseDelay, Math.trunc(input.retryMaxDelayMs ?? 60_000));
+      const delay = Math.min(maxDelay, baseDelay * 2 ** Math.max(0, retryCount - 1));
+      const nextAttemptAt = retry ? addMilliseconds(now, delay) : null;
+      const update = this.database
+        .prepare(
+          `UPDATE production_runs
+           SET status = ?, error_code = ?, retry_count = ?,
+               next_attempt_at = ?, lease_owner = NULL, lease_token = NULL,
+               lease_expires_at = NULL, heartbeat_at = NULL,
+               version = version + 1, updated_at = ?
+           WHERE id = ? AND lease_owner = ? AND lease_token = ?
+             AND lease_expires_at > ?`,
+        )
+        .run(
+          retry ? "queued" : "failed",
+          input.errorCode,
+          retryCount,
+          nextAttemptAt,
+          now,
+          input.lease.runId,
+          input.lease.owner,
+          input.lease.token,
+          now,
+        );
+      const leaseOwned = Number(update.changes) === 1;
+      const updatedRun = this.getRun(input.lease.runId);
+      if (leaseOwned && updatedRun.kind === "production") {
+        this.bookRepository.setStatus(updatedRun.bookId, retry ? "drafting" : "failed");
+      }
+      return {
+        run: updatedRun,
+        leaseOwned,
+        retryScheduled: retry && leaseOwned,
+        retryCount,
+        nextAttemptAt: leaseOwned ? nextAttemptAt : null,
+      };
+    });
+  }
+
+  markRunFailed(
+    runId: string,
+    errorCode: string,
+    lease?: ProductionRunLease,
+  ): { readonly run: ProductionRun; readonly leaseOwned: boolean } {
+    return this.withTransaction(() => {
+      const ownerClause = lease ? " AND lease_owner = ? AND lease_token = ? AND lease_expires_at > ?" : "";
+      const statement = this.database.prepare(
+        `UPDATE production_runs
+         SET status = 'failed', error_code = ?, next_attempt_at = NULL,
+             lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+             heartbeat_at = NULL, version = version + 1, updated_at = ?
+         WHERE id = ?${ownerClause}`,
+      );
+      let result;
+      if (lease) {
+        const now = this.now();
+        result = statement.run(errorCode, now, runId, lease.owner, lease.token, now);
+      } else {
+        result = statement.run(errorCode, this.now(), runId);
+      }
+      const updatedRun = this.getRun(runId);
+      const leaseOwned = Number(result.changes) === 1;
+      if (leaseOwned && updatedRun.kind === "production") {
+        this.bookRepository.setStatus(updatedRun.bookId, "failed");
+      }
+      return { run: updatedRun, leaseOwned };
+    });
+  }
+
   getRunDetails(runId: string): ProductionRunDetailsSnapshot {
     const run = this.getRun(runId);
     const bookDetails = this.bookRepository.getBook(run.bookId);
@@ -293,30 +811,41 @@ export class ProductionRepository {
       status?: ProductionRun["status"];
       stage?: ProductionRun["stage"];
       currentChapterNumber?: number | null;
-      errorCode?: ProviderErrorCode | "WORKER_INTERRUPTED" | null;
+      errorCode?: ProviderErrorCode | "WORKER_INTERRUPTED" | string | null;
     },
+    lease?: ProductionRunLease,
   ): ProductionRun {
-    const current = this.getRun(runId);
-    const timestamp = this.now();
-    this.database
-      .prepare(
-        `UPDATE production_runs SET
-           status = ?, stage = ?, current_chapter_number = ?,
-           version = version + 1, error_code = ?, updated_at = ?
-         WHERE id = ? AND version = ?`,
-      )
-      .run(
+    return this.withTransaction(() => {
+      const current = this.getRun(runId);
+      const timestamp = this.now();
+      const leaseClause = lease
+        ? " AND status = 'running' AND lease_owner = ? AND lease_token = ? AND lease_expires_at > ?"
+        : "";
+      const parameters: Array<string | number | null> = [
         patch.status ?? current.status,
         patch.stage ?? current.stage,
-        patch.currentChapterNumber === undefined
-          ? current.currentChapterNumber
-          : patch.currentChapterNumber,
+        patch.currentChapterNumber === undefined ? current.currentChapterNumber : patch.currentChapterNumber,
         patch.errorCode === undefined ? current.errorCode : patch.errorCode,
         timestamp,
         runId,
         current.version,
-      );
-    return this.getRun(runId);
+      ];
+      if (lease) parameters.push(lease.owner, lease.token, this.now());
+      const result = this.database
+        .prepare(
+          `UPDATE production_runs SET
+             status = ?, stage = ?, current_chapter_number = ?,
+             version = version + 1, error_code = ?, updated_at = ?
+           WHERE id = ? AND version = ?${leaseClause}`,
+        )
+        .run(...parameters);
+      if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
+      const updated = this.getRun(runId);
+      if (Number(result.changes) === 1 && updated.kind === "production") {
+        this.bookRepository.setStatus(updated.bookId, bookStatusForRun(updated));
+      }
+      return updated;
+    });
   }
 
   appendCheckpoint(input: {
@@ -326,6 +855,7 @@ export class ProductionRepository {
     outputId?: string | null;
     status?: "completed" | "failed";
     errorCode?: string | null;
+    lease?: ProductionRunLease;
   }): ProductionCheckpoint {
     const previous = this.database
       .prepare(
@@ -335,14 +865,21 @@ export class ProductionRepository {
     const sequence = previous.sequence + 1;
     const id = this.createId();
     const timestamp = this.now();
-    this.database
-      .prepare(
-        `INSERT INTO production_checkpoints (
+    const insertSql = input.lease
+      ? `INSERT INTO production_checkpoints (
            id, run_id, stage, sequence, input_hash, output_id, status,
            error_code, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM production_runs
+           WHERE id = ? AND status = 'running' AND lease_owner = ?
+             AND lease_token = ? AND lease_expires_at > ?
+         )`
+      : `INSERT INTO production_checkpoints (
+           id, run_id, stage, sequence, input_hash, output_id, status,
+           error_code, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const insertParameters: Array<string | number | null> = [
         id,
         input.runId,
         input.stage,
@@ -352,7 +889,12 @@ export class ProductionRepository {
         input.status ?? "completed",
         input.errorCode ?? null,
         timestamp,
-      );
+    ];
+    if (input.lease) {
+      insertParameters.push(input.lease.runId, input.lease.owner, input.lease.token, this.now());
+    }
+    const inserted = this.database.prepare(insertSql).run(...insertParameters);
+    if (input.lease && Number(inserted.changes) !== 1) throw new ProductionRunLeaseLostError();
     return ProductionCheckpointSchema.parse({
       id,
       runId: input.runId,
@@ -373,18 +915,28 @@ export class ProductionRepository {
     const memoryContextConfig = MemoryContextConfigSchema.parse(
       input.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG,
     );
-    this.database
-      .prepare(
-        `INSERT INTO chapter_candidates (
+    const insertSql = input.lease
+      ? `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
            context_hash, memory_revision, memory_context_hash, memory_delta_json,
            memory_delta_review_json, memory_review_revision, original_text,
            candidate_text_revision, memory_context_config_json, candidate_text, status,
            review_json, repair_count,
            created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL)`,
-      )
-      .run(
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL
+         WHERE EXISTS (
+           SELECT 1 FROM production_runs
+           WHERE id = ? AND status = 'running' AND lease_owner = ?
+             AND lease_token = ? AND lease_expires_at > ?
+         )`
+      : `INSERT INTO chapter_candidates (
+           id, run_id, book_id, chapter_id, base_revision, context_revision,
+           context_hash, memory_revision, memory_context_hash, memory_delta_json,
+           memory_delta_review_json, memory_review_revision, original_text,
+           candidate_text_revision, memory_context_config_json, candidate_text, status,
+           review_json, repair_count, created_at, accepted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL)`;
+    const insertParameters: Array<string | number | null> = [
         id,
         input.runId,
         input.bookId,
@@ -402,7 +954,12 @@ export class ProductionRepository {
         JSON.stringify({ status: "pending", findings: [] }),
         repairCount,
         timestamp,
-      );
+    ];
+    if (input.lease) {
+      insertParameters.push(input.lease.runId, input.lease.owner, input.lease.token, this.now());
+    }
+    const inserted = this.database.prepare(insertSql).run(...insertParameters);
+    if (input.lease && Number(inserted.changes) !== 1) throw new ProductionRunLeaseLostError();
     return this.getCandidate(id);
   }
 
@@ -425,11 +982,20 @@ export class ProductionRepository {
   updateCandidateReview(
     candidateId: string,
     review: ChapterCandidate["review"],
+    lease?: ProductionRunLease,
   ): ChapterCandidate {
     const candidate = this.getCandidate(candidateId);
-    this.database
-      .prepare("UPDATE chapter_candidates SET review_json = ? WHERE id = ?")
-      .run(JSON.stringify(review), candidate.id);
+    const leaseGuard = lease
+      ? ` AND EXISTS (SELECT 1 FROM production_runs r WHERE r.id = chapter_candidates.run_id
+          AND r.id = ? AND r.status = 'running' AND r.lease_owner = ?
+          AND r.lease_token = ? AND r.lease_expires_at > ?)`
+      : "";
+    const parameters: Array<string | number> = [JSON.stringify(review), candidate.id];
+    if (lease) parameters.push(lease.runId, lease.owner, lease.token, this.now());
+    const result = this.database
+      .prepare(`UPDATE chapter_candidates SET review_json = ? WHERE id = ?${leaseGuard}`)
+      .run(...parameters);
+    if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
     return this.getCandidate(candidateId);
   }
 
@@ -437,20 +1003,29 @@ export class ProductionRepository {
     candidateId: string,
     candidateText: string,
     repairCount: number,
+    lease?: ProductionRunLease,
   ): ChapterCandidate {
     this.getCandidate(candidateId);
-    this.database
+    const leaseGuard = lease
+      ? ` AND EXISTS (SELECT 1 FROM production_runs r WHERE r.id = chapter_candidates.run_id
+          AND r.id = ? AND r.status = 'running' AND r.lease_owner = ?
+          AND r.lease_token = ? AND r.lease_expires_at > ?)`
+      : "";
+    const parameters: Array<string | number> = [
+      candidateText,
+      repairCount,
+      JSON.stringify({ status: "pending", findings: [] }),
+      candidateId,
+    ];
+    if (lease) parameters.push(lease.runId, lease.owner, lease.token, this.now());
+    const result = this.database
       .prepare(
         `UPDATE chapter_candidates SET candidate_text = ?, repair_count = ?,
          candidate_text_revision = candidate_text_revision + 1,
-         review_json = ? WHERE id = ?`,
+         review_json = ? WHERE id = ?${leaseGuard}`,
       )
-      .run(
-        candidateText,
-        repairCount,
-        JSON.stringify({ status: "pending", findings: [] }),
-        candidateId,
-      );
+      .run(...parameters);
+    if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
     return this.getCandidate(candidateId);
   }
 
@@ -495,20 +1070,29 @@ export class ProductionRepository {
   updateCandidateMemoryDelta(
     candidateId: string,
     delta: MemoryDelta | null,
+    lease?: ProductionRunLease,
   ): ChapterCandidate {
     this.getCandidate(candidateId);
     const parsed = delta === null ? null : MemoryDeltaSchema.parse(delta);
-    this.database
+    const leaseGuard = lease
+      ? ` AND EXISTS (SELECT 1 FROM production_runs r WHERE r.id = chapter_candidates.run_id
+          AND r.id = ? AND r.status = 'running' AND r.lease_owner = ?
+          AND r.lease_token = ? AND r.lease_expires_at > ?)`
+      : "";
+    const parameters: Array<string> = [
+      JSON.stringify(parsed),
+      JSON.stringify(emptyMemoryDeltaReview()),
+      candidateId,
+    ];
+    if (lease) parameters.push(lease.runId, lease.owner, lease.token, this.now());
+    const result = this.database
       .prepare(
         `UPDATE chapter_candidates
          SET memory_delta_json = ?, memory_delta_review_json = ?,
-             memory_review_revision = 0 WHERE id = ?`,
+             memory_review_revision = 0 WHERE id = ?${leaseGuard}`,
       )
-      .run(
-        JSON.stringify(parsed),
-        JSON.stringify(emptyMemoryDeltaReview()),
-        candidateId,
-      );
+      .run(...parameters);
+    if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
     return this.getCandidate(candidateId);
   }
 
@@ -530,6 +1114,8 @@ export class ProductionRepository {
           .prepare(
             `UPDATE production_runs
              SET status = 'paused', error_code = 'WORKER_INTERRUPTED',
+                 lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL,
                  version = version + 1, updated_at = ?
              WHERE id = ? AND version = ?`,
           )
@@ -665,10 +1251,15 @@ export class ProductionRepository {
   async acceptCandidate(
     candidateId: string,
     expectedRevision: number,
+    lease?: ProductionRunLease,
   ): Promise<{ candidate: ChapterCandidate; chapter: Chapter; run: ProductionRun }> {
     try {
       return this.withTransaction(() => {
         const candidate = this.getCandidate(candidateId);
+        if (lease) {
+          if (candidate.runId !== lease.runId) throw new ProductionRunLeaseLostError();
+          this.assertRunLease(lease);
+        }
         if (candidate.status === "accepted" || candidate.status === "discarded") {
           throw new CandidateAlreadySettledError(candidateId);
         }
@@ -825,8 +1416,14 @@ export class ProductionRepository {
     return this.getCandidate(candidateId);
   }
 
-  getOrCreateChapter(bookId: string, title: string, position: number): Chapter {
+  getOrCreateChapter(
+    bookId: string,
+    title: string,
+    position: number,
+    lease?: ProductionRunLease,
+  ): Chapter {
     return this.withTransaction(() => {
+      if (lease) this.assertRunLease(lease);
       const project = this.database
         .prepare("SELECT project_id AS projectId FROM books WHERE id = ?")
         .get(bookId) as { projectId: string } | undefined;
@@ -877,6 +1474,21 @@ export class ProductionRepository {
       )
       .all(project.projectId) as unknown as ChapterRow[];
     return rows.map(toChapter);
+  }
+
+  private getQueueRunRow(runId: string): QueueRunRow {
+    const row = this.database
+      .prepare(
+        `SELECT id, book_id, kind, status, stage, current_chapter_number,
+                version, idempotency_key, memory_context_config_json,
+                provider_descriptor_json, retry_count, max_retries,
+                next_attempt_at, lease_owner, lease_token, lease_expires_at,
+                heartbeat_at, error_code, created_at, updated_at
+         FROM production_runs WHERE id = ?`,
+      )
+      .get(runId) as unknown as QueueRunRow | undefined;
+    if (!row) throw new ProductionRunNotFoundError(runId);
+    return row;
   }
 
   private withTransaction<T>(operation: () => T): T {
@@ -938,6 +1550,15 @@ export class ProductionRepository {
   }
 }
 
+export class ProductionRunLeaseLostError extends Error {
+  readonly code = "WORKER_LEASE_LOST";
+
+  constructor() {
+    super("Production run lease is no longer owned by this worker");
+    this.name = "ProductionRunLeaseLostError";
+  }
+}
+
 function toRun(row: RunRow): ProductionRun {
   return {
     id: row.id,
@@ -955,6 +1576,85 @@ function toRun(row: RunRow): ProductionRun {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toQueueState(row: QueueRunRow): ProductionRunQueueState {
+  return {
+    runId: row.id,
+    providerDescriptor: parsePersistedProviderDescriptor(row.provider_descriptor_json),
+    retryCount: row.retry_count,
+    maxRetries: row.max_retries,
+    nextAttemptAt: row.next_attempt_at,
+    leaseOwner: row.lease_owner,
+    leaseToken: row.lease_token,
+    leaseExpiresAt: row.lease_expires_at,
+    heartbeatAt: row.heartbeat_at,
+  };
+}
+
+function withoutLeaseToken(
+  queue: ProductionRunQueueState,
+): Omit<ProductionRunQueueState, "leaseToken"> {
+  return {
+    runId: queue.runId,
+    providerDescriptor: queue.providerDescriptor,
+    retryCount: queue.retryCount,
+    maxRetries: queue.maxRetries,
+    nextAttemptAt: queue.nextAttemptAt,
+    leaseOwner: queue.leaseOwner,
+    leaseExpiresAt: queue.leaseExpiresAt,
+    heartbeatAt: queue.heartbeatAt,
+  };
+}
+
+export function toPersistedProviderDescriptor(
+  input: ProviderConfig | PersistedProviderDescriptor,
+): PersistedProviderDescriptor {
+  const config = ProviderConfigSchema.safeParse(input);
+  if (config.success) {
+    switch (config.data.kind) {
+      case "openai":
+      case "anthropic":
+      case "google":
+        return { kind: config.data.kind, model: config.data.model };
+      case "openai-compatible":
+        return {
+          kind: config.data.kind,
+          model: config.data.model,
+          baseUrl: config.data.baseUrl,
+        };
+    }
+  }
+  return PersistedProviderDescriptorSchema.parse(input);
+}
+
+export function parsePersistedProviderDescriptor(
+  value: string | null | undefined,
+): PersistedProviderDescriptor | null {
+  if (!value || value === "null") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    const result = PersistedProviderDescriptorSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function addMilliseconds(timestamp: string, milliseconds: number): string {
+  const parsed = Date.parse(timestamp);
+  const base = Number.isFinite(parsed) ? parsed : Date.now();
+  return new Date(base + Math.max(0, Math.trunc(milliseconds))).toISOString();
+}
+
+function bookStatusForRun(run: ProductionRun): Book["status"] {
+  if (run.status === "paused" || run.status === "failed" || run.status === "completed" || run.status === "cancelled") {
+    return run.status;
+  }
+  if (run.status === "queued") return "ready-to-draft";
+  if (run.stage === "review") return "reviewing";
+  if (run.stage === "repair") return "repairing";
+  return "drafting";
 }
 
 function toCheckpoint(row: CheckpointRow): ProductionCheckpoint {

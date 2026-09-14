@@ -83,6 +83,10 @@ export interface MetricsRegistryOptions {
   readonly alertCooldownMs?: number;
 }
 
+const MAX_HTTP_ROUTE_LABELS = 200;
+const MAX_PROVIDER_MODEL_LABELS = 200;
+const OVERFLOW_LABEL = "__other__";
+
 export interface QueueMetrics {
   readonly running: number;
   readonly queued: number;
@@ -184,7 +188,10 @@ export class MetricsRegistry {
     if (input.status >= 500) this.httpFailed += 1;
     else this.httpSuccessful += 1;
     this.httpLatencies = appendSample(this.httpLatencies, input.durationMs);
-    const route = normalizeMetricRoute(input.route);
+    const normalizedRoute = normalizeMetricRoute(input.route);
+    const route = this.httpByRoute.has(normalizedRoute) || this.httpByRoute.size < MAX_HTTP_ROUTE_LABELS - 1
+      ? normalizedRoute
+      : OVERFLOW_LABEL;
     const current = this.httpByRoute.get(route) ?? { total: 0, failed: 0 };
     current.total += 1;
     if (input.status >= 500) current.failed += 1;
@@ -201,7 +208,10 @@ export class MetricsRegistry {
     this.providerTotal += 1;
     if (input.status === "error") this.providerFailed += 1;
     this.providerLatencies = appendSample(this.providerLatencies, input.durationMs);
-    const key = `${safeMetricLabel(input.provider)}:${safeMetricLabel(input.model)}`;
+    const normalizedKey = `${safeMetricLabel(input.provider)}:${safeMetricLabel(input.model)}`;
+    const key = this.providerByModel.has(normalizedKey) || this.providerByModel.size < MAX_PROVIDER_MODEL_LABELS - 1
+      ? normalizedKey
+      : OVERFLOW_LABEL;
     const current = this.providerByModel.get(key) ?? { total: 0, failed: 0 };
     current.total += 1;
     if (input.status === "error") current.failed += 1;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import type { ProviderConfig } from "../../shared/contracts";
+import { ProviderConfigSchema, type ProviderConfig } from "../../shared/contracts";
 import type { ChapterCandidate, ChapterPlan, ProductionRun } from "../../shared/auto-novel";
 import {
   filterMemoryDelta,
@@ -9,7 +9,11 @@ import {
   type MemoryDelta,
 } from "../../shared/memory";
 import { NormalizedProviderError } from "../providers/types";
-import type { ProductionRepository } from "../repositories/production-repository";
+import type {
+  PersistedProviderDescriptor,
+  ProductionRepository,
+  ProductionRunLease,
+} from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProviderResolver } from "../providers/resolver";
@@ -35,6 +39,17 @@ const ReviewOutputSchema = z
 const MAX_REPAIR_ATTEMPTS = 2;
 const MAX_TRANSIENT_RETRIES = 2;
 const TRANSIENT_RETRY_DELAYS_MS = [250, 500] as const;
+const PERSISTED_ERROR_CODES = new Set([
+  "AUTHENTICATION_FAILED",
+  "RATE_LIMITED",
+  "QUOTA_EXCEEDED",
+  "UPSTREAM_UNAVAILABLE",
+  "REQUEST_INVALID",
+  "REQUEST_ABORTED",
+  "CONTENT_TOO_LARGE",
+  "UNKNOWN_PROVIDER_ERROR",
+  "PROVIDER_CONFIG_UNAVAILABLE",
+]);
 
 export interface ProductionServiceDependencies {
   readonly bookRepository: BookRepository;
@@ -46,6 +61,8 @@ export interface ProductionServiceDependencies {
   readonly metrics?: MetricsRegistry;
   readonly auditRepository?: AuditRepository;
   readonly logger?: StructuredLogger;
+  /** Resolve a key-free descriptor from a server-side secret store. */
+  readonly resolvePersistedProvider?: PersistedProviderResolver;
 }
 
 interface ActiveRun {
@@ -56,12 +73,27 @@ interface ActiveRun {
 
 interface PendingRun {
   readonly runId: string;
-  readonly providerConfig: ProviderConfig;
+  readonly providerConfig?: ProviderConfig;
+  readonly lease?: ProductionRunLease;
   readonly controller: AbortController;
   readonly unlinkAbort: () => void;
   readonly promise: Promise<ProductionRun>;
   readonly resolve: (run: ProductionRun) => void;
   readonly reject: (error: unknown) => void;
+}
+
+export type PersistedProviderResolver = (
+  descriptor: PersistedProviderDescriptor,
+) => ProviderConfig | Promise<ProviderConfig>;
+
+/** Raised when a restarted worker cannot obtain a secret-backed provider. */
+export class PersistedProviderUnavailableError extends Error {
+  readonly code = "PROVIDER_CONFIG_UNAVAILABLE";
+
+  constructor() {
+    super("生产任务所需的 Provider 配置当前不可用。");
+    this.name = "PersistedProviderUnavailableError";
+  }
 }
 
 export class ProductionService {
@@ -191,11 +223,22 @@ export class ProductionService {
 
   start(
     runId: string,
-    providerConfig: ProviderConfig,
+    providerConfig?: ProviderConfig,
     signal?: AbortSignal,
+    lease?: ProductionRunLease,
   ): Promise<ProductionRun> {
     const existing = this.activeRuns.get(runId);
     if (existing) return existing.promise;
+
+    // Persist only the descriptor.  The full config remains in this process
+    // for the duration of the run and is never written to SQLite.
+    if (providerConfig) {
+      this.dependencies.productionRepository.setProviderDescriptor(
+        runId,
+        providerConfig,
+        lease,
+      );
+    }
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(signal, controller);
@@ -208,6 +251,7 @@ export class ProductionService {
     const pending: PendingRun = {
       runId,
       providerConfig,
+      lease,
       controller,
       unlinkAbort,
       promise,
@@ -240,8 +284,9 @@ export class ProductionService {
 
   private async run(
     runId: string,
-    providerConfig: ProviderConfig,
+    providerConfig: ProviderConfig | undefined,
     signal: AbortSignal,
+    lease?: ProductionRunLease,
   ): Promise<ProductionRun> {
     let run = this.dependencies.productionRepository.getRun(runId);
     if (run.status === "completed") return run;
@@ -252,16 +297,20 @@ export class ProductionService {
       );
     }
 
-    this.dependencies.productionRepository.updateRun(runId, {
-      status: "running",
-    });
-    this.recordAudit("production.started", runId, "success");
-    this.dependencies.bookRepository.setStatus(run.bookId, "drafting");
-    const provider = this.dependencies.providerResolver.resolve(providerConfig);
-
+    let resolvedProviderConfig: ProviderConfig;
+    let provider: ReturnType<ProviderResolver["resolve"]>;
     try {
+      resolvedProviderConfig = await this.resolveProviderConfig(
+        runId,
+        providerConfig,
+      );
+      this.dependencies.productionRepository.updateRun(runId, {
+        status: "running",
+      }, lease);
+      this.recordAudit("production.started", runId, "success");
+      provider = this.dependencies.providerResolver.resolve(resolvedProviderConfig);
       while (true) {
-        const stopped = this.getStoppedRun(runId, signal);
+        const stopped = this.getStoppedRun(runId, signal, lease);
         if (stopped) return stopped;
 
         run = this.dependencies.productionRepository.getRun(runId);
@@ -278,8 +327,7 @@ export class ProductionService {
             status: "completed",
             stage: "accept",
             currentChapterNumber: null,
-          });
-          this.dependencies.bookRepository.setStatus(run.bookId, "completed");
+          }, lease);
           this.recordAudit("production.completed", runId, "success");
           return completed;
         }
@@ -295,11 +343,12 @@ export class ProductionService {
           status: "running",
           stage: "draft",
           currentChapterNumber: plan.chapterNumber,
-        });
+        }, lease);
         const chapter = this.dependencies.productionRepository.getOrCreateChapter(
           run.bookId,
           plan.title,
           plan.chapterNumber - 1,
+          lease,
         );
         const contextHash = hashContext(chapter.content);
         let candidate =
@@ -316,7 +365,7 @@ export class ProductionService {
         if (!candidate) {
           const candidateText = await generateDraft(
             provider,
-            providerConfig.model,
+            resolvedProviderConfig.model,
             bookDetails.book.idea,
             plan,
             chapter.content,
@@ -326,7 +375,7 @@ export class ProductionService {
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
           );
-          const stoppedAfterDraft = this.getStoppedRun(runId, signal);
+          const stoppedAfterDraft = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterDraft) return stoppedAfterDraft;
           candidate = this.dependencies.productionRepository.createCandidate({
             runId,
@@ -338,19 +387,21 @@ export class ProductionService {
             memoryContextHash: memoryContext.contextHash,
             memoryContextConfig: run.memoryContextConfig,
             candidateText,
+            ...(lease ? { lease } : {}),
           });
           this.dependencies.productionRepository.appendCheckpoint({
             runId,
             stage: "draft",
             inputHash: contextHash,
             outputId: candidate.id,
+            ...(lease ? { lease } : {}),
           });
         }
 
         let repairAttempt = candidate.repairCount;
         if (candidate.review.status === "failed") repairAttempt += 1;
         while (candidate.review.status !== "passed") {
-          const stoppedBeforeReview = this.getStoppedRun(runId, signal);
+          const stoppedBeforeReview = this.getStoppedRun(runId, signal, lease);
           if (stoppedBeforeReview) return stoppedBeforeReview;
 
           if (candidate.review.status === "failed") {
@@ -364,10 +415,10 @@ export class ProductionService {
               status: "running",
               stage: "repair",
               currentChapterNumber: plan.chapterNumber,
-            });
+            }, lease);
             const repaired = await repairDraft(
               provider,
-              providerConfig.model,
+              resolvedProviderConfig.model,
               candidate.candidateText,
               candidate.review.findings,
               memoryContext,
@@ -375,18 +426,20 @@ export class ProductionService {
               bookDetails.book.style,
               bookDetails.book.targetChapterCharacters,
             );
-            const stoppedAfterRepair = this.getStoppedRun(runId, signal);
+            const stoppedAfterRepair = this.getStoppedRun(runId, signal, lease);
             if (stoppedAfterRepair) return stoppedAfterRepair;
             candidate = this.dependencies.productionRepository.updateCandidateText(
               candidate.id,
               repaired,
               repairAttempt,
+              lease,
             );
             this.dependencies.productionRepository.appendCheckpoint({
               runId,
               stage: "repair",
               inputHash: hashContext(candidate.candidateText),
               outputId: candidate.id,
+              ...(lease ? { lease } : {}),
             });
           }
 
@@ -394,10 +447,10 @@ export class ProductionService {
             status: "running",
             stage: "review",
             currentChapterNumber: plan.chapterNumber,
-          });
+          }, lease);
           const review = await reviewDraft(
             provider,
-            providerConfig.model,
+            resolvedProviderConfig.model,
             bookDetails.book.idea,
             plan,
             candidate.candidateText,
@@ -406,27 +459,30 @@ export class ProductionService {
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
           );
-          const stoppedAfterReview = this.getStoppedRun(runId, signal);
+          const stoppedAfterReview = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterReview) return stoppedAfterReview;
           const { memoryDelta, ...reviewResult } = review;
           candidate = this.dependencies.productionRepository.updateCandidateReview(
             candidate.id,
             reviewResult,
+            lease,
           );
           candidate = this.dependencies.productionRepository.updateCandidateMemoryDelta(
             candidate.id,
             memoryDelta,
+            lease,
           );
           this.dependencies.productionRepository.appendCheckpoint({
             runId,
             stage: "review",
             inputHash: hashContext(candidate.candidateText),
             outputId: candidate.id,
+            ...(lease ? { lease } : {}),
           });
           if (review.status === "failed") repairAttempt += 1;
         }
 
-        const stoppedBeforeAccept = this.getStoppedRun(runId, signal);
+        const stoppedBeforeAccept = this.getStoppedRun(runId, signal, lease);
         if (stoppedBeforeAccept) return stoppedBeforeAccept;
         const pendingMemoryDelta = candidate.memoryDelta
           ? filterMemoryDelta(candidate.memoryDelta, candidate.memoryDeltaReview)
@@ -436,46 +492,47 @@ export class ProductionService {
           hasMemoryChanges(pendingMemoryDelta) &&
           !candidate.memoryDeltaReview.approved
         ) {
-          this.dependencies.bookRepository.setStatus(run.bookId, "paused");
-          return this.dependencies.productionRepository.updateRun(runId, {
+          const paused = this.dependencies.productionRepository.updateRun(runId, {
             status: "paused",
             stage: "review",
             currentChapterNumber: plan.chapterNumber,
-          });
+          }, lease);
+          return paused;
         }
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
           stage: "accept",
           currentChapterNumber: plan.chapterNumber,
-        });
+        }, lease);
         await this.dependencies.productionRepository.acceptCandidate(
           candidate.id,
           chapter.revision,
+          lease,
         );
         this.dependencies.productionRepository.appendCheckpoint({
           runId,
           stage: "accept",
           inputHash: hashContext(candidate.candidateText),
           outputId: candidate.id,
+          ...(lease ? { lease } : {}),
         });
       }
     } catch (error) {
+      if (errorCodeOf(error) === "WORKER_LEASE_LOST") return this.dependencies.productionRepository.getRun(runId);
       if (isAbortError(error) || signal.aborted) {
         const current = this.dependencies.productionRepository.getRun(runId);
         if (current.status === "cancelled" || current.status === "paused") return current;
         const paused = this.dependencies.productionRepository.updateRun(runId, {
           status: "paused",
-        });
-        this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
+        }, lease);
         this.recordAudit("production.paused", runId, "success");
         return paused;
       }
-      const code = isKnownErrorCode(error) ? error.code : "UNKNOWN_PROVIDER_ERROR";
+      const code = errorCodeOf(error);
       this.dependencies.productionRepository.updateRun(runId, {
         status: "failed",
         errorCode: code,
-      });
-      this.dependencies.bookRepository.setStatus(run.bookId, "failed");
+      }, lease);
       this.recordAudit("production.failed", runId, "failure", { errorCode: code });
       throw error;
     }
@@ -492,7 +549,6 @@ export class ProductionService {
       const paused = this.dependencies.productionRepository.updateRun(runId, {
         status: "paused",
       });
-      this.dependencies.bookRepository.setStatus(current.bookId, "paused");
       this.activeRuns.delete(runId);
       pending?.resolve(paused);
       this.recordAudit("production.paused", runId, "success");
@@ -504,14 +560,13 @@ export class ProductionService {
     const paused = this.dependencies.productionRepository.updateRun(runId, {
       status: "paused",
     });
-    this.dependencies.bookRepository.setStatus(current.bookId, "paused");
     this.recordAudit("production.paused", runId, "success");
     return paused;
   }
 
   resume(
     runId: string,
-    providerConfig: ProviderConfig,
+    providerConfig?: ProviderConfig,
     signal?: AbortSignal,
   ): Promise<ProductionRun> {
     return this.start(runId, providerConfig, signal);
@@ -528,7 +583,6 @@ export class ProductionService {
       const cancelled = this.dependencies.productionRepository.updateRun(runId, {
         status: "cancelled",
       });
-      this.dependencies.bookRepository.setStatus(current.bookId, "cancelled");
       this.activeRuns.delete(runId);
       pending?.resolve(cancelled);
       this.recordAudit("production.cancelled", runId, "success");
@@ -540,7 +594,6 @@ export class ProductionService {
     const cancelled = this.dependencies.productionRepository.updateRun(runId, {
       status: "cancelled",
     });
-    this.dependencies.bookRepository.setStatus(current.bookId, "cancelled");
     this.recordAudit("production.cancelled", runId, "success");
     return cancelled;
   }
@@ -555,7 +608,6 @@ export class ProductionService {
       const paused = ["completed", "cancelled", "failed"].includes(current.status)
         ? current
         : this.dependencies.productionRepository.updateRun(pending.runId, { status: "paused" });
-      this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
       pending.unlinkAbort();
       pending.resolve(paused);
       this.activeRuns.delete(pending.runId);
@@ -572,10 +624,29 @@ export class ProductionService {
     return this.dependencies.productionRepository.getRunDetails(runId);
   }
 
+  private async resolveProviderConfig(
+    runId: string,
+    providerConfig: ProviderConfig | undefined,
+  ): Promise<ProviderConfig> {
+    if (providerConfig) return ProviderConfigSchema.parse(providerConfig);
+    const descriptor = this.dependencies.productionRepository.getProviderDescriptor(runId);
+    const resolver = this.dependencies.resolvePersistedProvider;
+    if (!descriptor || !resolver) throw new PersistedProviderUnavailableError();
+    try {
+      return ProviderConfigSchema.parse(await resolver(descriptor));
+    } catch {
+      // Never expose a secret-store error or a provider key through the run
+      // error path.  The worker records a stable public code instead.
+      throw new PersistedProviderUnavailableError();
+    }
+  }
+
   private getStoppedRun(
     runId: string,
     signal: AbortSignal,
+    lease?: ProductionRunLease,
   ): ProductionRun | null {
+    if (lease) this.dependencies.productionRepository.assertRunLease(lease);
     const current = this.dependencies.productionRepository.getRun(runId);
     if (current.status === "paused" || current.status === "cancelled") return current;
     throwIfAborted(signal);
@@ -594,7 +665,6 @@ export class ProductionService {
         const paused = ["completed", "cancelled", "failed"].includes(current.status)
           ? current
           : this.dependencies.productionRepository.updateRun(pending.runId, { status: "paused" });
-        if (paused.status === "paused") this.dependencies.bookRepository.setStatus(paused.bookId, "paused");
         this.recordAudit("production.paused", pending.runId, "success");
         pending.resolve(paused);
         this.activeRuns.delete(pending.runId);
@@ -606,7 +676,7 @@ export class ProductionService {
         promise: pending.promise,
         queued: false,
       });
-      void this.run(pending.runId, pending.providerConfig, pending.controller.signal).then(
+      void this.run(pending.runId, pending.providerConfig, pending.controller.signal, pending.lease).then(
         (result) => {
           this.finishQueuedRun(pending);
           pending.resolve(result);
@@ -860,25 +930,12 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function isKnownErrorCode(
-  error: unknown,
-): error is {
-  code:
-    | "AUTHENTICATION_FAILED"
-    | "RATE_LIMITED"
-    | "QUOTA_EXCEEDED"
-    | "UPSTREAM_UNAVAILABLE"
-    | "REQUEST_INVALID"
-    | "REQUEST_ABORTED"
-    | "CONTENT_TOO_LARGE"
-    | "UNKNOWN_PROVIDER_ERROR";
-} {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-  );
+function errorCodeOf(error: unknown): string {
+  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string") {
+    return "UNKNOWN_PROVIDER_ERROR";
+  }
+  if (PERSISTED_ERROR_CODES.has(error.code)) return error.code;
+  return "UNKNOWN_PROVIDER_ERROR";
 }
 
 function hasMemoryChanges(delta: MemoryDelta): boolean {

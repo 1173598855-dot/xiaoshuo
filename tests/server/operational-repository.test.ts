@@ -98,4 +98,35 @@ describe("operational repositories", () => {
       ],
     });
   });
+
+  it("prunes audit and usage records before the retention cutoff", () => {
+    const database = createDatabase(":memory:");
+    databases.push(database);
+    migrate(database);
+    const audit = new AuditRepository(database, {
+      now: () => new Date("2026-09-14T00:00:00.000Z"),
+      createId: (() => {
+        let index = 0;
+        return () => `audit-${++index}`;
+      })(),
+    });
+    const usage = new UsageRepository(database, {
+      now: () => new Date("2026-09-14T00:00:00.000Z"),
+    });
+    audit.record({ actor: "system", action: "old", resourceType: "test", outcome: "success" });
+    usage.record({ provider: "test", model: "test", estimatedCostMicros: 0, status: "success" });
+    database.prepare("UPDATE audit_events SET created_at = '2026-01-01T00:00:00.000Z'").run();
+    database.prepare("UPDATE usage_events SET created_at = '2026-01-01T00:00:00.000Z'").run();
+
+    expect(audit.pruneBefore("2026-06-01T00:00:00.000Z")).toEqual({
+      before: "2026-06-01T00:00:00.000Z",
+      deleted: 1,
+    });
+    expect(usage.pruneBefore("2026-06-01T00:00:00.000Z")).toEqual({
+      before: "2026-06-01T00:00:00.000Z",
+      deleted: 1,
+    });
+    expect(audit.list()).toEqual([]);
+    expect(usage.getMonthlySummary()).toMatchObject({ requests: 0 });
+  });
 });

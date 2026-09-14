@@ -24,6 +24,15 @@
     "smoke:server": "node scripts/smoke-built-server.mjs",
     "backup:verify": "node scripts/verify-backup.mjs",
     "backup:restore": "node scripts/restore-database.mjs",
+    "docker:build": "node scripts/docker-deploy.mjs build",
+    "docker:up": "node scripts/docker-deploy.mjs up",
+    "docker:up:https": "node scripts/docker-deploy.mjs up-https",
+    "docker:restart:https": "node scripts/docker-deploy.mjs restart-https",
+    "docker:down": "node scripts/docker-deploy.mjs down",
+    "docker:logs": "node scripts/docker-deploy.mjs logs",
+    "docker:status": "node scripts/docker-deploy.mjs status",
+    "docker:config": "node scripts/docker-deploy.mjs config",
+    "docker:config:https": "node scripts/docker-deploy.mjs config-https",
     "smoke:desktop": "npm run desktop:build && node scripts/smoke-desktop.mjs",
     "start": "node dist/server/index.js",
     "desktop:build": "npm run typecheck && npm run build:client && npm run build:desktop",
@@ -36,7 +45,8 @@
     "desktop:artifact": "node scripts/assert-desktop-artifact.mjs",
     "desktop:icon": "node scripts/create-desktop-icon.mjs",
     "desktop:dist": "npm run desktop:icon && npm run desktop:build && electron-builder --win nsis --x64 --publish never",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:external": "playwright test -c playwright.external.config.ts"
   },
   "build": {
     "appId": "com.xiaoyi.novelworkbench",

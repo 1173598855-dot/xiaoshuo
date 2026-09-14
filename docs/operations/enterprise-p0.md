@@ -21,7 +21,33 @@ $env:XIAOYI_BACKUP_DIR = "C:\ProgramData\Xiaoyi\backups"
 npm start
 ```
 
-容器部署需要显式设置 `XIAOYI_ACCESS_TOKEN`；`Dockerfile` 默认监听 `0.0.0.0`，必须通过内网防火墙或反向代理限制访问。
+容器部署需要显式设置 `XIAOYI_ACCESS_TOKEN`；`Dockerfile` 默认监听 `0.0.0.0`。仓库提供了带 Nginx 反向代理的 Compose 闭环，代理只暴露一个同源入口，应用容器只加入内部网络：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，至少替换 XIAOYI_ACCESS_TOKEN
+npm run docker:up
+Invoke-WebRequest http://127.0.0.1:8080/api/health
+npm run docker:status
+```
+
+入口端口可由 `XIAOYI_HTTP_PORT` 覆盖。`app` 服务将 SQLite、WAL sidecar 和备份写入命名卷 `xiaoyi-novel-workbench-data`；需要迁移或备份到主机时，可将 `XIAOYI_DATA_VOLUME` 改成运维平台管理的卷名。查看日志、停止服务和重建镜像：
+
+```powershell
+npm run docker:logs
+npm run docker:down
+npm run docker:build
+```
+
+默认 HTTP 发布只绑定 `127.0.0.1`。公网 HTTPS 可直接用内置 Nginx TLS profile：将完整证书链放到 `deploy/tls/fullchain.pem`、私钥放到 `deploy/tls/privkey.pem`（目录和文件已加入 Git/Docker 忽略），在 `.env` 中设置公开的 `XIAOYI_ALLOWED_ORIGIN=https://writer.example.com`，然后运行：
+
+```powershell
+npm run docker:up:https
+```
+
+TLS profile 默认发布 443，并通过内部 Docker 网络代理到 app；HTTP 入口仍只绑定 loopback。修改证书后运行 `npm run docker:restart:https`。生产上游 HTTPS 若在 443 以外端口，allowed origin 需要带端口。
+
+`XIAOYI_STATIC_DIR` 默认指向镜像内的 `/app/dist/client`。Node 服务会在同一端口提供 Vite 构建产物和 SPA fallback，`/api/*` 始终优先走 JSON API；Nginx 只做同源转发，不缓存 API 响应。
 
 可选运维配置：
 
@@ -30,6 +56,10 @@ npm start
 | `XIAOYI_MAX_CONCURRENT_RUNS` | `1` | 生产 run 并发上限；队列状态会持久化为 `queued` |
 | `XIAOYI_RATE_LIMIT_PER_MINUTE` | `120` | 单租户访问令牌/IP 的 API 滑动窗口限流 |
 | `XIAOYI_ALLOWED_ORIGIN` | 不限制 | 浏览器 CORS 来源白名单 |
+| `XIAOYI_HTTP_PORT` | `8080`（Compose） | Nginx 对外监听端口；直连 Node 时不生效 |
+| `XIAOYI_HTTP_BIND` | `127.0.0.1`（Compose） | 本地 HTTP 代理的宿主绑定地址；只有主动配置 `0.0.0.0` 时才暴露给局域网 |
+| `XIAOYI_HTTPS_PORT` | `443` | 可选 HTTPS Nginx profile 的宿主端口 |
+| `XIAOYI_STATIC_DIR` | `dist/client`（镜像为 `/app/dist/client`） | 已构建 Renderer 静态文件目录 |
 | `XIAOYI_TRUST_PROXY` | `0` | 仅在可信反向代理后设为 `1`，启用代理 IP 识别 |
 | `XIAOYI_REMOTE_BACKUP_DIR` | 未配置 | 已挂载的 NAS/网络盘备份目录；写入后会再次完整性校验 |
 | `XIAOYI_BACKUP_INTERVAL_MINUTES` | `60` | 定时备份间隔 |
@@ -38,19 +68,29 @@ npm start
 | `XIAOYI_MONTHLY_BUDGET_MICROS` | 不限制 | 当前 UTC 月成本上限，单位为配置货币的百万分之一 |
 | `XIAOYI_MODEL_PRICING_JSON` | `{}` | 模型价格表，键为 `kind:model`，值为 `{inputPerMillionMicros,outputPerMillionMicros}` |
 | `XIAOYI_FALLBACK_PROVIDERS_JSON` | `[]` | 最多 3 个备用 Provider 配置，只对限流/上游不可用自动切换 |
+| `XIAOYI_SERVER_PROVIDERS_JSON` | `[]` | 服务端 Worker 使用的 Provider 配置数组；只驻留内存，API Key 不写 SQLite/日志/响应 |
+| `XIAOYI_ALERT_WEBHOOK_URL` | 未配置 | 可选 HTTPS 告警 Webhook；仅发送归一化指标事件 |
+| `XIAOYI_AUDIT_RETENTION_DAYS` | `180` | 审计事件保留天数，后台定期清理 |
+| `XIAOYI_USAGE_RETENTION_DAYS` | `365` | 用量事件保留天数，后台定期清理 |
 
-Provider 密钥只能通过部署环境的 Secret 注入 `XIAOYI_FALLBACK_PROVIDERS_JSON`，不要提交到仓库或日志。桌面端密钥继续由 Windows DPAPI `safeStorage` Vault 管理；保存新 Key 会生成新 credential 并吊销旧 credential。
+Provider 密钥只能通过部署环境的 Secret 注入 `XIAOYI_SERVER_PROVIDERS_JSON` / `XIAOYI_FALLBACK_PROVIDERS_JSON`，不要提交到仓库或日志。生产 Worker 只把 kind/model/baseUrl 描述写入 run，重启后从这组内存配置恢复。桌面端密钥继续由 Windows DPAPI `safeStorage` Vault 管理；保存新 Key 会生成新 credential 并吊销旧 credential。
 
 ## 健康检查和监控
 
 - `GET /api/health`：存活探针，不要求令牌；只返回服务存活状态。
-- `GET /api/ready`：就绪探针，不要求令牌；检查 SQLite 可读性、队列和备份状态，不返回文件路径。
+- `GET /api/ready`：就绪探针，不要求令牌；只返回 SQLite 与 Worker 是否就绪，不返回队列数量、备份时间或文件路径。
 - `GET /api/metrics`：Prometheus 文本指标，需要令牌。
 - `GET /api/admin/metrics`：JSON 指标、队列状态和当月用量，需要令牌。
+- `GET /api/admin/runs`：按状态、作品、失败码和更新时间游标搜索生产 run，返回重试与租约摘要，需要令牌。
+- `GET /api/admin/providers`：只返回服务端 Provider 元数据与 `hasApiKey`，不返回密钥，需要令牌。
+- `GET /api/admin/providers/:index/models` 和 `POST /api/admin/providers/:index/test`：使用已注入服务端 Secret 拉取模型列表/测试连接，响应不含密钥。
+- `GET /api/openapi.json`：OpenAPI 3.1 路由索引，需要令牌。
 - `GET /api/admin/audit`：请求、生产 run 和失败状态审计记录，需要令牌。
 - 结构化日志使用 JSON Lines；不会写入请求正文、提示词、Authorization、API Key 或密码。
 
 告警默认写入结构化日志：HTTP 5xx、Provider 调用失败和备份失败会触发告警事件，并按冷却窗口去重。部署时将 stdout/stderr 接入现有日志平台即可。
+
+设置 `XIAOYI_ALERT_WEBHOOK_URL` 后，告警会以 JSON POST 发送到该 HTTPS 地址；发送失败只记录脱敏事件，不会阻塞生成或备份。审计和用量表按保留天数定期清理，也可以在停机前通过数据库备份保留归档副本。
 
 ## 备份与恢复
 

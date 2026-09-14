@@ -182,6 +182,24 @@ export const ProductionRunSchema = z
   .strict();
 export type ProductionRun = z.infer<typeof ProductionRunSchema>;
 
+export const ProductionRunQueueStateSchema = z.object({
+  runId: UuidSchema,
+  providerDescriptor: z.record(z.string(), z.unknown()).nullable(),
+  retryCount: z.number().int().nonnegative(),
+  maxRetries: z.number().int().nonnegative(),
+  nextAttemptAt: TimestampSchema.nullable(),
+  leaseOwner: z.string().nullable(),
+  leaseExpiresAt: TimestampSchema.nullable(),
+  heartbeatAt: TimestampSchema.nullable(),
+}).strict();
+export type ProductionRunQueueState = z.infer<typeof ProductionRunQueueStateSchema>;
+
+export const ProductionRunSummarySchema = z.object({
+  run: ProductionRunSchema,
+  queue: ProductionRunQueueStateSchema,
+}).strict();
+export type ProductionRunSummary = z.infer<typeof ProductionRunSummarySchema>;
+
 export const ProductionCommandInputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("pause") }).strict(),
   z.object({ action: z.literal("resume") }).strict(),

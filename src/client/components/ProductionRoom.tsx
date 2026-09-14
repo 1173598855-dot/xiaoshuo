@@ -3,6 +3,7 @@ import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Settings2, Square, Ter
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
 import type { AutoNovelRunDetails } from "../auto-novel-api";
+import type { ProductionConnectionState } from "../hooks/use-production-run";
 
 interface ProductionRoomProps {
   book: BookDetails;
@@ -17,6 +18,8 @@ interface ProductionRoomProps {
   onOpenManuscript: () => void;
   onOpenMemory: () => void;
   onConfigureProvider: () => void;
+  connectionState?: ProductionConnectionState;
+  onRetryConnection?: () => void;
 }
 
 export function ProductionRoom({
@@ -32,6 +35,8 @@ export function ProductionRoom({
   onOpenManuscript,
   onOpenMemory,
   onConfigureProvider,
+  connectionState = "connected",
+  onRetryConnection,
 }: ProductionRoomProps) {
   const accepted = run?.acceptedChapters.length ?? 0;
   const total = book.chapterPlans.length;
@@ -57,6 +62,12 @@ export function ProductionRoom({
       <section className="production-grid">
         <div className="run-panel">
           <div className="panel-heading"><h2>生产进度</h2><StatusBadge status={status} /></div>
+          {connectionState === "reconnecting" ? (
+            <div className="connection-banner" role="status">
+              <span>服务连接中断，正在自动重连。</span>
+              {onRetryConnection ? <button className="text-button" type="button" onClick={onRetryConnection}>立即重试</button> : null}
+            </div>
+          ) : null}
           <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
           <div className="stage-list">
             {[

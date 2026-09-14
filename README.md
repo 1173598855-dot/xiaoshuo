@@ -143,6 +143,25 @@ $env:XIAOYI_E2E_WEB_PORT = "25173"
 npm run e2e
 ```
 
+若 Playwright 在 Windows 无法启动其管理的本地 WebServer 子进程，可在两个终端手动启动 API 和 Vite，再在第三个终端运行外部服务配置：
+
+```powershell
+# 终端 1
+$env:PORT = "24330"
+$env:XIAOYI_DATABASE_PATH = ":memory:"
+$env:XIAOYI_FAKE_PROVIDER = "1"
+npm run dev:server
+
+# 终端 2
+$env:XIAOYI_SERVER_PORT = "24330"
+$env:XIAOYI_WEB_PORT = "25190"
+npm run dev:web
+
+# 终端 3
+$env:XIAOYI_E2E_BASE_URL = "http://127.0.0.1:25190"
+npm run e2e:external
+```
+
 桌面测试覆盖 IPC、窗口安全、Vault 和打包产物。
 
 ## 企业内网 P0 基线
@@ -151,7 +170,19 @@ npm run e2e
 
 详细变量、健康探针、备份恢复和升级回滚步骤见 [`docs/operations/enterprise-p0.md`](docs/operations/enterprise-p0.md)。服务端生产启动时设置 `NODE_ENV=production` 和至少 16 位的 `XIAOYI_ACCESS_TOKEN`；`/api/health` 与 `/api/ready` 作为无令牌探针，其余 HTTP API 使用 Bearer 令牌。
 
-企业运维接口：`GET /api/metrics`、`GET /api/admin/metrics`、`GET /api/admin/audit`、`GET|POST /api/admin/backups` 和 `POST /api/admin/backups/verify`。成本价格通过 `XIAOYI_MODEL_PRICING_JSON` 注入，备用 Provider 通过 `XIAOYI_FALLBACK_PROVIDERS_JSON` 注入，密钥不写入 SQLite、日志、备份或接口响应。
+### Docker Compose
+
+复制 `.env.example` 为 `.env` 并设置访问令牌后，可以启动包含 Node 应用和 Nginx 同源反向代理的完整部署。默认 HTTP 端口只绑定 `127.0.0.1`：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，替换 XIAOYI_ACCESS_TOKEN
+npm run docker:up
+```
+
+默认从 `http://127.0.0.1:8080` 打开工作台；`npm run docker:status` 查看服务健康状态，`npm run docker:logs` 跟踪日志，`npm run docker:down` 停止服务。局域网 HTTP 使用可控配置 `XIAOYI_HTTP_BIND=0.0.0.0`。公网 HTTPS 部署时，把证书放入被忽略的 `deploy/tls/fullchain.pem` 和 `deploy/tls/privkey.pem`，把允许来源设为公开 `https://` origin，再运行 `npm run docker:up:https`；HTTPS Nginx profile 监听 `XIAOYI_HTTPS_PORT`，默认 HTTP 入口继续留在 loopback。SQLite 数据库和备份位于命名卷中，详细变量及升级/恢复步骤见 [`docs/operations/enterprise-p0.md`](docs/operations/enterprise-p0.md)。
+
+企业运维接口：`GET /api/metrics`、`GET /api/openapi.json`、`GET /api/admin/metrics`、`GET /api/admin/audit`、`GET /api/admin/usage`、`GET /api/admin/runs`、`GET /api/admin/providers`、`GET /api/admin/providers/:index/models`、`POST /api/admin/providers/:index/test`、`GET|POST /api/admin/backups` 和 `POST /api/admin/backups/verify`。成本价格通过 `XIAOYI_MODEL_PRICING_JSON` 注入，备用线路通过 `XIAOYI_FALLBACK_PROVIDERS_JSON` 注入；服务端 Worker 可通过 `XIAOYI_SERVER_PROVIDERS_JSON` 在重启后恢复任务。密钥不写入 SQLite、日志、备份或接口响应。
 
 数据库恢复命令：
 

@@ -1,5 +1,10 @@
 node_modules
 data
+backups
+deploy/tls
+*.sqlite
+*.sqlite3
+*.bak
 dist
 release
 output
@@ -14,3 +19,4 @@ test-results
 *.log
 .env
 .env.*
+!.env.example

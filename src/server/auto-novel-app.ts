@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { z } from "zod";
 
 import {
@@ -23,20 +24,26 @@ import {
 } from "../shared/memory";
 import {
   ListProviderModelsInputSchema,
+  ProviderModelListSchema,
   ProviderConfigSchema,
   ProviderConnectionResultSchema,
   TestProviderConnectionInputSchema,
+  type ProviderConfig,
+  type ProviderErrorCode,
 } from "../shared/contracts";
 import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
 import { exportBook } from "./services/export-service";
 import { resolveProviderConnectionConfig } from "./providers/connection-test";
+import { OPENAPI_DOCUMENT } from "./openapi";
+import { summarizeServerProvider } from "./enterprise/server-provider-config";
 import type { BookRepository } from "./repositories/book-repository";
 import type { ProductionRepository } from "./repositories/production-repository";
 import type { DirectorService } from "./services/director-service";
 import type { FoundationService } from "./services/foundation-service";
 import type { ProductionService } from "./services/production-service";
+import type { ProductionWorker } from "./services/production-worker";
 import type { MemoryService } from "./services/memory-service";
 import type { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import {
@@ -94,6 +101,8 @@ export interface AutoNovelAppDependencies {
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
+  /** Optional durable server worker. Omitted in unit/desktop runtimes. */
+  readonly productionWorker?: ProductionWorker;
   readonly memoryService?: MemoryService;
   readonly database?: DatabaseSync;
   readonly auditRepository?: AuditRepository;
@@ -105,6 +114,16 @@ export interface AutoNovelAppDependencies {
   readonly allowedOrigin?: string;
   readonly trustProxy?: boolean;
   readonly rateLimitPerMinute?: number;
+  /** Maximum accepted API request body in bytes. */
+  readonly maxBodyBytes?: number;
+  /** Provider configs loaded from deployment secrets; only summaries are exposed. */
+  readonly serverProviders?: readonly ProviderConfig[];
+  readonly listServerProviderModels?: typeof listOpenAICompatibleModels;
+  /**
+   * Optional production renderer directory. When configured, the API and the
+   * built single page application are served from the same origin.
+   */
+  readonly staticDirectory?: string;
 }
 
 export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
@@ -114,6 +133,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   const rateLimiter = dependencies.rateLimitPerMinute === undefined
     ? undefined
     : new SlidingWindowRateLimiter(dependencies.rateLimitPerMinute);
+  const maxBodyBytes = Math.max(1_024, Math.min(32 * 1024 * 1024, Math.trunc(dependencies.maxBodyBytes ?? 8 * 1024 * 1024)));
 
   app.use("*", async (context, next) => {
     const startedAt = Date.now();
@@ -133,13 +153,31 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
         if (context.req.method === "OPTIONS") {
           return new Response(null, { status: 204 });
         }
+        const isApiPath = path === "/api" || path.startsWith("/api/");
         const isPublicProbe = path === "/api/health" || path === "/api/ready";
-        if (!isPublicProbe && dependencies.accessToken) {
+        const requiresConfiguredToken =
+          path === "/api/metrics" ||
+          path === "/api/openapi.json" ||
+          path === "/api/admin" ||
+          path.startsWith("/api/admin/");
+        if (requiresConfiguredToken && !dependencies.accessToken) {
+          return context.json(apiError(
+            "AUTHENTICATION_NOT_CONFIGURED",
+            "运维接口尚未配置访问令牌。",
+          ), 503);
+        }
+        if (isApiPath) {
+          const contentLength = Number(context.req.header("content-length") ?? "");
+          if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+            return context.json(apiError("REQUEST_TOO_LARGE", "请求正文超过服务端限制。"), 413);
+          }
+        }
+        if (isApiPath && !isPublicProbe && dependencies.accessToken) {
           if (!isAccessTokenValid(extractAccessToken(context.req.raw), dependencies.accessToken)) {
             return context.json(apiError("AUTHENTICATION_REQUIRED", "需要有效的访问令牌。"), 401);
           }
         }
-        if (!isPublicProbe && rateLimiter) {
+        if (isApiPath && !isPublicProbe && rateLimiter) {
           rateDecision = rateLimiter.check(
             resolveClientIdentity(context.req.raw, dependencies.trustProxy),
           );
@@ -149,14 +187,39 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
             return limited;
           }
         }
+        if (isApiPath && context.req.raw.body && !["GET", "HEAD"].includes(context.req.method)) {
+          const body = await readRequestBodyWithinLimit(context.req.raw, maxBodyBytes);
+          if (!body) {
+            return context.json(apiError("REQUEST_TOO_LARGE", "请求正文超过服务端限制。"), 413);
+          }
+          context.req.raw = new Request(context.req.raw.url, {
+            method: context.req.method,
+            headers: context.req.raw.headers,
+            body,
+            signal: context.req.raw.signal,
+          });
+        }
         await next();
         return context.res;
       },
     );
     response.headers.set("x-request-id", requestId);
+    response.headers.set("x-content-type-options", "nosniff");
+    response.headers.set("referrer-policy", "no-referrer");
+    response.headers.set("x-frame-options", "DENY");
+    response.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
     if (rateDecision) {
       response.headers.set("x-ratelimit-limit", String(rateDecision.limit));
       response.headers.set("x-ratelimit-remaining", String(rateDecision.remaining));
+    }
+    if (!path.startsWith("/api/") && path !== "/api" && response.status >= 200 && response.status < 300) {
+      response.headers.set("x-content-type-options", "nosniff");
+      response.headers.set(
+        "cache-control",
+        path === "/" || !path.includes(".")
+          ? "no-cache"
+          : "public, max-age=31536000, immutable",
+      );
     }
     if (dependencies.allowedOrigin && context.req.header("origin") === dependencies.allowedOrigin) {
       response.headers.set("access-control-allow-origin", dependencies.allowedOrigin);
@@ -199,31 +262,23 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       maxConcurrentRuns: 1,
     };
     metrics.setQueue(queue);
-    const ready = databaseReady;
-    const backupStatus = dependencies.backupService?.getStatus();
+    const workerStatus = dependencies.productionWorker?.getStatus();
+    const workerReady = workerStatus?.started ?? true;
+    const ready = databaseReady && workerReady;
     return context.json({
       status: ready ? "ready" : "not_ready",
-      checks: { database: databaseReady },
-      queue,
-      ...(backupStatus
-        ? {
-            backup: {
-              configured: true,
-              remoteConfigured: backupStatus.remoteDirectory !== null,
-              lastSuccessAt: backupStatus.lastSuccessAt,
-              lastFailureAt: backupStatus.lastFailureAt,
-            },
-          }
-        : { backup: { configured: false } }),
+      checks: { database: databaseReady, worker: workerReady },
     }, ready ? 200 : 503);
   });
   app.get("/api/metrics", () => new Response(metrics.toPrometheus(), {
     status: 200,
     headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8" },
   }));
+  app.get("/api/openapi.json", (context) => context.json(OPENAPI_DOCUMENT));
   app.get("/api/admin/metrics", (context) => context.json({
     metrics: metrics.snapshot(),
     usage: dependencies.usageRepository?.getMonthlySummary() ?? null,
+    ...(dependencies.productionWorker ? { worker: dependencies.productionWorker.getStatus() } : {}),
   }));
   app.get("/api/admin/audit", (context) => {
     const query = context.req.query();
@@ -270,6 +325,59 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     return context.json(await dependencies.backupService.verifyBackup(parsed.data.fileName, parsed.data.remote));
   });
   app.get("/api/providers", (context) => context.json(getProviderCatalog()));
+  app.get("/api/admin/providers", (context) => context.json(
+    (dependencies.serverProviders ?? []).map(summarizeServerProvider),
+  ));
+  app.post("/api/admin/providers/:providerIndex/test", async (context) => {
+    const provider = getServerProvider(dependencies, context.req.param("providerIndex"));
+    if (!provider) return context.json(apiError("NOT_FOUND", "服务端 Provider 不存在。"), 404);
+    const result = await dependencies.productionService.testConnection(provider, context.req.raw.signal);
+    return context.json(ProviderConnectionResultSchema.parse(result));
+  });
+  app.get("/api/admin/providers/:providerIndex/models", async (context) => {
+    const provider = getServerProvider(dependencies, context.req.param("providerIndex"));
+    if (!provider) return context.json(apiError("NOT_FOUND", "服务端 Provider 不存在。"), 404);
+    if (provider.kind !== "openai-compatible") {
+      return context.json([{ id: provider.model }]);
+    }
+    const entry = getProviderCatalog().find(({ id, kind, baseUrl }) =>
+      kind === "openai-compatible" && baseUrl === provider.baseUrl && id !== "custom",
+    ) ?? getProviderCatalog().find(({ id }) => id === "custom");
+    if (!entry) return context.json(apiError("CONFIG_INVALID", "服务端 Provider 端点无效。"), 500);
+    const config = resolveOpenAICompatibleModelListConfig({
+      providerId: entry.id,
+      ...(entry.baseUrlEditable ? { baseUrl: provider.baseUrl } : {}),
+      ...(provider.apiKey ? { apiKey: provider.apiKey } : {}),
+    });
+    const listModels = dependencies.listServerProviderModels ?? listOpenAICompatibleModels;
+    return context.json(ProviderModelListSchema.parse(await listModels(config, context.req.raw.signal)));
+  });
+  app.get("/api/admin/runs", (context) => {
+    const query = context.req.query();
+    const status = query.status;
+    const allowedStatuses = ["queued", "running", "paused", "failed", "completed", "cancelled"] as const;
+    if (status && !(allowedStatuses as readonly string[]).includes(status)) {
+      return context.json(apiError("VALIDATION_ERROR", "生产任务状态无效。"), 400);
+    }
+    if (query.bookId && !MemoryPathIdSchema.safeParse(query.bookId).success) {
+      return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    }
+    const limit = query.limit === undefined ? undefined : Number(query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 200)) {
+      return context.json(apiError("VALIDATION_ERROR", "生产任务条数无效。"), 400);
+    }
+    const before = query.before ? parseDateQuery(query.before) : undefined;
+    if (query.before && !before) {
+      return context.json(apiError("VALIDATION_ERROR", "生产任务时间游标无效。"), 400);
+    }
+    return context.json(dependencies.productionRepository.listRunSummaries({
+      ...(status ? { status: status as typeof allowedStatuses[number] } : {}),
+      ...(query.bookId ? { bookId: query.bookId } : {}),
+      ...(query.errorCode ? { errorCode: query.errorCode.slice(0, 120) } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(before ? { before } : {}),
+    }));
+  });
 
   app.post("/api/providers/models", async (context) => {
     const parsed = await parseJson(context.req.raw, ListProviderModelsInputSchema);
@@ -506,9 +614,13 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       parsed.data.idempotencyKey,
       parsed.data.memoryContextConfig,
     );
-    void dependencies.productionService
-      .start(run.id, parsed.data.provider)
-      .catch(() => undefined);
+    if (dependencies.productionWorker) {
+      dependencies.productionWorker.enqueue(run.id, parsed.data.provider);
+    } else {
+      void dependencies.productionService
+        .start(run.id, parsed.data.provider)
+        .catch(() => undefined);
+    }
     return context.json(run, 202);
   });
 
@@ -530,13 +642,17 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const parsed = await parseJson(context.req.raw, ResumeRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     const run = dependencies.productionRepository.getRun(context.req.param("runId"));
-    void Promise.resolve()
-      .then(() => dependencies.productionService.resume(
-        run.id,
-        parsed.data.provider,
-        context.req.raw.signal,
-      ))
-      .catch(() => undefined);
+    if (dependencies.productionWorker) {
+      dependencies.productionWorker.enqueue(run.id, parsed.data.provider);
+    } else {
+      void Promise.resolve()
+        .then(() => dependencies.productionService.resume(
+          run.id,
+          parsed.data.provider,
+          context.req.raw.signal,
+        ))
+        .catch(() => undefined);
+    }
     return context.json(run, 202);
   });
 
@@ -624,6 +740,33 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     });
   });
 
+  if (dependencies.staticDirectory) {
+    const staticRoot = dependencies.staticDirectory;
+    const staticOptions = {
+      root: staticRoot,
+    };
+    // API routes are registered above. This middleware handles renderer
+    // assets that did not match an API route and keeps their MIME handling in
+    // the Node adapter rather than reimplementing it here.
+    app.use("*", serveStatic(staticOptions));
+    // React Router (and future client-side routes) need the built index as a
+    // fallback. Requests with a file extension remain genuine 404s so a
+    // missing script or source map is never silently replaced by HTML.
+    app.use("*", async (context, next) => {
+      const path = context.req.path;
+      if (
+        !["GET", "HEAD"].includes(context.req.method) ||
+        path === "/api" ||
+        path.startsWith("/api/") ||
+        path.includes(".")
+      ) {
+        await next();
+        return;
+      }
+      return serveStatic({ ...staticOptions, path: "/index.html" })(context, next);
+    });
+  }
+
   app.notFound((context) =>
     context.json(apiError("NOT_FOUND", "请求的资源不存在。"), 404),
   );
@@ -651,8 +794,21 @@ function hashStageInput(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function errorCodeOf(error: unknown): "AUTHENTICATION_FAILED" | "RATE_LIMITED" | "QUOTA_EXCEEDED" | "UPSTREAM_UNAVAILABLE" | "REQUEST_INVALID" | "REQUEST_ABORTED" | "CONTENT_TOO_LARGE" | "UNKNOWN_PROVIDER_ERROR" {
-  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code as ReturnType<typeof errorCodeOf>;
+function errorCodeOf(error: unknown): ProviderErrorCode {
+  const codes = [
+    "AUTHENTICATION_FAILED",
+    "RATE_LIMITED",
+    "QUOTA_EXCEEDED",
+    "UPSTREAM_UNAVAILABLE",
+    "REQUEST_INVALID",
+    "REQUEST_ABORTED",
+    "CONTENT_TOO_LARGE",
+    "UNKNOWN_PROVIDER_ERROR",
+  ] satisfies readonly ProviderErrorCode[];
+  if (
+    typeof error === "object" && error !== null && "code" in error &&
+    typeof error.code === "string" && (codes as readonly string[]).includes(error.code)
+  ) return error.code as ProviderErrorCode;
   return "UNKNOWN_PROVIDER_ERROR";
 }
 
@@ -684,6 +840,37 @@ async function parseJson<T>(
     success: false,
     error: apiError("VALIDATION_ERROR", "请求内容未通过校验。", fieldErrors),
   };
+}
+
+async function readRequestBodyWithinLimit(
+  request: Request,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 function apiError(
@@ -750,6 +937,16 @@ function safeRecordAudit(
       // A failing telemetry sink must not mask the original request result.
     }
   }
+}
+
+function getServerProvider(
+  dependencies: AutoNovelAppDependencies,
+  indexValue: string,
+): ProviderConfig | undefined {
+  if (!/^\d{1,3}$/.test(indexValue)) return undefined;
+  const index = Number(indexValue);
+  if (!Number.isSafeInteger(index) || index < 0) return undefined;
+  return dependencies.serverProviders?.[index];
 }
 
 function requireMemoryService(

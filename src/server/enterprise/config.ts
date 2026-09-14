@@ -26,11 +26,16 @@ export interface EnterpriseConfig {
   readonly allowedOrigin: string | undefined;
   readonly trustProxy: boolean;
   readonly rateLimitPerMinute: number;
+  readonly maxBodyBytes: number;
   readonly maxConcurrentRuns: number;
   readonly monthlyTokenLimit: number | undefined;
   readonly monthlyBudgetMicros: number | undefined;
   readonly modelPricing: ModelPricingTable;
   readonly fallbackProviders: readonly ProviderConfig[];
+  readonly serverProviders: readonly ProviderConfig[];
+  readonly alertWebhookUrl: string | undefined;
+  readonly auditRetentionDays: number;
+  readonly usageRetentionDays: number;
   readonly backupDirectory: string;
   readonly remoteBackupDirectory: string | undefined;
   readonly backupIntervalMs: number;
@@ -78,6 +83,13 @@ export function loadEnterpriseConfig(
       100_000,
       "XIAOYI_RATE_LIMIT_PER_MINUTE",
     ),
+    maxBodyBytes: parseBoundedInteger(
+      environment.XIAOYI_MAX_BODY_BYTES,
+      8 * 1024 * 1024,
+      1_024,
+      32 * 1024 * 1024,
+      "XIAOYI_MAX_BODY_BYTES",
+    ),
     maxConcurrentRuns: parseBoundedInteger(
       environment.XIAOYI_MAX_CONCURRENT_RUNS,
       1,
@@ -99,6 +111,22 @@ export function loadEnterpriseConfig(
     ),
     modelPricing: parseModelPricing(environment.XIAOYI_MODEL_PRICING_JSON),
     fallbackProviders: parseFallbackProviders(environment.XIAOYI_FALLBACK_PROVIDERS_JSON),
+    serverProviders: parseServerProviders(environment.XIAOYI_SERVER_PROVIDERS_JSON),
+    alertWebhookUrl: parseWebhookUrl(environment.XIAOYI_ALERT_WEBHOOK_URL),
+    auditRetentionDays: parseBoundedInteger(
+      environment.XIAOYI_AUDIT_RETENTION_DAYS,
+      180,
+      7,
+      3_650,
+      "XIAOYI_AUDIT_RETENTION_DAYS",
+    ),
+    usageRetentionDays: parseBoundedInteger(
+      environment.XIAOYI_USAGE_RETENTION_DAYS,
+      365,
+      7,
+      3_650,
+      "XIAOYI_USAGE_RETENTION_DAYS",
+    ),
     backupDirectory: resolve(
       workingDirectory,
       environment.XIAOYI_BACKUP_DIR?.trim() || dirname(databasePath) + "/backups",
@@ -125,6 +153,20 @@ export function loadEnterpriseConfig(
   };
 }
 
+function parseWebhookUrl(value: string | undefined): string | undefined {
+  const raw = nonEmpty(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname.length > 2_000 || url.search || url.hash) {
+      throw new Error();
+    }
+    return url.toString();
+  } catch {
+    throw new EnterpriseConfigError("XIAOYI_ALERT_WEBHOOK_URL must be an HTTPS URL without credentials");
+  }
+}
+
 function parseFallbackProviders(value: string | undefined): readonly ProviderConfig[] {
   const raw = nonEmpty(value);
   if (!raw) return [];
@@ -137,6 +179,27 @@ function parseFallbackProviders(value: string | undefined): readonly ProviderCon
   const result = z.array(ProviderConfigSchema).max(3).safeParse(parsed);
   if (!result.success) {
     throw new EnterpriseConfigError("XIAOYI_FALLBACK_PROVIDERS_JSON contains invalid Provider settings");
+  }
+  return result.data;
+}
+
+function parseServerProviders(value: string | undefined): readonly ProviderConfig[] {
+  const raw = nonEmpty(value);
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new EnterpriseConfigError("XIAOYI_SERVER_PROVIDERS_JSON is not valid JSON");
+  }
+  const values = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && "providers" in parsed
+      ? (parsed as { providers?: unknown }).providers
+      : undefined;
+  const result = z.array(ProviderConfigSchema).max(8).safeParse(values);
+  if (!result.success) {
+    throw new EnterpriseConfigError("XIAOYI_SERVER_PROVIDERS_JSON contains invalid Provider settings");
   }
   return result.data;
 }

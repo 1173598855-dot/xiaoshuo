@@ -11,6 +11,11 @@ import { MemoryRepository } from "./repositories/memory-repository";
 import { DirectorService } from "./services/director-service";
 import { FoundationService } from "./services/foundation-service";
 import { ProductionService } from "./services/production-service";
+import {
+  ProductionWorker,
+  type ProductionWorkerOptions,
+} from "./services/production-worker";
+import type { PersistedProviderResolver } from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
 import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
@@ -30,6 +35,10 @@ export interface AutoNovelRuntimeOptions {
   }>>;
   logger?: StructuredLogger;
   metrics?: MetricsRegistry;
+  /** Resolve key-free persisted provider descriptors for server workers. */
+  resolvePersistedProvider?: PersistedProviderResolver;
+  /** Worker remains opt-in so existing desktop/unit-test runtimes stay deterministic. */
+  workerOptions?: ProductionWorkerOptions;
 }
 
 export interface AutoNovelRuntime {
@@ -40,6 +49,7 @@ export interface AutoNovelRuntime {
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
+  readonly productionWorker: ProductionWorker;
   readonly memoryService: MemoryService;
   readonly auditRepository: AuditRepository;
   readonly usageRepository: UsageRepository;
@@ -82,11 +92,18 @@ export function createAutoNovelRuntime(
       metrics,
       auditRepository,
       logger,
+      resolvePersistedProvider: options.resolvePersistedProvider,
     };
     const productionService = new ProductionService(shared);
-    for (const run of productionRepository.recoverInterruptedRuns()) {
-      bookRepository.setStatus(run.bookId, "paused");
-    }
+    const productionWorker = new ProductionWorker(
+      {
+        productionRepository,
+        productionService,
+        resolvePersistedProvider: options.resolvePersistedProvider,
+        logger,
+      },
+      options.workerOptions,
+    );
     return {
       database,
       bookRepository,
@@ -95,6 +112,7 @@ export function createAutoNovelRuntime(
       directorService: new DirectorService(shared),
       foundationService: new FoundationService(shared),
       productionService,
+      productionWorker,
       memoryService,
       auditRepository,
       usageRepository,

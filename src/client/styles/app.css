@@ -2067,6 +2067,19 @@ body {
   border: 1px solid var(--ink);
 }
 
+.connection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #d7d1c6);
+  background: #fff7e8;
+  color: var(--ink, #1d1d1b);
+  font-size: 13px;
+}
+
 .run-panel,
 .chapter-feed,
 .review-panel {

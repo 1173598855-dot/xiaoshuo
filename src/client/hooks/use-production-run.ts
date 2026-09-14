@@ -2,6 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AutoNovelApi, AutoNovelRunDetails } from "../auto-novel-api";
 
+const BASE_POLL_INTERVAL_MS = 1_000;
+const MAX_RETRY_INTERVAL_MS = 15_000;
+
+export type ProductionConnectionState = "idle" | "connected" | "reconnecting";
+
+interface ActiveRunRequest {
+  readonly api: AutoNovelApi;
+  readonly runId: string;
+  readonly controller: AbortController;
+  readonly promise: Promise<void>;
+}
+
 export function useProductionRun(
   api: AutoNovelApi,
   runId: string | null,
@@ -9,63 +21,111 @@ export function useProductionRun(
   const [details, setDetails] = useState<AutoNovelRunDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef<AbortController | null>(null);
-  const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const [connectionState, setConnectionState] = useState<ProductionConnectionState>("idle");
+  const requestRef = useRef<ActiveRunRequest | null>(null);
+  const detailsRef = useRef<AutoNovelRunDetails | null>(null);
+  const retryDelayRef = useRef(BASE_POLL_INTERVAL_MS);
+  const nextPollAtRef = useRef(0);
+
+  useEffect(() => {
+    detailsRef.current = details;
+  }, [details]);
 
   const refresh = useCallback(async () => {
-    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    const active = requestRef.current;
+    if (active && active.api === api && active.runId === runId) {
+      return active.promise;
+    }
+    active?.controller.abort();
+    if (!runId) {
+      requestRef.current = null;
+      detailsRef.current = null;
+      setDetails(null);
+      setError(null);
+      setConnectionState("idle");
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
     const task = (async () => {
-      if (!runId) {
-        setDetails(null);
-        return;
-      }
-      const controller = new AbortController();
-      requestRef.current = controller;
       setLoading(true);
       try {
-        const next = await api.getRun(runId, controller.signal);
-        if (!controller.signal.aborted) {
+        const next = await Promise.resolve().then(() => api.getRun(runId, controller.signal));
+        if (requestRef.current?.controller === controller && !controller.signal.aborted) {
           setDetails(next);
+          detailsRef.current = next;
           setError(null);
+          setConnectionState("connected");
+          retryDelayRef.current = BASE_POLL_INTERVAL_MS;
+          nextPollAtRef.current = Date.now() + BASE_POLL_INTERVAL_MS;
         }
       } catch (requestError) {
-        if (!controller.signal.aborted) {
+        if (requestRef.current?.controller === controller && !controller.signal.aborted) {
           setError(
             requestError instanceof Error
               ? requestError.message
               : "无法读取生产进度。",
           );
+          setConnectionState("reconnecting");
+          nextPollAtRef.current = Date.now() + retryDelayRef.current;
+          retryDelayRef.current = Math.min(
+            MAX_RETRY_INTERVAL_MS,
+            retryDelayRef.current * 2,
+          );
         }
       } finally {
-        if (requestRef.current === controller) requestRef.current = null;
-        setLoading(false);
+        if (requestRef.current?.controller === controller) {
+          requestRef.current = null;
+          setLoading(false);
+        }
       }
     })();
-    refreshPromiseRef.current = task;
-    try {
-      await task;
-    } finally {
-      if (refreshPromiseRef.current === task) refreshPromiseRef.current = null;
-    }
+    requestRef.current = { api, runId, controller, promise: task };
+    await task;
   }, [api, runId]);
 
+  const retryNow = useCallback(() => {
+    retryDelayRef.current = BASE_POLL_INTERVAL_MS;
+    nextPollAtRef.current = 0;
+    void refresh();
+  }, [refresh]);
+
   useEffect(() => {
+    retryDelayRef.current = BASE_POLL_INTERVAL_MS;
+    nextPollAtRef.current = 0;
+    detailsRef.current = null;
+    setDetails(null);
+    setError(null);
+    setConnectionState(runId ? "reconnecting" : "idle");
     void refresh();
     if (!runId) return undefined;
     const timer = window.setInterval(() => {
-      if (
-        details?.run.status !== "completed" &&
-        details?.run.status !== "failed" &&
-        details?.run.status !== "cancelled"
-      ) {
+      const status = detailsRef.current?.run.status;
+      const terminal = status === "completed" || status === "failed" || status === "cancelled";
+      if (!terminal && Date.now() >= nextPollAtRef.current) {
         void refresh();
       }
     }, 1_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") retryNow();
+    };
+    const refreshWhenOnline = () => retryNow();
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenOnline);
+    window.addEventListener("focus", refreshWhenVisible);
     return () => {
       window.clearInterval(timer);
-      requestRef.current?.abort();
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenOnline);
+      window.removeEventListener("focus", refreshWhenVisible);
+      const current = requestRef.current;
+      if (current?.api === api && current.runId === runId) {
+        current.controller.abort();
+        requestRef.current = null;
+      }
     };
-  }, [details?.run.status, refresh, runId]);
+  }, [api, refresh, retryNow, runId]);
 
-  return { details, loading, error, refresh };
+  return { details, loading, error, connectionState, refresh, retryNow };
 }
