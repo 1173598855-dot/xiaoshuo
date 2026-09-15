@@ -9,6 +9,7 @@ export const MAX_MEMORY_CONTEXT_CHARACTERS = 20_000;
 export const MemoryKindSchema = z.enum([
   "world_rule",
   "character_state",
+  "location",
   "fact",
   "timeline_event",
   "foreshadowing",
@@ -47,6 +48,15 @@ export const CharacterStateContentSchema = z
   })
   .strict();
 
+export const LocationContentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(2_000),
+    significance: z.string().trim().min(1).max(1_000),
+    rules: z.array(z.string().trim().min(1).max(500)).max(20),
+  })
+  .strict();
+
 export const FactContentSchema = z
   .object({
     statement: z.string().trim().min(1).max(1_000),
@@ -80,6 +90,7 @@ export const StyleConstraintContentSchema = z
 export const MemoryContentSchema = z.union([
   WorldRuleContentSchema,
   CharacterStateContentSchema,
+  LocationContentSchema,
   FactContentSchema,
   TimelineEventContentSchema,
   ForeshadowingContentSchema,
@@ -90,6 +101,7 @@ export type MemoryContent = z.infer<typeof MemoryContentSchema>;
 const contentSchemas: Record<MemoryKind, z.ZodTypeAny> = {
   world_rule: WorldRuleContentSchema,
   character_state: CharacterStateContentSchema,
+  location: LocationContentSchema,
   fact: FactContentSchema,
   timeline_event: TimelineEventContentSchema,
   foreshadowing: ForeshadowingContentSchema,

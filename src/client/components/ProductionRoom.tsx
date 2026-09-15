@@ -17,6 +17,8 @@ interface ProductionRoomProps {
   onCancel: () => void;
   onOpenManuscript: () => void;
   onOpenMemory: () => void;
+  onOpenTimeline: () => void;
+  onOpenStoryBible: () => void;
   onConfigureProvider: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
@@ -34,6 +36,8 @@ export function ProductionRoom({
   onCancel,
   onOpenManuscript,
   onOpenMemory,
+  onOpenTimeline,
+  onOpenStoryBible,
   onConfigureProvider,
   connectionState = "connected",
   onRetryConnection,
@@ -46,7 +50,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>

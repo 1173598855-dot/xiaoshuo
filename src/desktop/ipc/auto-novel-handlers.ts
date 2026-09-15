@@ -7,6 +7,7 @@ import {
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
   RewriteChapterInputSchema,
+  UpdateChapterPlanInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
 import {
@@ -68,6 +69,7 @@ const MemoryContextRequestSchema = z.object({
   memoryContextConfig: MemoryContextConfigSchema.optional(),
 }).strict();
 const MemoryHistoryRequestSchema = z.object({ entryId: z.string().uuid() }).strict();
+const TimelineUpdateRequestSchema = UpdateChapterPlanInputSchema;
 
 export interface AutoNovelDesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
@@ -112,6 +114,12 @@ export function registerAutoNovelIpcHandlers(
       };
     },
   );
+  register(dependencies, AUTO_NOVEL_CHANNELS.timelineUpdate, TimelineUpdateRequestSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    const services = dependencies.getServices();
+    services.bookRepository.updateChapterPlan(input.bookId, input);
+    return services.bookRepository.getBook(input.bookId);
+  });
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.directionsList,

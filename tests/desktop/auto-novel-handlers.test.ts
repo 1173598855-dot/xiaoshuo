@@ -33,6 +33,7 @@ function createFixture(isTrustedSender = true) {
       createBook: vi.fn(() => book),
       listBooks: vi.fn(() => [book]),
       getBook: vi.fn(() => ({ book, directions: [], foundation: null, chapterPlans: [], run: null })),
+      updateChapterPlan: vi.fn(),
       listDirections: vi.fn(() => []),
     },
     directorService: { generateDirections: vi.fn(async () => []) },
@@ -181,5 +182,29 @@ describe("auto novel desktop IPC", () => {
     });
     expect(candidate).toMatchObject({ ok: true, data: { id: "candidate" } });
     expect(services.productionRepository.getCandidate).toHaveBeenCalledWith(candidateId);
+  });
+
+  it("updates a timeline only through the fixed Main-process channel", async () => {
+    const { handlers, services, book } = createFixture();
+    const planId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.timelineUpdate)?.({}, {
+      bookId: book.id,
+      planId,
+      expectedBookRevision: 0,
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      title: "新标题",
+      summary: "新摘要",
+      objective: "新目标",
+      hook: "新钩子",
+      foreshadowing: ["伏笔"],
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { book } });
+    expect(services.bookRepository.updateChapterPlan).toHaveBeenCalledWith(book.id, expect.objectContaining({
+      planId,
+      expectedBookRevision: 0,
+      title: "新标题",
+    }));
   });
 });

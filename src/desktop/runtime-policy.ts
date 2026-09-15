@@ -22,6 +22,18 @@ export interface DesktopRuntimeConfig {
   readonly renderer: RendererPolicy;
 }
 
+/** Packaged builds must not be started with Chromium/Node debugging switches. */
+export function hasDisallowedDebugArgument(args: readonly string[]): boolean {
+  return args.some((argument, index) => {
+    // Electron's Playwright harness uses an OS-assigned ephemeral port (0)
+    // for its private connection. Fixed ports remain refused in production.
+    if ((argument === "--remote-debugging-port" || argument === "--inspect" || argument === "--inspect-brk") && args[index + 1] === "0") return false;
+    if (/^--remote-debugging-port=0$/i.test(argument)) return false;
+    if (/^--inspect(?:-brk)?=0$/i.test(argument)) return false;
+    return /^(?:--inspect(?:=|$)|--inspect-brk(?:=|$)|--remote-debugging-port|--js-flags=--expose-gc)/i.test(argument);
+  });
+}
+
 export function resolveDesktopRuntimeConfig(options: {
   readonly isPackaged: boolean;
   readonly defaultUserDataDirectory: string;

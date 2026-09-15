@@ -71,6 +71,7 @@ interface MemoryRevisionRow {
 interface FoundationRow {
   world_rules_json: string;
   characters_json: string;
+  locations_json: string;
   style_guide: string;
   facts_json: string;
 }
@@ -223,7 +224,7 @@ export class MemoryRepository {
       this.requireBook(bookId);
       const foundation = this.database
         .prepare(
-          `SELECT world_rules_json, characters_json, style_guide, facts_json
+          `SELECT world_rules_json, characters_json, locations_json, style_guide, facts_json
            FROM book_foundations WHERE book_id = ?`,
         )
         .get(bookId) as FoundationRow | undefined;
@@ -258,6 +259,29 @@ export class MemoryRepository {
             goal: character.motivation,
             relationships: [],
             state: `${character.role}；${character.arc}`,
+          },
+          status: "active",
+          importance: 4,
+          locked: false,
+          sourceChapterNumber: null,
+          sourceCandidateId: null,
+          validFromChapter: 1,
+          validToChapter: null,
+        });
+      }
+
+      const locations = parseJson<
+        Array<{ name: string; description: string; significance: string; rules: string[] }>
+      >(foundation.locations_json);
+      for (const location of locations) {
+        drafts.push({
+          kind: "location",
+          subject: location.name,
+          content: {
+            name: location.name,
+            description: location.description,
+            significance: location.significance,
+            rules: location.rules,
           },
           status: "active",
           importance: 4,

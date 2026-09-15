@@ -15,6 +15,19 @@ export const FoundationModelOutputSchema = z
           .strict(),
       )
       .max(200),
+    locations: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1).max(120),
+            description: z.string().trim().min(1).max(2_000),
+            significance: z.string().trim().min(1).max(1_000),
+            rules: z.array(z.string().trim().min(1).max(500)).max(20),
+          })
+          .strict(),
+      )
+      .max(200)
+      .default([]),
     styleGuide: z.string().trim().max(4_000),
     facts: z.array(z.string().trim().min(1).max(1_000)).max(500),
   })

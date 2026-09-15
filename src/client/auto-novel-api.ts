@@ -16,6 +16,7 @@ import {
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  UpdateChapterPlanInputSchema,
   RewriteChapterInputSchema,
   type Book,
   type BookDetails,
@@ -25,6 +26,7 @@ import {
   type AcceptedChapterResult,
   type ProductionRun,
   type StoryDirection,
+  type UpdateChapterPlanInput,
 } from "../shared/auto-novel";
 import {
   MemoryBookSnapshotSchema,
@@ -75,6 +77,7 @@ export interface AutoNovelApi {
     idempotencyKey: string,
   ): Promise<{ book: Book; directions: readonly StoryDirection[] }>;
   getBook(bookId: string): Promise<BookDetails>;
+  updateChapterPlan(input: UpdateChapterPlanInput): Promise<BookDetails>;
   listDirections(bookId: string): Promise<readonly StoryDirection[]>;
   getChapters(bookId: string): Promise<BookChapters>;
   getCandidate(candidateId: string): Promise<ChapterCandidate>;
@@ -142,6 +145,15 @@ export function createAutoNovelApi(
     },
     async getBook(bookId) {
       return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}`));
+    },
+    async updateChapterPlan(input) {
+      const parsed = UpdateChapterPlanInputSchema.parse(input);
+      return BookDetailsSchema.parse(
+        await requestJson(fetchImpl, `/api/books/${parsed.bookId}/timeline/${parsed.planId}`, {
+          method: "PATCH",
+          body: JSON.stringify(parsed),
+        }),
+      );
     },
     async listDirections(bookId) {
       return z.array(StoryDirectionSchema).parse(

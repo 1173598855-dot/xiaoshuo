@@ -14,6 +14,7 @@ import type {
   UpdateCandidateTextInput,
   UpdateCandidateMemoryReviewInput,
   RewriteChapterInput,
+  UpdateChapterPlanInput,
 } from "../shared/auto-novel";
 import type {
   MemoryBookSnapshot,
@@ -40,6 +41,7 @@ export interface AutoNovelDesktopApiV2 {
       idempotencyKey: string;
     }): Promise<DesktopResult<{ book: Book; directions: readonly StoryDirection[] }>>;
     get(bookId: string): Promise<DesktopResult<BookDetails>>;
+    updateTimeline(input: UpdateChapterPlanInput): Promise<DesktopResult<BookDetails>>;
     chapters(bookId: string): Promise<DesktopResult<BookChapters>>;
     export(input: {
       bookId: string;
@@ -93,6 +95,7 @@ export function createAutoNovelPreloadApiV2(
       list: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksList),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
+      updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),
       chapters: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksChapters, { bookId }),
       export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),
     },

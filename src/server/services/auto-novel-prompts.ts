@@ -71,7 +71,7 @@ export function buildDirectorPrompt(book: Book): {
 export function buildFoundationPrompt(book: Book, direction: StoryDirection) {
   return {
     systemPrompt:
-      "你是长篇小说总策划。只输出合法 JSON，生成可供后续逐章写作使用的世界规则、角色状态、事实和写法约束。",
+      "你是长篇小说总策划。只输出合法 JSON，生成可供后续逐章写作使用的世界规则、角色状态、地点资料、事实和写法约束。",
     userPrompt: [
       `原始想法：${book.idea}`,
       `选定标题：${direction.title}`,
@@ -79,7 +79,7 @@ export function buildFoundationPrompt(book: Book, direction: StoryDirection) {
       `核心冲突：${direction.centralConflict}`,
       `结局倾向：${direction.endingDirection}`,
       ...(book.style.trim() ? [`作者文风提示：${book.style}`] : []),
-      "不要要求作者手动填写角色卡；请自动补齐必要信息。",
+      "不要要求作者手动填写角色卡或地点卡；请自动补齐必要信息。",
     ].join("\n"),
   };
 }

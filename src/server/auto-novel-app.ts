@@ -14,6 +14,7 @@ import {
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
   RewriteChapterInputSchema,
+  UpdateChapterPlanInputSchema,
 } from "../shared/auto-novel";
 import {
   MemoryFilterSchema,
@@ -577,6 +578,22 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       plans: details.chapterPlans,
       chapters: dependencies.productionRepository.getChapters(bookId.data),
     });
+  });
+
+  app.patch("/api/books/:bookId/timeline/:planId", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    const planId = MemoryPathIdSchema.safeParse(context.req.param("planId"));
+    if (!bookId.success || !planId.success) {
+      return context.json(apiError("VALIDATION_ERROR", "时间线标识无效。"), 400);
+    }
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, UpdateChapterPlanInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data || parsed.data.planId !== planId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "时间线条目标识不一致。"), 400);
+    }
+    dependencies.bookRepository.updateChapterPlan(bookId.data, parsed.data);
+    return context.json(dependencies.bookRepository.getBook(bookId.data));
   });
 
   app.get("/api/books/:bookId/memory", (context) => {

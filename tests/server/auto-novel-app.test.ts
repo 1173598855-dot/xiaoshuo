@@ -229,6 +229,53 @@ describe("auto-novel HTTP app", () => {
     expect((await retried.json() as { chapterPlans: unknown[] }).chapterPlans).toHaveLength(1);
   });
 
+  it("edits the AI timeline through HTTP and rejects a stale book revision", async () => {
+    const { app, provider } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "可编辑时间线", provider, idempotencyKey: "timeline-http" }),
+    });
+    const createdBody = await created.json() as { book: { id: string; revision: number }; directions: Array<{ id: string }> };
+    const selected = await app.request(`/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+    });
+    const selectedBody = await selected.json() as { book: { id: string; revision: number }; chapterPlans: Array<{ id: string }> };
+    const plan = selectedBody.chapterPlans[0];
+    const body = {
+      bookId: selectedBody.book.id,
+      planId: plan.id,
+      expectedBookRevision: selectedBody.book.revision,
+      volumeNumber: 1,
+      volumeTitle: "第一卷·新回声",
+      title: "第一章·修改后的标题",
+      summary: "作者随时调整后的摘要。",
+      objective: "让主角主动追查。",
+      hook: "门后的脚步再次响起。",
+      foreshadowing: ["新线索"],
+    };
+    const updated = await app.request(`/api/books/${selectedBody.book.id}/timeline/${plan.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      book: { revision: selectedBody.book.revision + 1 },
+      chapterPlans: [{ id: plan.id, title: "第一章·修改后的标题" }],
+    });
+
+    const stale = await app.request(`/api/books/${selectedBody.book.id}/timeline/${plan.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { code: "REVISION_CONFLICT" } });
+  });
+
   it("rejects an empty idea before calling the model", async () => {
     const { app, provider } = fixture();
     const response = await app.request("/api/books", {

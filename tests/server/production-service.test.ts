@@ -127,6 +127,20 @@ describe("ProductionService", () => {
       },
     };
     const fixture = createFixture(provider);
+    const currentPlan = fixture.bookRepository.getChapterPlan(fixture.run.bookId, 1)!;
+    const currentBook = fixture.bookRepository.getBook(fixture.run.bookId).book;
+    fixture.bookRepository.updateChapterPlan(fixture.run.bookId, {
+      bookId: fixture.run.bookId,
+      planId: currentPlan.id,
+      expectedBookRevision: currentBook.revision,
+      volumeNumber: currentPlan.volumeNumber,
+      volumeTitle: currentPlan.volumeTitle,
+      title: "作者改过的时间线标题",
+      summary: "作者改过的时间线摘要。",
+      objective: "使用作者改过的章节目标。",
+      hook: currentPlan.hook,
+      foreshadowing: ["新的伏笔"],
+    });
     const service = new ProductionService(fixture);
 
     const candidate = await service.rewriteCurrentChapter(
@@ -140,6 +154,7 @@ describe("ProductionService", () => {
     expect(candidate.candidateText).toBe("重写后的第一章正文。");
     expect(candidate.originalText).toBe("");
     expect(prompts.some((prompt) => prompt.includes("重写要求：加强开场冲突"))).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes("作者改过的时间线标题") && prompt.includes("使用作者改过的章节目标"))).toBe(true);
     expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(0);
 
     const accepted = await fixture.productionRepository.acceptCandidate(

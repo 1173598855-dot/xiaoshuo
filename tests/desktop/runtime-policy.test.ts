@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  hasDisallowedDebugArgument,
   isTrustedDesktopIpcSender,
   resolveDesktopRuntimeConfig,
 } from "../../src/desktop/runtime-policy";
@@ -10,6 +11,23 @@ import {
 const rendererFile = "C:\\app\\dist\\client\\index.html";
 
 describe("desktop runtime policy", () => {
+  it.each([
+    "--inspect=9229",
+    "--inspect-brk",
+    "--remote-debugging-port=9222",
+    "--js-flags=--expose-gc",
+  ])("rejects packaged debug switches even when they arrive as app arguments: %s", (argument) => {
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", argument])).toBe(true);
+  });
+
+  it("does not reject ordinary application arguments", () => {
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", "--user-data-dir=C:\\tmp\\xiaoyi"])).toBe(false);
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", "--remote-debugging-port=0"])).toBe(false);
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", "--remote-debugging-port", "0"])).toBe(false);
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", "--inspect=0"])).toBe(false);
+    expect(hasDisallowedDebugArgument(["小奕小说生成工具.exe", "--inspect-publish-uid=http"])).toBe(false);
+  });
+
   it("ignores development and automation overrides in packaged builds", () => {
     const config = resolveDesktopRuntimeConfig({
       isPackaged: true,

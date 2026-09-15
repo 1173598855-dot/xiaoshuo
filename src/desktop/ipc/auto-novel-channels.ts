@@ -2,6 +2,7 @@ export const AUTO_NOVEL_CHANNELS = {
   booksList: "auto-novel:books-list",
   booksCreate: "auto-novel:books-create",
   booksGet: "auto-novel:books-get",
+  timelineUpdate: "auto-novel:timeline-update",
   booksChapters: "auto-novel:books-chapters",
   directionsList: "auto-novel:directions-list",
   directionsSelect: "auto-novel:directions-select",

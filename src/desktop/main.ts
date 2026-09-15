@@ -28,6 +28,7 @@ import { DesktopAuthService } from "./desktop-auth";
 import { AuthRepository } from "../server/repositories/auth-repository";
 import {
   isTrustedDesktopIpcSender,
+  hasDisallowedDebugArgument,
   resolveDesktopRuntimeConfig,
   type DesktopRuntimeConfig,
   type RendererPolicy,
@@ -138,9 +139,7 @@ if (!hasSingleInstanceLock) {
 async function bootstrap(): Promise<void> {
   if (
     app.isPackaged &&
-    process.execArgv.some((argument) =>
-      /^(--inspect|--inspect-brk|--remote-debugging-port|--js-flags=--expose-gc)/i.test(argument),
-    )
+    hasDisallowedDebugArgument([...process.execArgv, ...process.argv.slice(1)])
   ) {
     throw new Error("Packaged desktop runtime refuses debugging flags");
   }

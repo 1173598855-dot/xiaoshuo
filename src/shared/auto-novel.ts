@@ -121,6 +121,19 @@ export const BookFoundationSchema = z
           .strict(),
       )
       .max(200),
+    locations: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1).max(120),
+            description: z.string().min(1).max(2_000),
+            significance: z.string().min(1).max(1_000),
+            rules: z.array(z.string().min(1).max(500)).max(20),
+          })
+          .strict(),
+      )
+      .max(200)
+      .default([]),
     styleGuide: z.string().max(4_000),
     facts: z.array(z.string().min(1).max(1_000)).max(500),
     revision: z.number().int().nonnegative(),
@@ -148,6 +161,22 @@ export const ChapterPlanSchema = z
   })
   .strict();
 export type ChapterPlan = z.infer<typeof ChapterPlanSchema>;
+
+export const UpdateChapterPlanInputSchema = z
+  .object({
+    bookId: UuidSchema,
+    planId: UuidSchema,
+    expectedBookRevision: z.number().int().nonnegative(),
+    volumeNumber: z.number().int().min(1),
+    volumeTitle: z.string().trim().min(1).max(200),
+    title: z.string().trim().min(1).max(200),
+    summary: z.string().trim().min(1).max(4_000),
+    objective: z.string().trim().min(1).max(2_000),
+    hook: z.string().trim().max(2_000),
+    foreshadowing: z.array(z.string().trim().max(500)).max(20),
+  })
+  .strict();
+export type UpdateChapterPlanInput = z.infer<typeof UpdateChapterPlanInputSchema>;
 
 export const ProductionCheckpointSchema = z
   .object({

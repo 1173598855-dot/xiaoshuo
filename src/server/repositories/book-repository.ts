@@ -14,6 +14,7 @@ import {
   type ChapterPlan,
   type CreateBookInput,
   type StoryDirection,
+  type UpdateChapterPlanInput,
 } from "../../shared/auto-novel";
 import { MemoryContextConfigSchema } from "../../shared/memory";
 
@@ -24,8 +25,8 @@ export type DirectionDraft = Omit<
 
 export type FoundationDraft = Omit<
   BookFoundation,
-  "id" | "bookId" | "revision" | "createdAt" | "updatedAt"
->;
+  "id" | "bookId" | "revision" | "createdAt" | "updatedAt" | "locations"
+> & { locations?: BookFoundation["locations"] };
 
 export type ChapterPlanDraft = Omit<
   ChapterPlan,
@@ -74,6 +75,7 @@ interface FoundationRow {
   book_id: string;
   world_rules_json: string;
   characters_json: string;
+  locations_json: string;
   style_guide: string;
   facts_json: string;
   revision: number;
@@ -127,6 +129,15 @@ export class DirectionNotFoundError extends Error {
   constructor(directionId: string) {
     super(`Direction ${directionId} was not found`);
     this.name = "DirectionNotFoundError";
+  }
+}
+
+export class ChapterPlanNotFoundError extends Error {
+  readonly code = "NOT_FOUND";
+
+  constructor(planId: string) {
+    super(`Chapter plan ${planId} was not found`);
+    this.name = "ChapterPlanNotFoundError";
   }
 }
 
@@ -238,7 +249,7 @@ export class BookRepository {
     const directions = this.getDirections(bookId);
     const foundationRow = this.database
       .prepare(
-        `SELECT id, book_id, world_rules_json, characters_json, style_guide,
+        `SELECT id, book_id, world_rules_json, characters_json, locations_json, style_guide,
                 facts_json, revision, created_at, updated_at
          FROM book_foundations WHERE book_id = ?`,
       )
@@ -383,12 +394,13 @@ export class BookRepository {
       this.database
         .prepare(
           `INSERT INTO book_foundations (
-             id, book_id, world_rules_json, characters_json, style_guide,
+             id, book_id, world_rules_json, characters_json, locations_json, style_guide,
              facts_json, revision, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(book_id) DO UPDATE SET
              world_rules_json = excluded.world_rules_json,
              characters_json = excluded.characters_json,
+             locations_json = excluded.locations_json,
              style_guide = excluded.style_guide,
              facts_json = excluded.facts_json,
              revision = excluded.revision,
@@ -399,6 +411,7 @@ export class BookRepository {
           bookId,
           JSON.stringify(draft.worldRules),
           JSON.stringify(draft.characters),
+          JSON.stringify(draft.locations ?? []),
           draft.styleGuide,
           JSON.stringify(draft.facts),
           revision,
@@ -414,7 +427,7 @@ export class BookRepository {
       return toFoundation(
         this.database
           .prepare(
-            `SELECT id, book_id, world_rules_json, characters_json, style_guide,
+            `SELECT id, book_id, world_rules_json, characters_json, locations_json, style_guide,
                     facts_json, revision, created_at, updated_at
              FROM book_foundations WHERE id = ?`,
           )
@@ -471,6 +484,61 @@ export class BookRepository {
         )
         .run(timestamp, bookId);
       return this.getChapterPlans(bookId);
+    });
+  }
+
+  updateChapterPlan(bookId: string, input: UpdateChapterPlanInput): ChapterPlan {
+    return this.withTransaction(() => {
+      const book = this.requireBookRow(bookId);
+      if (book.revision !== input.expectedBookRevision) {
+        throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+      }
+      const current = this.database
+        .prepare(
+          `SELECT id, book_id, volume_number, volume_title, chapter_number,
+                  title, summary, objective, hook, foreshadowing_json, status,
+                  created_at, updated_at
+           FROM chapter_plans WHERE id = ? AND book_id = ?`,
+        )
+        .get(input.planId, bookId) as ChapterPlanRow | undefined;
+      if (!current) throw new ChapterPlanNotFoundError(input.planId);
+
+      const timestamp = this.now();
+      this.database
+        .prepare(
+          `UPDATE chapter_plans
+           SET volume_number = ?, volume_title = ?, title = ?, summary = ?,
+               objective = ?, hook = ?, foreshadowing_json = ?, updated_at = ?
+           WHERE id = ? AND book_id = ?`,
+        )
+        .run(
+          input.volumeNumber,
+          input.volumeTitle,
+          input.title,
+          input.summary,
+          input.objective,
+          input.hook,
+          JSON.stringify(input.foreshadowing),
+          timestamp,
+          input.planId,
+          bookId,
+        );
+      this.database
+        .prepare(
+          `UPDATE books SET revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ?`,
+        )
+        .run(timestamp, bookId, input.expectedBookRevision);
+      return toChapterPlan(
+        this.database
+          .prepare(
+            `SELECT id, book_id, volume_number, volume_title, chapter_number,
+                    title, summary, objective, hook, foreshadowing_json, status,
+                    created_at, updated_at
+             FROM chapter_plans WHERE id = ? AND book_id = ?`,
+          )
+          .get(input.planId, bookId) as unknown as ChapterPlanRow,
+      );
     });
   }
 
@@ -605,6 +673,7 @@ function toFoundation(row: FoundationRow): BookFoundation {
     bookId: row.book_id,
     worldRules: parseJson<string[]>(row.world_rules_json),
     characters: parseJson<BookFoundation["characters"]>(row.characters_json),
+    locations: parseJson<BookFoundation["locations"]>(row.locations_json),
     styleGuide: row.style_guide,
     facts: parseJson<string[]>(row.facts_json),
     revision: row.revision,

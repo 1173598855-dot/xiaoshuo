@@ -1458,6 +1458,206 @@ button:disabled {
   }
 }
 
+/* Story-planning surfaces: an editorial timeline beside a quiet card index. */
+.story-drawer {
+  position: fixed;
+  z-index: 11;
+  inset: 0 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100vw);
+  height: 100dvh;
+  padding: 24px;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--paper);
+  border-left: 1px solid var(--ink);
+  box-shadow: -16px 0 0 rgb(23 24 23 / 8%);
+}
+
+.story-drawer-subtitle {
+  max-width: 430px;
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  color: var(--pine);
+  border-bottom: 1px solid var(--ink);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.timeline-toolbar > span,
+.timeline-notice,
+.timeline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.timeline-list {
+  flex: 1;
+  margin: 14px -8px 0 0;
+  padding-right: 8px;
+  overflow-y: auto;
+}
+
+.timeline-volume {
+  margin-bottom: 22px;
+}
+
+.timeline-volume-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.timeline-volume-heading span {
+  color: var(--violet);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.timeline-volume-heading strong {
+  font-size: 16px;
+}
+
+.timeline-volume-heading small {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.timeline-card {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 13px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.timeline-card-marker {
+  color: var(--violet);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.timeline-card-body {
+  min-width: 0;
+}
+
+.timeline-card-meta,
+.timeline-card-footer {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.timeline-card-meta {
+  margin-bottom: 10px;
+}
+
+.timeline-card-body label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 9px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.timeline-card-body input,
+.timeline-card-body textarea {
+  width: 100%;
+  padding: 8px 9px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.timeline-card-body textarea {
+  min-height: 58px;
+  resize: vertical;
+}
+
+.timeline-card-body input:focus,
+.timeline-card-body textarea:focus {
+  border-color: var(--violet);
+  outline: 2px solid rgb(108 84 143 / 18%);
+}
+
+.timeline-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.timeline-card-footer .primary-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.timeline-notice {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  color: var(--pine);
+  background: var(--pine-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.timeline-error {
+  margin: 10px 0 0;
+  color: var(--danger, #a54d45);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.story-bible-drawer .memory-entry {
+  border-left: 3px solid var(--violet);
+}
+
+@media (max-width: 560px) {
+  .story-drawer {
+    width: 100vw;
+    padding: 18px 16px;
+  }
+
+  .timeline-card {
+    grid-template-columns: 30px 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .timeline-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* Editorial refresh: a quiet publishing desk with an award-site rhythm. */
 :root {
   --ink: #171817;

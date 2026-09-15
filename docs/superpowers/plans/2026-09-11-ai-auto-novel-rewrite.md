@@ -546,3 +546,20 @@ git commit -m "docs: record auto-novel rewrite verification"
 - 类型一致性：后续 repository、service、route、transport 和 UI 使用 Task 2 定义的 Book、StoryDirection、ProductionRun、ProductionCheckpoint 和 ChapterCandidate。
 - 范围检查：业务层全量重写，平台安全和数据维护底座保留，不引入云同步、账号、多用户或第二套运行时。
 
+---
+
+## Task 11：AI 故事时间线与资料卡可编辑工作台（2026-09-15）
+
+- [x] 扩展基础设定结构：AI 生成地点卡，记忆账本新增 `location` 类型；既有数据库通过迁移保留旧资料和历史。
+- [x] 增加 `PATCH /api/books/:bookId/timeline/:planId` 与等价白名单桌面 IPC；时间线编辑使用 `expectedBookRevision`，一次成功保存只递增一次作品 revision。
+- [x] 增加故事时间线面板：卷章分组、标题/摘要/目标/钩子/伏笔随时修改，保存冲突时保留作者草稿并可重新载入。
+- [x] 增加故事资料卡入口：角色、地点、世界规则、事实、时间线、伏笔和文风统一使用现有锁定、历史、回滚与 Provider allow-list。
+- [x] 验证时间线修改会进入后续生产 prompt；浏览器和 Electron 主流程覆盖时间线保存及资料卡入口。
+
+### Task 12：最终门禁与安全审查证据
+
+- [x] `npm run lint`、`npm run typecheck`、`npm run test:run`：72 个测试文件、312 个测试通过。
+- [x] `npm run build` 与服务端 smoke 通过；默认 `npm run e2e` 4/4、外部端口 E2E 4/4。
+- [x] `npm run smoke:desktop`、`npm run desktop:test`、NSIS 正式签名模式、`node scripts/assert-desktop-artifact.mjs`、`npm run desktop:package:test`、`npm run desktop:installed:test` 全部通过；最终安装包 106,810,595 bytes，安装版验收后已卸载。
+- [x] 主进程启动参数、IPC、Renderer 输出、凭据边界完成主动安全审查，报告见仓库根目录 `security_best_practices_report.md`。
+

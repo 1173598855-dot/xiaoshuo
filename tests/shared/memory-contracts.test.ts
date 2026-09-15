@@ -17,10 +17,11 @@ const ids = {
 };
 const timestamp = "2026-09-12T00:00:00.000Z";
 
-function entry(kind: "world_rule" | "character_state" | "fact" | "timeline_event" | "foreshadowing" | "style_constraint") {
+function entry(kind: "world_rule" | "character_state" | "location" | "fact" | "timeline_event" | "foreshadowing" | "style_constraint") {
   const content = {
     world_rule: { summary: "规则摘要", rule: "每个秘密都会留下物证" },
     character_state: { name: "林渡", goal: "查明真相", relationships: ["与顾遥互信"], state: "仍在追查" },
+    location: { name: "旧站台", description: "凌晨才出现", significance: "追查线索的地点", rules: ["只能一人进入"] },
     fact: { statement: "第一封信来自明天", evidence: null },
     timeline_event: { event: "收到第一封信", chapterNumber: 1, before: null, after: "开始追查" },
     foreshadowing: { seed: "寄件人的笔迹", plannedReturnChapter: 6, resolved: false },
@@ -46,10 +47,11 @@ function entry(kind: "world_rule" | "character_state" | "fact" | "timeline_event
 }
 
 describe("memory contracts", () => {
-  it("accepts all six memory kinds and four statuses", () => {
+  it("accepts all seven memory kinds and four statuses", () => {
     expect(MemoryKindSchema.options).toEqual([
       "world_rule",
       "character_state",
+      "location",
       "fact",
       "timeline_event",
       "foreshadowing",

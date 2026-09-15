@@ -21,21 +21,23 @@ interface MemoryPanelProps {
   memoryContextConfig?: MemoryContextConfig;
   onMemoryContextConfigChange?: (config: MemoryContextConfig) => void;
   onClose: () => void;
+  mode?: "memory" | "bible";
 }
 
 const KIND_LABELS: Record<MemoryKind, string> = {
   world_rule: "世界规则",
   character_state: "人物状态",
+  location: "地点资料",
   fact: "事实",
   timeline_event: "时间线",
   foreshadowing: "伏笔",
   style_constraint: "文风",
 };
 
-export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG, onMemoryContextConfigChange = () => undefined, onClose }: MemoryPanelProps) {
+export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = DEFAULT_MEMORY_CONTEXT_CONFIG, onMemoryContextConfigChange = () => undefined, onClose, mode = "memory" }: MemoryPanelProps) {
   const [snapshot, setSnapshot] = useState<MemoryBookSnapshot | null>(null);
   const [context, setContext] = useState<MemoryContext | null>(null);
-  const [kind, setKind] = useState<MemoryKind | "relevant">("relevant");
+  const [kind, setKind] = useState<MemoryKind | "relevant" | "all">(mode === "bible" ? "all" : "relevant");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -69,16 +71,20 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
 
   const entries = useMemo(
     () => {
-      const visibleEntries = kind === "relevant"
+      const visibleEntries = kind === "all"
+        ? snapshot?.entries ?? []
+        : kind === "relevant"
         ? memoryContextConfig.mode === "selected"
           ? snapshot?.entries ?? []
           : context?.entries ?? []
         : snapshot?.entries.filter((entry) => entry.kind === kind) ?? [];
-      return memoryContextConfig.mode === "selected"
+      return mode === "bible"
+        ? visibleEntries
+        : memoryContextConfig.mode === "selected"
         ? visibleEntries.filter((entry) => entry.status !== "archived")
         : visibleEntries;
     },
-    [context, kind, memoryContextConfig.mode, snapshot],
+    [context, kind, memoryContextConfig.mode, mode, snapshot],
   );
   const selectionReasons = useMemo(
     () => new Map((context?.selectionReasons ?? []).map((selection) => [selection.entryId, selection])),
@@ -203,23 +209,24 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
   };
 
   return (
-    <aside className="memory-drawer" aria-label="长篇记忆中心">
+    <aside className={`memory-drawer${mode === "bible" ? " story-bible-drawer" : ""}`} aria-label={mode === "bible" ? "故事资料卡" : "长篇记忆中心"}>
       <div className="memory-drawer-header">
         <div>
-          <span className="eyebrow">CONSISTENCY CENTER</span>
-          <h2>长篇记忆中心</h2>
+          <span className="eyebrow">{mode === "bible" ? "STORY BIBLE" : "CONSISTENCY CENTER"}</span>
+          <h2>{mode === "bible" ? "故事资料卡" : "长篇记忆中心"}</h2>
+          {mode === "bible" ? <p className="story-drawer-subtitle">AI 从基础设定生成角色、地点、规则与伏笔；你可以逐张修正。</p> : null}
         </div>
-        <button className="icon-button" type="button" aria-label="关闭记忆中心" onClick={onClose}>
+        <button className="icon-button" type="button" aria-label={mode === "bible" ? "关闭故事资料卡" : "关闭记忆中心"} onClick={onClose}>
           <X size={18} />
         </button>
       </div>
       <div className="memory-toolbar">
-        <select value={kind} onChange={(event) => setKind(event.target.value as MemoryKind | "relevant")} aria-label="记忆类型">
-          <option value="relevant">当前章节相关</option>
+        <select value={kind} onChange={(event) => setKind(event.target.value as MemoryKind | "relevant" | "all")} aria-label={mode === "bible" ? "资料卡类型" : "记忆类型"}>
+          {mode === "bible" ? <option value="all">全部资料卡</option> : <option value="relevant">当前章节相关</option>}
           {MemoryKindSchema.options.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
         </select>
         <button className="ghost-button" type="button" disabled={busy} onClick={() => void refreshFoundation()}>
-          <RefreshCw size={14} /> 从设定补齐
+          <RefreshCw size={14} /> {mode === "bible" ? "同步 AI 资料卡" : "从设定补齐"}
         </button>
       </div>
       <div className="memory-selection-control">

@@ -41,6 +41,7 @@ const AUTO_NOVEL_SCHEMA = `
     book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
     world_rules_json TEXT NOT NULL,
     characters_json TEXT NOT NULL,
+    locations_json TEXT NOT NULL DEFAULT '[]',
     style_guide TEXT NOT NULL,
     facts_json TEXT NOT NULL,
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
@@ -193,6 +194,10 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   }
   if (!columns.some(({ name }) => name === "style")) {
     database.exec("ALTER TABLE books ADD COLUMN style TEXT NOT NULL DEFAULT ''");
+  }
+  const foundationColumns = database.prepare("PRAGMA table_xinfo(book_foundations)").all() as Array<{ name: string }>;
+  if (!foundationColumns.some(({ name }) => name === "locations_json")) {
+    database.exec("ALTER TABLE book_foundations ADD COLUMN locations_json TEXT NOT NULL DEFAULT '[]'");
   }
   database.exec("CREATE UNIQUE INDEX IF NOT EXISTS books_director_idempotency_idx ON books(director_idempotency_key) WHERE director_idempotency_key IS NOT NULL");
   const runColumns = database.prepare("PRAGMA table_xinfo(production_runs)").all() as Array<{ name: string }>;

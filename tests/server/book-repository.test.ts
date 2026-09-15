@@ -4,6 +4,7 @@ import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
 import {
   BookRepository,
+  BookRevisionConflictError,
   DirectionAlreadySelectedError,
 } from "../../src/server/repositories/book-repository";
 import { WorkspaceRepository } from "../../src/server/repositories/workspace-repository";
@@ -135,6 +136,49 @@ describe("BookRepository", () => {
       1,
       3,
     ]);
+  });
+
+  it("updates a timeline plan with one optimistic book revision", () => {
+    const { repository } = createRepository();
+    const book = repository.createBook({ idea: "可随时修改的时间线" });
+    const [plan] = repository.saveChapterPlans(book.id, [{
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      chapterNumber: 1,
+      title: "旧标题",
+      summary: "旧摘要",
+      objective: "旧目标",
+      hook: "旧钩子",
+      foreshadowing: ["旧伏笔"],
+    }]);
+
+    const updated = repository.updateChapterPlan(book.id, {
+      bookId: book.id,
+      planId: plan.id,
+      expectedBookRevision: 0,
+      volumeNumber: 1,
+      volumeTitle: "第一卷·回声",
+      title: "新标题",
+      summary: "新摘要",
+      objective: "新目标",
+      hook: "新钩子",
+      foreshadowing: ["新伏笔"],
+    });
+
+    expect(updated).toMatchObject({ title: "新标题", volumeTitle: "第一卷·回声", foreshadowing: ["新伏笔"] });
+    expect(repository.getBook(book.id).book.revision).toBe(1);
+    expect(() => repository.updateChapterPlan(book.id, {
+      bookId: book.id,
+      planId: plan.id,
+      expectedBookRevision: 0,
+      volumeNumber: 1,
+      volumeTitle: "冲突卷",
+      title: "不应覆盖",
+      summary: "冲突",
+      objective: "冲突",
+      hook: "",
+      foreshadowing: [],
+    })).toThrow(BookRevisionConflictError);
   });
 
   it("returns the persisted production memory selection when reopening a book", () => {

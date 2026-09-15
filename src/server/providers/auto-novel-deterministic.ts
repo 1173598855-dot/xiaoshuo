@@ -36,6 +36,14 @@ export class AutoNovelDeterministicProviderResolver implements ProviderResolver 
                   arc: "从旁观到主动选择",
                 },
               ],
+              locations: [
+                {
+                  name: "旧城区的移动站台",
+                  description: "只在凌晨出现、会改变入口位置的临时站台。",
+                  significance: "主角追查异常物件来源的关键地点。",
+                  rules: ["每次只允许一人进入", "离开后必须留下可追溯物证"],
+                },
+              ],
               styleGuide: "紧张、克制、用动作推进情节。",
               facts: ["故事从一个异常物件开始"],
             }),

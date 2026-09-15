@@ -217,4 +217,14 @@ describe("MemoryPanel", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
     expect(screen.queryByRole("checkbox", { name: "发送“已归档规则”给当前 Provider" })).not.toBeInTheDocument();
   });
+
+  it("provides a story-bible view with all editable cards", async () => {
+    const { api } = createApi();
+    render(<MemoryPanel bookId={bookId} chapterNumber={1} api={api} mode="bible" onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("complementary", { name: "故事资料卡" })).toBeInTheDocument();
+    expect(screen.getByText("林默")).toBeInTheDocument();
+    expect(screen.getByText("已归档规则")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "资料卡类型" })).toHaveValue("all");
+  });
 });

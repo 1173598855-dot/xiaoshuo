@@ -23,6 +23,8 @@ export const OPENAPI_DOCUMENT = {
     },
     "/api/books/{bookId}": { get: { summary: "读取作品详情" } },
     "/api/books/{bookId}/directions": { get: { summary: "读取方向候选" } },
+    "/api/books/{bookId}/chapters": { get: { summary: "读取卷章计划与已采纳正文" } },
+    "/api/books/{bookId}/timeline/{planId}": { patch: { summary: "按作品 revision 修改故事时间线" } },
     "/api/books/{bookId}/directions/{directionId}/select": { post: { summary: "选择方向并生成设定章纲" } },
     "/api/books/{bookId}/production": { post: { summary: "启动正文生产" } },
     "/api/production-runs/{runId}": { get: { summary: "读取生产进度" } },

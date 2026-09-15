@@ -8,7 +8,7 @@
 一句想法 → 一键开写 / 3 套整本方向 → 选择方向 → 记忆选择 → 自动规划 → 逐章生产 → 审核修复 → 候选编辑/Diff → 记忆审阅 → 正式正文
 ```
 
-- 角色、世界观、伏笔和时间线由 AI 自动生成并作为后台上下文维护，不要求手填角色卡；
+- 角色、地点、世界观、伏笔和时间线由 AI 自动生成并作为后台上下文维护，不要求手填资料卡；生产室可打开“故事时间线”和“故事资料卡”，作者随时手动修正；
 - 每一章先保存为候选，审核通过后才通过原子 accept 事务进入正式正文；
 - 生产任务会保存检查点，关闭应用后可以继续；
 - 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；
@@ -20,6 +20,7 @@
 - 候选正文在 accept 前可以手动编辑；编辑采用 candidate text revision 乐观锁，保存后会清空旧审核/记忆提议并重新审核，Diff 保留初始候选与当前候选的逐行变化；
 - 记忆中心会显示每条注入记忆的选择原因，支持查看完整 revision 历史并把条目回滚为新的手动修正 revision；
 - 记忆条目带独立 revision 和历史快照，可锁定/解锁或进行 JSON 高级修正；锁定内容不会被 AI 自动覆盖，手动修改遇到并发变化会提示冲突；
+- 时间线每章使用作品 revision 乐观锁保存；保存成功后后续生成、审核和记忆上下文都会读取新标题、摘要、章节目标、钩子与伏笔，冲突时保留当前编辑草稿；
 - 生产调用对限流和上游暂不可用执行有限次、可取消的重试，不重试鉴权、参数或取消错误；
 - 正式正文支持 Markdown、TXT 和可直接打开的 DOCX 导出，并提供正文搜索与章节目录；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
@@ -27,6 +28,7 @@
 - 注册用户可以在浏览器“模型设置”中自行填写 Provider、模型、端点和 API Key；用户 Key 只保存在当前浏览器会话并随当前请求使用，不要求管理员把用户 Key 注入服务端。`XIAOYI_SERVER_PROVIDERS_JSON` 仅用于可选的服务端托管 Provider 和重启后的后台恢复。
 - 桌面端当前使用离线授权：管理员用本地私钥生成签名邀请码，用户首次启动桌面端输入邀请码后才能注册账号。生成示例：`npm run desktop:invite -- --private-key secrets/desktop-invitation-private.pem --max-uses 1 --expires-at 2026-12-31T00:00:00.000Z`。私钥位于被 Git 忽略的 `secrets/` 目录，生产使用前应替换为自己的密钥对并重新构建桌面端。
 - 桌面发布包启用 ASAR、去除生产 source map、关闭打包版 DevTools、拒绝常见调试启动参数，并依赖 Windows 代码签名提高篡改和逆向成本；这些措施不能替代服务端授权，也不能保证离线程序绝对不可破解。
+- 本轮主动安全审查记录在 [`security_best_practices_report.md`](security_best_practices_report.md)，结论是没有新增 Critical/High 问题；浏览器 sessionStorage 会话和离线程序可被本机分析属于已记录的设计残余风险。
 
 ## 界面方向
 
@@ -78,6 +80,7 @@ npm run dev
 | `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |
 | `POST` | `/api/books/:bookId/directions/:directionId/select` | 选择方向并生成基础设定与章纲 |
 | `GET` | `/api/books/:bookId/chapters` | 读取章纲与已采纳正文 |
+| `PATCH` | `/api/books/:bookId/timeline/:planId` | 使用作品 revision 修改 AI 生成的卷章时间线 |
 | `POST` | `/api/books/:bookId/production` | 启动整本生产 |
 | `GET` | `/api/production-runs/:runId` | 查询生产进度、候选和检查点 |
 | `POST` | `/api/production-runs/:runId/pause\|resume\|cancel` | 控制任务 |

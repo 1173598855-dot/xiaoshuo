@@ -13,6 +13,7 @@ import {
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
   RewriteChapterInputSchema,
+  UpdateChapterPlanInputSchema,
   type UpdateCandidateTextInput,
   type UpdateCandidateMemoryReviewInput,
 } from "../shared/auto-novel";
@@ -56,6 +57,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async getBook(bookId) {
       return parseResult(await api.books.get(bookId), BookDetailsSchema);
+    },
+    async updateChapterPlan(input) {
+      return parseResult(
+        await api.books.updateTimeline(UpdateChapterPlanInputSchema.parse(input)),
+        BookDetailsSchema,
+      );
     },
     async listDirections(bookId) {
       return parseResult(await api.directions.list(bookId), z.array(StoryDirectionSchema));
