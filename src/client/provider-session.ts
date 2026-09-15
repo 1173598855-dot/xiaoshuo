@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   ProviderConfigSchema,
   ProviderIdSchema,
+  ReasoningLevelSchema,
   type ProviderCatalogEntry,
   type ProviderConfig,
 } from "../shared/contracts";
@@ -16,6 +17,7 @@ const SessionProviderSettingsSchema = z.object({
   model: z.string(),
   apiKey: z.string(),
   baseUrl: z.string().optional(),
+  reasoningLevel: ReasoningLevelSchema.optional(),
 });
 
 export type SessionProviderSettings = z.infer<
@@ -64,11 +66,13 @@ export function resolveProviderSettings(
           model: settings.model.trim(),
           apiKey: settings.apiKey,
           baseUrl: settings.baseUrl?.trim() || entry.baseUrl || "",
+          reasoningLevel: settings.reasoningLevel ?? "off",
         }
       : {
           kind: entry.kind,
           model: settings.model.trim(),
           apiKey: settings.apiKey,
+          reasoningLevel: settings.reasoningLevel ?? "off",
         };
   const parsed = ProviderConfigSchema.safeParse(candidate);
 

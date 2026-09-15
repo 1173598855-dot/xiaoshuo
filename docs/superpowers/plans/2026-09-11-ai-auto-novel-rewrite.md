@@ -574,3 +574,9 @@ git commit -m "docs: record auto-novel rewrite verification"
 - [x] 新增共享契约、HTTP/OpenAPI、白名单 IPC、单测和 E2E 覆盖。
 - [x] 桌面数据管理支持 AES-256-GCM 加密备份导出，更新服务支持自动下载通知，发布配置显式要求 Windows 签名和更新签名校验。
 
+## Task 14：Provider 观测与多模型上下文同步（2026-09-16）
+
+- [x] Provider usage 扩展输入/输出/缓存读写 Token、缓存命中率和估算费用；旧数据库自动迁移新字段。
+- [x] Provider 配置支持思考等级，适配 OpenAI、Anthropic、Google 和 OpenAI-compatible，未知能力默认关闭。
+- [x] 所有模型阶段统一携带 `xiaoyi-context-v1` 标记、memory revision 与 context hash，生产室展示本周期 Token、缓存命中率和费用。
+

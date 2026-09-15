@@ -16,7 +16,9 @@ import type {
   ProviderModel,
   ProviderConnectionResult,
   SaveProviderSettingsInput,
+  ReasoningLevel,
 } from "../../shared/contracts";
+import { ReasoningLevelSchema } from "../../shared/contracts";
 import { ApiRequestError, type ClientProviderSettings } from "../api/transport";
 import type { SessionProviderSettings } from "../provider-session";
 
@@ -59,6 +61,7 @@ export function ProviderDialog({
   const [apiKeyLoadedFromSettings, setApiKeyLoadedFromSettings] =
     useState(false);
   const [baseUrl, setBaseUrl] = useState("");
+  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>("off");
   const [keyVisible, setKeyVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dynamicModels, setDynamicModels] = useState<readonly ProviderModel[]>(
@@ -111,6 +114,7 @@ export function ProviderDialog({
         ? settings.baseUrl ?? entry?.baseUrl ?? ""
         : entry?.baseUrl ?? "",
     );
+    setReasoningLevel(settings?.reasoningLevel ?? "off");
     setKeyVisible(false);
     setError(null);
     setConnectionTestMessage(null);
@@ -140,6 +144,7 @@ export function ProviderDialog({
     setApiKey("");
     setApiKeyLoadedFromSettings(false);
     setBaseUrl(entry?.baseUrl ?? "");
+    setReasoningLevel("off");
     setError(null);
     setConnectionTestMessage(null);
     invalidateModelList();
@@ -177,6 +182,7 @@ export function ProviderDialog({
         ? { baseUrl: baseUrl.trim() }
         : {}),
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+      ...(reasoningLevel !== "off" ? { reasoningLevel } : {}),
     };
     const requestId = ++modelListRequestRef.current;
     modelListAbortRef.current?.abort();
@@ -249,6 +255,7 @@ export function ProviderDialog({
         ? { baseUrl: baseUrl.trim() }
         : {}),
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+      ...(reasoningLevel !== "off" ? { reasoningLevel } : {}),
     };
     const controller = new AbortController();
     setConnectionTestLoading(true);
@@ -501,6 +508,16 @@ export function ProviderDialog({
               />
             </label>
           ) : null}
+
+          <label className="form-field">
+            <span>思考等级</span>
+            <select aria-label="思考等级" value={reasoningLevel} onChange={(event) => setReasoningLevel(ReasoningLevelSchema.parse(event.target.value))}>
+              <option value="off">关闭（最快）</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高（更慢、更耗额度）</option>
+            </select>
+          </label>
 
           {selectedProvider?.requiresApiKey || selectedProvider?.apiKeyOptional ? (
             <label className="form-field">

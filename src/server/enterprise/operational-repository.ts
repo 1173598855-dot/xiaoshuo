@@ -119,6 +119,8 @@ export interface UsageEventInput {
   readonly model: string;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
   readonly estimatedCostMicros: number;
   readonly status: "success" | "error" | "blocked";
   readonly errorCode?: string;
@@ -133,6 +135,9 @@ export interface UsageSummary {
   readonly blockedRequests: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly cacheHitRate: number;
   readonly totalTokens: number;
   readonly estimatedCostMicros: number;
   readonly byProvider: readonly {
@@ -140,6 +145,9 @@ export interface UsageSummary {
     readonly requests: number;
     readonly inputTokens: number;
     readonly outputTokens: number;
+    readonly cacheReadTokens: number;
+    readonly cacheWriteTokens: number;
+    readonly cacheHitRate: number;
     readonly estimatedCostMicros: number;
   }[];
 }
@@ -161,8 +169,8 @@ export class UsageRepository {
       .prepare(
         `INSERT INTO usage_events
          (id, request_id, provider, model, input_tokens, output_tokens,
-          estimated_cost_micros, status, error_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          cache_read_tokens, cache_write_tokens, estimated_cost_micros, status, error_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       )
       .run(
         this.createId(),
@@ -171,6 +179,8 @@ export class UsageRepository {
         clamp(input.model, 200),
         nullableNonNegativeInteger(input.inputTokens),
         nullableNonNegativeInteger(input.outputTokens),
+        nullableNonNegativeInteger(input.cacheReadTokens),
+        nullableNonNegativeInteger(input.cacheWriteTokens),
         nonNegativeInteger(input.estimatedCostMicros),
         input.status,
         input.errorCode ? clamp(input.errorCode, 120) : null,
@@ -193,6 +203,8 @@ export class UsageRepository {
                 SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_requests,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
                 COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
          FROM usage_events
          WHERE created_at >= ? AND created_at < ?`,
@@ -203,6 +215,8 @@ export class UsageRepository {
         `SELECT provider, COUNT(*) AS requests,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
                 COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
          FROM usage_events
          WHERE created_at >= ? AND created_at < ?
@@ -211,6 +225,8 @@ export class UsageRepository {
       .all(from, to) as unknown as UsageProviderRow[];
     const inputTokens = integerOrZero(totals.input_tokens);
     const outputTokens = integerOrZero(totals.output_tokens);
+    const cacheReadTokens = integerOrZero(totals.cache_read_tokens);
+    const cacheWriteTokens = integerOrZero(totals.cache_write_tokens);
     return {
       from,
       to,
@@ -220,6 +236,9 @@ export class UsageRepository {
       blockedRequests: integerOrZero(totals.blocked_requests),
       inputTokens,
       outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      cacheHitRate: inputTokens > 0 ? Math.min(1, cacheReadTokens / inputTokens) : 0,
       totalTokens: inputTokens + outputTokens,
       estimatedCostMicros: integerOrZero(totals.estimated_cost_micros),
       byProvider: providers.map((row) => ({
@@ -227,6 +246,9 @@ export class UsageRepository {
         requests: integerOrZero(row.requests),
         inputTokens: integerOrZero(row.input_tokens),
         outputTokens: integerOrZero(row.output_tokens),
+        cacheReadTokens: integerOrZero(row.cache_read_tokens),
+        cacheWriteTokens: integerOrZero(row.cache_write_tokens),
+        cacheHitRate: integerOrZero(row.input_tokens) > 0 ? Math.min(1, integerOrZero(row.cache_read_tokens) / integerOrZero(row.input_tokens)) : 0,
         estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
       })),
     };
@@ -260,6 +282,8 @@ interface UsageTotalsRow {
   blocked_requests: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   estimated_cost_micros: number;
 }
 
@@ -268,6 +292,8 @@ interface UsageProviderRow {
   requests: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   estimated_cost_micros: number;
 }
 

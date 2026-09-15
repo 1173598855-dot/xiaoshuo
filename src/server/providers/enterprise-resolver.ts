@@ -126,6 +126,8 @@ export class MeteredProviderResolver implements ProviderResolver {
         model: config.model,
         ...(usage?.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
         ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+        ...(usage?.cacheReadTokens !== undefined ? { cacheReadTokens: usage.cacheReadTokens } : {}),
+        ...(usage?.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
         estimatedCostMicros: estimateCostMicros(config, usage, this.options.modelPricing ?? {}),
         status,
         ...(errorCode ? { errorCode } : {}),
@@ -181,7 +183,7 @@ export class ProviderFailoverResolver implements ProviderResolver {
           const candidate = providers[index]!;
           try {
             return await candidate.provider.generate(
-              { ...input, model: candidate.config.model },
+              { ...input, model: candidate.config.model, reasoningLevel: candidate.config.reasoningLevel ?? "off" },
               signal,
             );
           } catch (error) {

@@ -45,6 +45,7 @@ export class FoundationService {
     const foundationResult = await provider.generate(
       {
         model: providerConfig.model,
+        reasoningLevel: providerConfig.reasoningLevel,
         ...buildFoundationPrompt(details.book, direction),
         maxOutputTokens: 8_000,
       },
@@ -61,6 +62,7 @@ export class FoundationService {
     const outlineResult = await provider.generate(
       {
         model: providerConfig.model,
+        reasoningLevel: providerConfig.reasoningLevel,
         ...buildOutlinePrompt(
           details.book.idea,
           direction.title,
@@ -90,6 +92,7 @@ export class FoundationService {
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
     const result = await provider.generate({
       model: providerConfig.model,
+      reasoningLevel: providerConfig.reasoningLevel,
       ...buildOutlinePrompt(details.book.idea, direction.title, details.book.targetChapters, details.foundation),
       maxOutputTokens: 12_000,
     }, signal);

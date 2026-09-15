@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { ProviderConfigSchema, type ProviderConfig } from "../../shared/contracts";
+import { ProviderConfigSchema, type ProviderConfig, type ReasoningLevel } from "../../shared/contracts";
 import type { ChapterCandidate, ChapterPlan, ProductionRun } from "../../shared/auto-novel";
 import {
   filterMemoryDelta,
@@ -179,6 +179,7 @@ export class ProductionService {
       instruction,
       book.book.style,
       book.book.targetChapterCharacters,
+      providerConfig.reasoningLevel,
     );
     const candidate = this.dependencies.productionRepository.createCandidate({
       runId,
@@ -208,6 +209,7 @@ export class ProductionService {
       signal,
       book.book.style,
       book.book.targetChapterCharacters,
+      providerConfig.reasoningLevel,
     );
     const { memoryDelta, ...reviewResult } = review;
     this.dependencies.productionRepository.updateCandidateReview(candidate.id, reviewResult);
@@ -374,6 +376,7 @@ export class ProductionService {
             "",
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
+            resolvedProviderConfig.reasoningLevel,
           );
           const stoppedAfterDraft = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterDraft) return stoppedAfterDraft;
@@ -425,6 +428,7 @@ export class ProductionService {
               signal,
               bookDetails.book.style,
               bookDetails.book.targetChapterCharacters,
+              resolvedProviderConfig.reasoningLevel,
             );
             const stoppedAfterRepair = this.getStoppedRun(runId, signal, lease);
             if (stoppedAfterRepair) return stoppedAfterRepair;
@@ -458,6 +462,7 @@ export class ProductionService {
             signal,
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
+            resolvedProviderConfig.reasoningLevel,
           );
           const stoppedAfterReview = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterReview) return stoppedAfterReview;
@@ -749,6 +754,7 @@ async function generateDraft(
   instruction = "",
   style = "",
   targetChapterCharacters = 2_500,
+  reasoningLevel?: ReasoningLevel,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -770,6 +776,7 @@ async function generateDraft(
         ...(instruction.trim() ? [`重写要求：${instruction.trim()}`] : []),
       ].join("\n"),
       maxOutputTokens: 12_000,
+      reasoningLevel,
   }, signal);
   const text = result.text.trim();
   if (!text) {
@@ -791,6 +798,7 @@ async function reviewDraft(
   signal?: AbortSignal,
   style = "",
   targetChapterCharacters = 2_500,
+  reasoningLevel?: ReasoningLevel,
 ) {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -811,6 +819,7 @@ async function reviewDraft(
         "检查人物、事实、时间线、章节目标、伏笔和文风；没有硬伤就通过。",
       ].join("\n"),
       maxOutputTokens: 2_000,
+      reasoningLevel,
   }, signal);
   return parseStructuredProviderResult(result.text, ReviewOutputSchema);
 }
@@ -824,6 +833,7 @@ async function repairDraft(
   signal?: AbortSignal,
   style = "",
   targetChapterCharacters = 2_500,
+  reasoningLevel?: ReasoningLevel,
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext);
   const result = await generateWithRetry(provider, {
@@ -840,6 +850,7 @@ async function repairDraft(
         ...(style.trim() ? [`文风要求：${style.trim()}`] : []),
       ].join("\n"),
       maxOutputTokens: 12_000,
+      reasoningLevel,
   }, signal);
   const text = result.text.trim();
   if (!text) {

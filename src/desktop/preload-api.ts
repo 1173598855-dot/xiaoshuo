@@ -25,6 +25,7 @@ import {
   type AuthSessionResult,
 } from "../shared/auth";
 import { type DesktopActivationStatus } from "../shared/desktop-invitation";
+import type { AutoNovelDesktopApiV2 } from "./auto-novel-preload-api-v2";
 
 export interface DesktopIpcRenderer {
   invoke(channel: string, input?: unknown): Promise<unknown>;
@@ -34,6 +35,7 @@ export interface DesktopIpcRenderer {
 
 export interface DesktopApi {
   readonly platform: "desktop";
+  readonly autoNovel?: AutoNovelDesktopApiV2;
   readonly workspace: { get(): Promise<DesktopResult<Workspace>> };
   readonly project: { create(input: CreateProjectInput): Promise<DesktopResult<Workspace["project"]>> };
   readonly chapter: {

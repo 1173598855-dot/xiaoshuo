@@ -63,6 +63,8 @@ describe("operational repositories", () => {
       model: "model-a",
       inputTokens: 10,
       outputTokens: 5,
+      cacheReadTokens: 4,
+      cacheWriteTokens: 1,
       estimatedCostMicros: 30,
       status: "success",
     });
@@ -92,6 +94,9 @@ describe("operational repositories", () => {
       outputTokens: 6,
       totalTokens: 18,
       estimatedCostMicros: 37,
+      cacheReadTokens: 4,
+      cacheWriteTokens: 1,
+      cacheHitRate: 4 / 12,
       byProvider: [
         { provider: "openai", requests: 1 },
         { provider: "openai-compatible", requests: 2, estimatedCostMicros: 37 },

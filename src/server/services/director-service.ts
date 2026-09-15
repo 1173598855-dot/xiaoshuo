@@ -36,6 +36,7 @@ export class DirectorService {
     const result = await provider.generate(
       {
         model: providerConfig.model,
+        reasoningLevel: providerConfig.reasoningLevel,
         ...prompt,
         maxOutputTokens: 6_000,
       },

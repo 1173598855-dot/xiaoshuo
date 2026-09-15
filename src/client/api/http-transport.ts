@@ -11,9 +11,11 @@ import {
   WorkspaceSchema,
   TestProviderConnectionInputSchema,
   type ProviderId,
+  type ReasoningLevel,
 } from "../../shared/contracts";
 import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema } from "../../shared/auth";
 import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
+import { UsageSummarySchema } from "../../shared/authoring";
 import {
   clearProviderSettings,
   loadProviderSettings,
@@ -113,6 +115,7 @@ export function createHttpTransport(
         providerId: parsed.providerId,
         model: parsed.model,
         apiKey,
+        ...(parsed.reasoningLevel ? { reasoningLevel: parsed.reasoningLevel } : {}),
         ...(parsed.baseUrl !== undefined ? { baseUrl: parsed.baseUrl } : {}),
       };
       storeProviderSettings(settings);
@@ -165,6 +168,9 @@ export function createHttpTransport(
     async exportEncryptedDatabase() {
       return DatabaseOperationResultSchema.parse({ cancelled: true });
     },
+    async getUsageSummary() {
+      return UsageSummarySchema.parse(await requestJson(fetchImpl, "/api/usage"));
+    },
     onDesktopCommand() {
       return () => undefined;
     },
@@ -209,12 +215,14 @@ function toWebSettings(settings: {
   model: string;
   apiKey: string;
   baseUrl?: string;
+  reasoningLevel?: ReasoningLevel;
 }): ClientProviderSettings {
   return {
     platform: "web",
     providerId: settings.providerId,
     model: settings.model,
     hasApiKey: settings.apiKey.length > 0,
+    ...(settings.reasoningLevel ? { reasoningLevel: settings.reasoningLevel } : {}),
     apiKey: settings.apiKey,
     ...(settings.baseUrl !== undefined ? { baseUrl: settings.baseUrl } : {}),
   };

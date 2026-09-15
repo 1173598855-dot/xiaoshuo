@@ -53,6 +53,8 @@ const V1_SCHEMA = `
     model TEXT NOT NULL,
     input_tokens INTEGER,
     output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER,
     estimated_cost_micros INTEGER NOT NULL DEFAULT 0 CHECK (estimated_cost_micros >= 0),
     status TEXT NOT NULL CHECK (status IN ('success', 'error', 'blocked')),
     error_code TEXT,
@@ -225,6 +227,9 @@ export function migrate(database: DatabaseSync): void {
       .run();
     ensureAutoNovelSchema(database);
     ensureMemorySchema(database);
+    const usageColumns = database.prepare("PRAGMA table_xinfo(usage_events)").all() as Array<{ name: string }>;
+    if (!usageColumns.some(({ name }) => name === "cache_read_tokens")) database.exec("ALTER TABLE usage_events ADD COLUMN cache_read_tokens INTEGER");
+    if (!usageColumns.some(({ name }) => name === "cache_write_tokens")) database.exec("ALTER TABLE usage_events ADD COLUMN cache_write_tokens INTEGER");
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");

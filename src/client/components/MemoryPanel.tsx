@@ -253,7 +253,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
       {context ? (
         <div className="memory-context-note">
           <div><Check size={14} /> 第 {chapterNumber} 章将注入 {context.entries.length} 条记忆</div>
-          <small>记忆版本 {context.memoryRevision} · {context.characterCount.toLocaleString()} 字符 · 每条记忆都有注入原因</small>
+          <small>记忆版本 {context.memoryRevision} · {context.characterCount.toLocaleString()} 字符 · 同步包 {context.contextHash.slice(0, 12)} · 每条记忆都有注入原因</small>
         </div>
       ) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}

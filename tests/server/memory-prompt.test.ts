@@ -41,6 +41,7 @@ describe("memory prompt context", () => {
     expect(prompt.userPrompt).toContain("id=11111111-1111-4111-8111-111111111111");
     expect(prompt.userPrompt).toContain("revision=1");
     expect(prompt.userPrompt).toContain("记忆版本：3");
+    expect(prompt.userPrompt).toContain("xiaoyi-context-v1/" + context.contextHash);
     expect(prompt.userPrompt).not.toContain("apiKey");
   });
 });

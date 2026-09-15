@@ -31,6 +31,7 @@ export class GoogleAdapter implements TextGenerationProvider {
           systemInstruction: input.systemPrompt,
           maxOutputTokens: input.maxOutputTokens,
           abortSignal: signal,
+          ...(input.reasoningLevel && input.reasoningLevel !== "off" ? { thinkingConfig: { thinkingBudget: input.reasoningLevel === "high" ? 4096 : input.reasoningLevel === "medium" ? 2048 : 1024 } } : {}),
         },
       });
 
@@ -40,6 +41,7 @@ export class GoogleAdapter implements TextGenerationProvider {
           ? {
               inputTokens: response.usageMetadata.promptTokenCount,
               outputTokens: response.usageMetadata.candidatesTokenCount,
+              ...(response.usageMetadata.cachedContentTokenCount !== undefined ? { cacheReadTokens: response.usageMetadata.cachedContentTokenCount } : {}),
             }
           : null,
       };

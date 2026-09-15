@@ -36,7 +36,8 @@ export class AnthropicAdapter implements TextGenerationProvider {
           max_tokens: input.maxOutputTokens,
           system: input.systemPrompt,
           messages: [{ role: "user", content: input.userPrompt }],
-        },
+          ...(input.reasoningLevel && input.reasoningLevel !== "off" ? { thinking: { type: "enabled", budget_tokens: input.reasoningLevel === "high" ? 4096 : input.reasoningLevel === "medium" ? 2048 : 1024 } } : {}),
+        } as never,
         { signal },
       );
       const text = response.content
@@ -52,6 +53,8 @@ export class AnthropicAdapter implements TextGenerationProvider {
         usage: {
           inputTokens: response.usage.input_tokens,
           outputTokens: response.usage.output_tokens,
+          ...(((response.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens !== undefined) ? { cacheReadTokens: (response.usage as unknown as { cache_read_input_tokens?: number }).cache_read_input_tokens } : {}),
+          ...(((response.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens !== undefined) ? { cacheWriteTokens: (response.usage as unknown as { cache_creation_input_tokens?: number }).cache_creation_input_tokens } : {}),
         },
       };
     } catch (error) {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTEXT_SYNC_PROTOCOL } from "./auto-novel-prompts";
 
 export const FoundationModelOutputSchema = z
   .object({
@@ -63,7 +64,7 @@ export function buildOutlinePrompt(
 ) {
   return {
     systemPrompt:
-      "你是中文长篇小说架构师。只输出 JSON，生成稳定、可逐章执行的卷章计划，不输出解释。",
+      `你是中文长篇小说架构师。上下文同步协议：${CONTEXT_SYNC_PROTOCOL}。只输出 JSON，生成稳定、可逐章执行的卷章计划，不输出解释。`,
     userPrompt: [
       `故事想法：${idea}`,
       `书名：${title}`,

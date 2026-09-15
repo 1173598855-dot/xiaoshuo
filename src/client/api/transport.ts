@@ -14,6 +14,7 @@ import type {
   UpdateChapterInput,
   Workspace,
 } from "../../shared/contracts";
+import type { UsageSummary } from "../../shared/authoring";
 import type { AuthSessionResult, LoginInput, RegisterAccountInput } from "../../shared/auth";
 import type { DesktopActivationStatus } from "../../shared/desktop-invitation";
 
@@ -71,6 +72,7 @@ export interface WorkbenchTransport {
   getDatabaseStatus(): Promise<DatabaseStatus>;
   importDatabase(): Promise<DatabaseOperationResult>;
   exportDatabase(): Promise<DatabaseOperationResult>;
+  getUsageSummary?(): Promise<UsageSummary>;
   exportEncryptedDatabase?(password: string): Promise<DatabaseOperationResult>;
   onDesktopCommand(listener: (command: DesktopCommand) => void): () => void;
   resolveClose(result: { requestId: string; canClose: boolean }): Promise<void>;

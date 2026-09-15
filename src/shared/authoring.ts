@@ -100,6 +100,9 @@ export const UsageSummarySchema = z.object({
   blockedRequests: z.number().int().nonnegative(),
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative(),
+  cacheWriteTokens: z.number().int().nonnegative(),
+  cacheHitRate: z.number().min(0).max(1),
   totalTokens: z.number().int().nonnegative(),
   estimatedCostMicros: z.number().int().nonnegative(),
   byProvider: z.array(z.object({
@@ -107,6 +110,9 @@ export const UsageSummarySchema = z.object({
     requests: z.number().int().nonnegative(),
     inputTokens: z.number().int().nonnegative(),
     outputTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative(),
+    cacheHitRate: z.number().min(0).max(1),
     estimatedCostMicros: z.number().int().nonnegative(),
   }).strict()),
 }).strict();

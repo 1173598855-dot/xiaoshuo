@@ -36,7 +36,8 @@ export class OpenAIAdapter implements TextGenerationProvider {
           instructions: input.systemPrompt,
           input: input.userPrompt,
           max_output_tokens: input.maxOutputTokens,
-        },
+          ...(input.reasoningLevel && input.reasoningLevel !== "off" ? { reasoning: { effort: input.reasoningLevel } } : {}),
+        } as never,
         { signal },
       );
 
@@ -46,6 +47,7 @@ export class OpenAIAdapter implements TextGenerationProvider {
           ? {
               inputTokens: response.usage.input_tokens,
               outputTokens: response.usage.output_tokens,
+              ...(((response.usage as unknown as { input_tokens_details?: { cached_tokens?: number } }).input_tokens_details?.cached_tokens !== undefined) ? { cacheReadTokens: (response.usage as unknown as { input_tokens_details?: { cached_tokens?: number } }).input_tokens_details?.cached_tokens } : {}),
             }
           : null,
       };

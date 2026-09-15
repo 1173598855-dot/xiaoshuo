@@ -14,6 +14,7 @@ import {
 import type { DesktopApi } from "../../desktop/preload-api";
 import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema } from "../../shared/auth";
 import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
+import { UsageSummarySchema } from "../../shared/authoring";
 import {
   ApiRequestError,
   type WorkbenchTransport,
@@ -112,6 +113,10 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
     },
     async exportEncryptedDatabase(password) {
       return parseResult(await api.database.exportEncrypted(password), DatabaseOperationResultSchema);
+    },
+    async getUsageSummary() {
+      if (!api.autoNovel) throw new ApiRequestError(503, "USAGE_UNAVAILABLE", "桌面端用量服务暂不可用。");
+      return parseResult(await api.autoNovel.books.usageSummary(), UsageSummarySchema);
     },
     onDesktopCommand(listener) {
       return api.lifecycle.onCommand(listener);

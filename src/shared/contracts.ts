@@ -84,6 +84,9 @@ export const ProviderIdSchema = z.enum([
 ]);
 export type ProviderId = z.infer<typeof ProviderIdSchema>;
 
+export const ReasoningLevelSchema = z.enum(["off", "low", "medium", "high"]);
+export type ReasoningLevel = z.infer<typeof ReasoningLevelSchema>;
+
 export const CompatibleBaseUrlSchema = z
   .url()
   .refine((value) => {
@@ -171,6 +174,7 @@ export type ProviderCatalogEntry = z.infer<
 const NativeProviderBaseSchema = z.object({
   model: z.string().trim().min(1).max(200),
   apiKey: z.string().min(1).max(2_000),
+  reasoningLevel: ReasoningLevelSchema.optional(),
 });
 
 export const ProviderConfigSchema = z.discriminatedUnion("kind", [
@@ -182,6 +186,7 @@ export const ProviderConfigSchema = z.discriminatedUnion("kind", [
     model: z.string().trim().min(1).max(200),
     apiKey: z.string().max(2_000).default(""),
     baseUrl: CompatibleBaseUrlSchema,
+    reasoningLevel: ReasoningLevelSchema.optional(),
   }),
 ]);
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
@@ -353,6 +358,7 @@ export const ProviderSettingsSchema = z.object({
   model: z.string().trim().min(1).max(200),
   baseUrl: CompatibleBaseUrlSchema.optional(),
   hasApiKey: z.boolean(),
+  reasoningLevel: ReasoningLevelSchema.optional(),
 });
 export type ProviderSettings = z.infer<typeof ProviderSettingsSchema>;
 
@@ -361,6 +367,7 @@ export const SaveProviderSettingsInputSchema = z.object({
   model: z.string().trim().min(1).max(200),
   baseUrl: CompatibleBaseUrlSchema.optional(),
   apiKey: z.string().trim().min(1).max(2_000).optional(),
+  reasoningLevel: ReasoningLevelSchema.optional(),
 });
 export type SaveProviderSettingsInput = z.infer<
   typeof SaveProviderSettingsInputSchema

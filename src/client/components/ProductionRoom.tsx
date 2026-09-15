@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
 import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
 import type { AutoNovelRunDetails } from "../auto-novel-api";
 import type { ProductionConnectionState } from "../hooks/use-production-run";
+import { apiClient } from "../api/client";
+import type { UsageSummary } from "../../shared/authoring";
 
 interface ProductionRoomProps {
   book: BookDetails;
@@ -46,6 +49,8 @@ export function ProductionRoom({
   connectionState = "connected",
   onRetryConnection,
 }: ProductionRoomProps) {
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  useEffect(() => { void apiClient.getUsageSummary?.().then((value) => setUsage(value ?? null)).catch(() => undefined); }, [book.book.id, run?.run.version]);
   const accepted = run?.acceptedChapters.length ?? 0;
   const total = book.chapterPlans.length;
   const status = run?.run.status ?? "ready";
@@ -65,7 +70,7 @@ export function ProductionRoom({
           <small className="memory-mode-note">
             Provider 记忆：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`}
           </small>
-          {run ? <small className="production-telemetry">生产版本：{run.run.version} · 估算 Token {estimatedTokens.toLocaleString()} · 费用按 Provider 价格结算</small> : null}
+          {run ? <small className="production-telemetry">生产版本：{run.run.version} · 估算 Token {estimatedTokens.toLocaleString()} · 本周期 Token {usage?.totalTokens.toLocaleString() ?? "—"} · 缓存命中率 {usage ? `${Math.round(usage.cacheHitRate * 100)}%` : "—"} · 费用 ¥{usage ? (usage.estimatedCostMicros / 100_000_000).toFixed(4) : "—"}</small> : null}
         </div>
         <div className="production-stat"><strong>{progress}%</strong><span>{accepted} / {total || "—"} 章已完成</span></div>
       </section>

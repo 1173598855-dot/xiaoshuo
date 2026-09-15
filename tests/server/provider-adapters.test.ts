@@ -130,6 +130,16 @@ describe("provider adapters", () => {
     );
   });
 
+  it("maps reasoning level and cache usage when the provider exposes them", async () => {
+    const create = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: "带思考的候选" } }],
+      usage: { prompt_tokens: 20, completion_tokens: 7, prompt_tokens_details: { cached_tokens: 8 } },
+    });
+    const adapter = new OpenAICompatibleAdapter({ kind: "openai-compatible", model: input.model, apiKey: "secret", baseUrl: "https://models.example.test/v1" }, { chat: { completions: { create } } } as never);
+    await expect(adapter.generate({ ...input, reasoningLevel: "high" })).resolves.toMatchObject({ usage: { inputTokens: 20, outputTokens: 7, cacheReadTokens: 8 } });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: "high" }), expect.anything());
+  });
+
   it("normalizes status errors without exposing upstream messages", () => {
     const normalized = normalizeProviderError({
       status: 401,

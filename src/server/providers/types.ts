@@ -3,6 +3,7 @@ import type {
   ProviderCatalogEntry,
   ProviderConfig,
   ProviderKind,
+  ReasoningLevel,
 } from "../../shared/contracts";
 
 export type { ProviderCatalogEntry };
@@ -12,11 +13,14 @@ export interface ProviderGenerateInput {
   systemPrompt: string;
   userPrompt: string;
   maxOutputTokens: number;
+  reasoningLevel?: ReasoningLevel;
 }
 
 export interface ProviderUsage {
   inputTokens?: number;
   outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface ProviderResult {

@@ -16,6 +16,7 @@ import {
   ListProviderModelsInputSchema,
   ProviderConfigSchema,
   ProviderIdSchema,
+  ReasoningLevelSchema,
   SaveProviderSettingsInputSchema,
   TestProviderConnectionInputSchema,
   type CreateGenerationInput,
@@ -25,6 +26,7 @@ import {
   type ProviderConfig,
   type ProviderSettings,
   type SaveProviderSettingsInput,
+  type ReasoningLevel,
 } from "../shared/contracts";
 import { getProviderCatalog } from "../server/providers/catalog";
 import {
@@ -40,6 +42,7 @@ const CredentialIdSchema = z.string().uuid();
 interface PersistedSettings {
   providerId: ProviderId;
   model: string;
+  reasoningLevel?: ReasoningLevel;
   baseUrl?: string;
   credentialId?: string;
   revokedCredentialIds?: readonly string[];
@@ -277,6 +280,7 @@ export class ProviderVault {
       kind: catalogEntry.kind,
       model: settings.model,
       apiKey,
+      ...(settings.reasoningLevel && settings.reasoningLevel !== "off" ? { reasoningLevel: settings.reasoningLevel } : {}),
       ...(catalogEntry.kind === "openai-compatible"
         ? {
             baseUrl: catalogEntry.baseUrlEditable
@@ -312,6 +316,7 @@ export class ProviderVault {
         return {
           providerId: input.providerId,
           model: input.model,
+          ...(input.reasoningLevel ? { reasoningLevel: input.reasoningLevel } : {}),
           baseUrl: input.baseUrl,
         };
       }
@@ -323,7 +328,7 @@ export class ProviderVault {
       throw new ProviderConfigMismatchError();
     }
 
-    return { providerId: input.providerId, model: input.model };
+    return { providerId: input.providerId, model: input.model, ...(input.reasoningLevel ? { reasoningLevel: input.reasoningLevel } : {}) };
   }
 
   private prepareCredential(
@@ -387,6 +392,7 @@ export class ProviderVault {
         {
           providerId: validProviderId.data,
           model: values.model,
+          ...(ReasoningLevelSchema.safeParse(values.reasoningLevel).success ? { reasoningLevel: ReasoningLevelSchema.parse(values.reasoningLevel) } : {}),
           ...(typeof values.baseUrl === "string"
             ? { baseUrl: values.baseUrl }
             : {}),
@@ -424,6 +430,7 @@ export class ProviderVault {
     return {
       providerId: settings.providerId,
       model: settings.model,
+      ...(settings.reasoningLevel && settings.reasoningLevel !== "off" ? { reasoningLevel: settings.reasoningLevel } : {}),
       ...(settings.baseUrl ? { baseUrl: settings.baseUrl } : {}),
       hasApiKey: this.getKey(settings) !== undefined,
     };
