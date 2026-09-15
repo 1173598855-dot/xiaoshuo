@@ -81,6 +81,14 @@ export class DesktopAuthService {
     this.sessionDurationMs = Math.max(60_000, Math.trunc(options.sessionDurationMs ?? 30 * 24 * 60 * 60 * 1_000));
     this.publicKey = createPublicKey(options.publicKeyPem ?? DESKTOP_INVITATION_PUBLIC_KEY_PEM);
     this.testMode = options.testMode === true;
+    if (this.testMode) {
+      this.database
+        .prepare(
+          `INSERT OR IGNORE INTO users (id, username, username_normalized, password_hash, created_at, disabled_at)
+           VALUES (?, ?, ?, ?, ?, NULL)`,
+        )
+        .run("00000000-0000-4000-8000-000000000099", "desktop-test", "desktop-test", "test", "2026-01-01T00:00:00.000Z");
+    }
   }
 
   getActivationStatus(): DesktopActivationStatus {
