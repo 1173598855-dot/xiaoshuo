@@ -14,6 +14,8 @@ Authorization: Bearer <XIAOYI_ACCESS_TOKEN>
 
 桌面端不依赖 Web 账号中心：管理员使用 `npm run desktop:invite -- --private-key <private.pem> --max-uses <n> --expires-at <ISO>` 生成签名邀请码，桌面端首次激活后才允许本地注册。离线模式只能限制每台电脑本地数据库中的注册次数，不能防止邀请码被复制到另一台电脑；需要全局人数限制时再接入 Web 账号中心。
 
+桌面发布包启用 ASAR、生产构建不带 source map、打包版禁用 DevTools 并拒绝常见调试参数。发布前还应配置 Windows 代码签名证书；反逆向只能提高成本，不能在完全离线的客户端内提供绝对防破解。
+
 最小启动示例：
 
 ```powershell

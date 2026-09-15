@@ -55,6 +55,7 @@
     "appId": "com.xiaoyi.novelworkbench",
     "productName": "小奕小说生成工具",
     "artifactName": "XiaoyiNovelWorkbench-${version}-setup.exe",
+    "asar": true,
     "directories": {
       "output": "release"
     },

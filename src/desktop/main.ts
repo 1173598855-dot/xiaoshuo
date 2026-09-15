@@ -136,6 +136,14 @@ if (!hasSingleInstanceLock) {
 }
 
 async function bootstrap(): Promise<void> {
+  if (
+    app.isPackaged &&
+    process.execArgv.some((argument) =>
+      /^(--inspect|--inspect-brk|--remote-debugging-port|--js-flags=--expose-gc)/i.test(argument),
+    )
+  ) {
+    throw new Error("Packaged desktop runtime refuses debugging flags");
+  }
   const runtimeConfig = startupRuntimeConfig;
   desktopRuntimeConfig = runtimeConfig;
   const userDataDirectory = runtimeConfig.userDataDirectory;
@@ -287,8 +295,22 @@ async function createMainWindow(
 ): Promise<BrowserWindow> {
   const preloadPath = path.join(__dirname, "preload.cjs");
 
-  const window = new BrowserWindow(createSecureWindowOptions(preloadPath));
+  const window = new BrowserWindow(createSecureWindowOptions(preloadPath, !app.isPackaged));
   installDesktopPermissionGuards(window.webContents.session);
+  if (app.isPackaged) {
+    window.webContents.on("devtools-opened", () => window.webContents.closeDevTools());
+    window.webContents.on("before-input-event", (event, input) => {
+      const key = input.key.toLowerCase();
+      if (
+        input.type === "keyDown" &&
+        (key === "f12" ||
+          (input.control && input.shift && key === "i") ||
+          (input.meta && input.alt && key === "i"))
+      ) {
+        event.preventDefault();
+      }
+    });
+  }
   windowLifecycle.publish(window);
   mainWindow = window;
   window.on("close", (event) => {

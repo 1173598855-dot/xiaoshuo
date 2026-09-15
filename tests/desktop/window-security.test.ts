@@ -39,6 +39,11 @@ describe("desktop window security", () => {
     });
   });
 
+  it("disables DevTools in packaged-window mode", () => {
+    const options = createSecureWindowOptions("C:\\temp\\preload.cjs", false);
+    expect(options.webPreferences?.devTools).toBe(false);
+  });
+
   it("opens only explicit HTTPS URLs from the Main-process allowlist", () => {
     const isAllowed = createExternalUrlAllowlist([
       "https://docs.example.test/desktop-help",

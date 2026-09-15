@@ -44,6 +44,7 @@ export const isAllowedExternalUrl = createExternalUrlAllowlist([]);
 
 export function createSecureWindowOptions(
   preloadPath: string,
+  allowDevTools = true,
 ): BrowserWindowConstructorOptions {
   return {
     width: 1440,
@@ -58,6 +59,7 @@ export function createSecureWindowOptions(
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      devTools: allowDevTools,
       preload: preloadPath,
     },
   };

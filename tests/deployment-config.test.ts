@@ -38,6 +38,12 @@ describe("container deployment configuration", () => {
     expect(entrypoint).toContain("replace-with-a-random-token-at-least-16-characters");
   });
 
+  it("does not enable desktop source maps unless explicitly requested", () => {
+    const tsup = readFileSync(resolve(root, "tsup.desktop.config.ts"), "utf8");
+    expect(tsup).toContain("XIAOYI_DESKTOP_SOURCEMAP");
+    expect(tsup).toContain("sourcemap: process.env.XIAOYI_DESKTOP_SOURCEMAP === \"1\"");
+  });
+
   it("keeps runtime database backups and local secrets out of the build context", () => {
     const dockerignore = readFileSync(resolve(root, ".dockerignore"), "utf8");
     expect(dockerignore).toContain("backups");
