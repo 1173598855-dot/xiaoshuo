@@ -336,4 +336,43 @@ describe("enterprise HTTP boundary", () => {
     expect(await visible.json()).toEqual([expect.objectContaining({ id: firstBook.id })]);
     expect((await app.request(`/api/books/${secondBook.id}`, { headers: firstHeaders })).status).toBe(404);
   });
+
+  it("lets a registered account use its own Provider key without server Provider secrets", async () => {
+    const runtime = createAutoNovelRuntime({
+      databasePath: ":memory:",
+      providerResolver: new AutoNovelDeterministicProviderResolver(),
+    });
+    runtimes.push(runtime);
+    const invite = runtime.invitationRepository.create({ maxUses: 1 });
+    const app = createAutoNovelApp({
+      ...runtime,
+      accessToken: "admin-invitation-token-123",
+      invitationsRequired: true,
+      authSessionMs: 86_400_000,
+    });
+    const registered = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inviteCode: invite.code, username: "provider-writer", password: "a-strong-password-123" }),
+    });
+    const session = await registered.json() as { accessToken: string };
+    const response = await app.request("/api/books", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        idea: "用户自己的模型接入测试",
+        idempotencyKey: "user-provider-book",
+        provider: {
+          kind: "openai-compatible",
+          model: "user-model",
+          apiKey: "user-owned-provider-key",
+          baseUrl: "http://127.0.0.1:9000/v1",
+        },
+      }),
+    });
+    expect(response.status).toBe(201);
+  });
 });
