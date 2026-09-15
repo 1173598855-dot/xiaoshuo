@@ -41,4 +41,14 @@
 - [x] 隔离 Compose 集成演练：app/Nginx 健康，首页与 `/api/ready` 可用，Bearer 鉴权生效；通过 deterministic Provider 创建作品并采纳 3 章，重启 app 后数据仍在命名卷中。
 - [x] TLS profile 集成演练：临时自签证书下 HTTPS 首页与 health probe 均为 200，app 和双代理 healthcheck healthy；验证后移除专用验证卷与临时证书。
 
-默认 `npm run e2e` 的 Playwright `webServer` 子进程在本机 127.0.0.1 监听超时；直接手动启动 API/Vite 后，`npm run e2e:external` 的完整流程及三个视口全部通过。
+默认 `npm run e2e` 曾因 Playwright 托管 `tsx watch` 子进程在 Windows 上监听超时；已改为非 watch 的 `e2e:server` / `e2e:web` 启动脚本，默认 E2E 已恢复通过。
+
+## 2026-09-15 加固与邀请码补充
+
+- [x] 修复 Compose 默认 Origin 与文档入口不一致，并在容器 entrypoint 拒绝空/占位访问令牌。
+- [x] Worker 增加 ready 状态、终态 Provider 配置清理，以及 lease-safe pause/cancel 控制事务。
+- [x] 限流器增加身份数量上限、过期清理和超长 Token 保护。
+- [x] 恢复脚本增加 `--offline` 前置确认，避免误在在线数据库上执行替换。
+- [x] 新增 SQLite 邀请码、账号和账号会话表：邀请码只在注册时消耗，密码和会话令牌只存安全摘要，账号按 owner 隔离作品。
+- [x] 浏览器在认证失败时支持“邀请码注册 / 用户名密码登录”，账号会话限制在当前 sessionStorage。
+- [x] 聚焦测试、完整测试、lint、typecheck、build、server smoke、依赖审计、默认 E2E 和外部 E2E 均已通过。

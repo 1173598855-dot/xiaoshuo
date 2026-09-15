@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { AccountAccessDeniedError } from "./auth-repository";
 
 import {
   BookDetailsSchema,
@@ -164,13 +165,16 @@ export class BookRepository {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
-  createBook(input: CreateBookInput, idempotencyKey?: string): Book {
+  createBook(input: CreateBookInput, idempotencyKey?: string, ownerUserId?: string): Book {
     return this.withTransaction(() => {
       if (idempotencyKey) {
         const existing = this.database
-          .prepare("SELECT id, project_id, title, idea, genre, target_chapters, target_chapter_characters, style, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
-          .get(idempotencyKey) as unknown as BookRow | undefined;
-        if (existing) return toBook(existing);
+          .prepare("SELECT id, project_id, owner_user_id, title, idea, genre, target_chapters, target_chapter_characters, style, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
+          .get(idempotencyKey) as unknown as (BookRow & { owner_user_id: string | null }) | undefined;
+        if (existing) {
+          if (ownerUserId && existing.owner_user_id !== ownerUserId) throw new AccountAccessDeniedError();
+          return toBook(existing);
+        }
       }
       const id = this.createId();
       const projectId = this.createId();
@@ -190,15 +194,16 @@ export class BookRepository {
       this.database
         .prepare(
           `INSERT INTO books (
-             id, project_id, title, idea, director_idempotency_key, genre,
+             id, project_id, owner_user_id, title, idea, director_idempotency_key, genre,
              target_chapters,
              target_chapter_characters, style, status, revision,
              selected_direction_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
         )
         .run(
           id,
           projectId,
+          ownerUserId ?? null,
           title,
           input.idea,
           idempotencyKey ?? null,
@@ -214,16 +219,17 @@ export class BookRepository {
     });
   }
 
-  listBooks(): readonly Book[] {
+  listBooks(ownerUserId?: string): readonly Book[] {
+    const ownerClause = ownerUserId ? " WHERE owner_user_id = ?" : "";
     const rows = this.database
       .prepare(
         `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
                 target_chapter_characters, style, status, revision,
                 selected_direction_id, created_at, updated_at
-         FROM books
+          FROM books${ownerClause}
          ORDER BY updated_at DESC, id`,
       )
-      .all() as unknown as BookRow[];
+      .all(...(ownerUserId ? [ownerUserId] : [])) as unknown as BookRow[];
     return rows.map(toBook);
   }
 

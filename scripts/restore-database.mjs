@@ -13,6 +13,7 @@ const nodeRequire = createRequire(import.meta.url);
 const { DatabaseSync } = nodeRequire("node:sqlite");
 const sourcePath = process.argv[2] ? resolve(process.argv[2]) : undefined;
 const targetPath = process.argv[3] ? resolve(process.argv[3]) : undefined;
+const offlineAcknowledged = process.argv[4] === "--offline";
 
 function verify(filePath) {
   let database;
@@ -32,8 +33,8 @@ function verify(filePath) {
   }
 }
 
-if (!sourcePath || !targetPath) {
-  console.error("Usage: node scripts/restore-database.mjs <backup.db> <target.db>");
+if (!sourcePath || !targetPath || !offlineAcknowledged) {
+  console.error("Usage: node scripts/restore-database.mjs <backup.db> <target.db> --offline");
   process.exitCode = 2;
 } else if (sourcePath === targetPath) {
   console.error("Source and target must be different files");

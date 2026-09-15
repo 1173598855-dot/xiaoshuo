@@ -23,6 +23,8 @@ export interface EnterpriseConfig {
   readonly port: number;
   readonly databasePath: string;
   readonly accessToken: string | undefined;
+  readonly invitationsRequired: boolean;
+  readonly authSessionDays: number;
   readonly allowedOrigin: string | undefined;
   readonly trustProxy: boolean;
   readonly rateLimitPerMinute: number;
@@ -60,6 +62,11 @@ export function loadEnterpriseConfig(
     ? ":memory:"
     : resolve(workingDirectory, configuredDatabasePath || "data/xiaoyi.db");
   const accessToken = nonEmpty(environment.XIAOYI_ACCESS_TOKEN ?? environment.XIAOYI_API_TOKEN);
+  const invitationsRequired = parseBoolean(
+    environment.XIAOYI_INVITATIONS_REQUIRED,
+    false,
+    "XIAOYI_INVITATIONS_REQUIRED",
+  );
   if (environment.NODE_ENV === "production" && !accessToken) {
     throw new EnterpriseConfigError(
       "XIAOYI_ACCESS_TOKEN is required when NODE_ENV=production",
@@ -68,12 +75,23 @@ export function loadEnterpriseConfig(
   if (accessToken && accessToken.length < 16) {
     throw new EnterpriseConfigError("XIAOYI_ACCESS_TOKEN must contain at least 16 characters");
   }
+  if (invitationsRequired && !accessToken) {
+    throw new EnterpriseConfigError("XIAOYI_ACCESS_TOKEN is required when invitations are enabled");
+  }
 
   return {
     host: parseHost(environment.XIAOYI_HOST),
     port: parsePort(environment.PORT ?? environment.XIAOYI_PORT, 4_310),
     databasePath,
     accessToken,
+    invitationsRequired,
+    authSessionDays: parseBoundedInteger(
+      environment.XIAOYI_AUTH_SESSION_DAYS,
+      7,
+      1,
+      90,
+      "XIAOYI_AUTH_SESSION_DAYS",
+    ),
     allowedOrigin: parseOrigin(environment.XIAOYI_ALLOWED_ORIGIN),
     trustProxy: environment.XIAOYI_TRUST_PROXY === "1",
     rateLimitPerMinute: parseBoundedInteger(
@@ -274,6 +292,13 @@ function parseOptionalBoundedInteger(
 ): number | undefined {
   if (!value?.trim()) return undefined;
   return parseBoundedInteger(value, minimum, minimum, maximum, name);
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (!value?.trim()) return fallback;
+  if (value === "1" || value.toLowerCase() === "true") return true;
+  if (value === "0" || value.toLowerCase() === "false") return false;
+  throw new EnterpriseConfigError(`${name} must be 0, 1, true, or false`);
 }
 
 function optionalResolvedPath(value: string | undefined, workingDirectory: string): string | undefined {

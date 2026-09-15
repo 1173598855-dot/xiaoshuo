@@ -848,6 +848,36 @@ export class ProductionRepository {
     });
   }
 
+  /** Atomically control a run and fence any active worker lease. */
+  controlRun(runId: string, status: "paused" | "cancelled"): ProductionRun {
+    return this.withTransaction(() => {
+      const current = this.getRun(runId);
+      if (
+        status === "paused" &&
+        ["completed", "cancelled", "failed"].includes(current.status)
+      ) return current;
+      if (status === "cancelled" && ["completed", "cancelled"].includes(current.status)) {
+        return current;
+      }
+      const timestamp = this.now();
+      this.database
+        .prepare(
+          `UPDATE production_runs SET
+             status = ?, error_code = NULL, next_attempt_at = NULL,
+             lease_owner = NULL, lease_token = NULL,
+             lease_expires_at = NULL, heartbeat_at = NULL,
+             version = version + 1, updated_at = ?
+           WHERE id = ? AND version = ?`,
+        )
+        .run(status, timestamp, runId, current.version);
+      const updated = this.getRun(runId);
+      if (updated.kind === "production") {
+        this.bookRepository.setStatus(updated.bookId, bookStatusForRun(updated));
+      }
+      return updated;
+    });
+  }
+
   appendCheckpoint(input: {
     runId: string;
     stage: ProductionStage;

@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 export interface RequestContextValue {
   readonly requestId: string;
-  readonly principal: "anonymous" | "single-tenant";
+  readonly principal: "anonymous" | "single-tenant" | "authenticated-user";
+  readonly userId?: string;
 }
 
 export const requestContextStorage = new AsyncLocalStorage<RequestContextValue>();

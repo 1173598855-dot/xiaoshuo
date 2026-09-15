@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type {
   DesktopCommand,
@@ -8,6 +8,7 @@ import type {
   SaveProviderSettingsInput,
 } from "../shared/contracts";
 import type { Book, BookDetails, CreateBookInput, StoryDirection } from "../shared/auto-novel";
+import { AuthSessionResultSchema } from "../shared/auth";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   type MemoryContextConfig,
@@ -52,7 +53,11 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accessTokenPrompt, setAccessTokenPrompt] = useState(false);
-  const [accessTokenInput, setAccessTokenInput] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [invitationCodeInput, setInvitationCodeInput] = useState("");
+  const [invitationError, setInvitationError] = useState<string | null>(null);
   const providerConfig = useMemo<ProviderConfig | null>(() => {
     if (!providerSettings || providerSettings.platform !== "web") return null;
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
@@ -362,32 +367,85 @@ export function App() {
     await loadLibrary();
   };
 
+  const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setInvitationError(null);
+    try {
+      const isRegister = authMode === "register";
+      const response = await fetch(isRegister ? "/api/auth/register" : "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          username: authUsername.trim(),
+          password: authPassword,
+          ...(isRegister ? { inviteCode: invitationCodeInput.trim() } : {}),
+        }),
+      });
+      const body = await response.json().catch(() => undefined);
+      if (!response.ok) {
+        const message = body && typeof body === "object" && "error" in body &&
+          typeof body.error === "object" && body.error !== null &&
+          "message" in body.error && typeof body.error.message === "string"
+          ? body.error.message
+          : "邀请码兑换失败。";
+        throw new Error(message);
+      }
+      const result = AuthSessionResultSchema.parse(body);
+      storeAccessToken(result.accessToken);
+      setAuthUsername("");
+      setAuthPassword("");
+      setInvitationCodeInput("");
+      setAccessTokenPrompt(false);
+      setLoading(true);
+      void loadLibrary();
+    } catch (redeemError) {
+      setInvitationError(redeemError instanceof Error ? redeemError.message : "邀请码兑换失败。" );
+    }
+  };
+
   if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
   if (accessTokenPrompt) {
     return (
       <main className="app-error" role="dialog" aria-labelledby="access-token-title">
         <span className="brand-mark">奕</span>
-        <h1 id="access-token-title">连接内网工作台</h1>
-        <p>请输入本次会话的访问令牌。令牌只保存在当前浏览器会话，不会写入作品库。</p>
-        <form onSubmit={(event) => {
-          event.preventDefault();
-          if (!accessTokenInput.trim()) return;
-          storeAccessToken(accessTokenInput);
-          setAccessTokenInput("");
-          setAccessTokenPrompt(false);
-          setLoading(true);
-          void loadLibrary();
-        }}>
+        <h1 id="access-token-title">{authMode === "register" ? "注册工作台账号" : "登录工作台"}</h1>
+        <p>{authMode === "register" ? "注册需要有效邀请码；邀请码只用于注册，账号创建后使用用户名和密码登录。" : "请输入已注册账号的用户名和密码。凭据只保存在当前浏览器会话。"}</p>
+        <form onSubmit={(event) => void submitAuth(event)}>
           <input
-            type="password"
-            value={accessTokenInput}
-            onChange={(event) => setAccessTokenInput(event.target.value)}
-            placeholder="XIAOYI_ACCESS_TOKEN"
+            type="text"
+            value={authUsername}
+            onChange={(event) => setAuthUsername(event.target.value)}
+            placeholder="用户名"
             autoComplete="off"
             autoFocus
           />
-          <button type="submit" disabled={!accessTokenInput.trim()}>连接</button>
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(event) => setAuthPassword(event.target.value)}
+            placeholder="密码（至少 12 位）"
+            autoComplete={authMode === "register" ? "new-password" : "current-password"}
+          />
+          {authMode === "register" ? (
+            <input
+              type="text"
+              value={invitationCodeInput}
+              onChange={(event) => setInvitationCodeInput(event.target.value)}
+              placeholder="邀请码"
+              autoComplete="off"
+            />
+          ) : null}
+          <button type="submit" disabled={!authUsername.trim() || !authPassword || (authMode === "register" && !invitationCodeInput.trim())}>
+            {authMode === "register" ? "注册并登录" : "登录"}
+          </button>
         </form>
+        <button type="button" className="text-button" onClick={() => {
+          setAuthMode(authMode === "register" ? "login" : "register");
+          setInvitationError(null);
+        }}>
+          {authMode === "register" ? "已有账号，返回登录" : "没有账号？使用邀请码注册"}
+        </button>
+        {invitationError ? <p role="alert">{invitationError}</p> : null}
         {error ? <p role="alert">{error}</p> : null}
       </main>
     );

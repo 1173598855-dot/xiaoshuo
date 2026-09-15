@@ -23,6 +23,7 @@
 - 生产调用对限流和上游暂不可用执行有限次、可取消的重试，不重试鉴权、参数或取消错误；
 - 正式正文支持 Markdown、TXT 和可直接打开的 DOCX 导出，并提供正文搜索与章节目录；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
+- 企业部署可开启账号邀请码模式：管理员创建带最大注册次数和过期时间的邀请码；没有邀请码不能注册账号，注册后使用用户名和密码登录。密码哈希和会话令牌只保存安全摘要，账号只能看到自己的作品，管理员令牌保留运维权限。
 
 ## 界面方向
 
@@ -84,6 +85,11 @@ npm run dev
 | `GET` | `/api/books/:bookId/memory`、`/api/books/:bookId/memory/context/:chapterNumber` | 读取记忆账本 / 预览注入上下文 |
 | `GET` / `PATCH` / `POST` | `/api/memory/:entryId/history`、`/api/memory/:entryId`、`/api/memory/:entryId/rollback` | 查看历史、手动修正和回滚记忆 |
 | `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT / DOCX |
+| `POST` | `/api/auth/register` | 使用邀请码注册账号并登录 |
+| `POST` | `/api/auth/login` | 账号登录 |
+| `POST` | `/api/auth/logout` | 退出当前账号会话 |
+| `GET` / `POST` | `/api/admin/invitations` | 管理员查看 / 创建邀请码 |
+| `POST` | `/api/admin/invitations/:invitationId/revoke` | 管理员撤销邀请码及其会话 |
 
 所有输入和返回值都经过共享 Zod 契约校验；失败统一返回 `{ "error": { "code", "message" } }`。Electron 桌面端使用同一业务语义的白名单 IPC，不让 Renderer 接触 API Key。
 
@@ -164,6 +170,21 @@ npm run e2e:external
 
 桌面测试覆盖 IPC、窗口安全、Vault 和打包产物。
 
+### 邀请码模式
+
+生产环境设置 `XIAOYI_INVITATIONS_REQUIRED=1` 后，作者 API 需要账号登录；注册接口必须提供邀请码，`XIAOYI_ACCESS_TOKEN` 仍是管理员令牌，用于创建、查看和撤销邀请码。创建响应中的 `code` 只返回一次，SQLite 只保存邀请码哈希、密码哈希和会话哈希。
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:XIAOYI_ACCESS_TOKEN" }
+$invite = Invoke-RestMethod http://127.0.0.1:8080/api/admin/invitations -Method Post `
+  -Headers $headers -ContentType 'application/json' -Body '{"maxUses":10}'
+$invite.code
+
+Invoke-RestMethod http://127.0.0.1:8080/api/auth/register -Method Post `
+  -ContentType 'application/json' `
+  -Body (@{ inviteCode = $invite.code; username = 'writer'; password = 'a-strong-password-123' } | ConvertTo-Json)
+```
+
 ## 企业内网 P0 基线
 
 当前版本的企业目标是单用户 / 单租户内网部署，不包含多人协作、多租户和云端协作。已补齐生产所需的访问令牌保护、持久化生产队列、Provider 用量与额度、显式故障转移、审计日志、结构化指标、告警、完整性校验备份及安全恢复脚本。
@@ -188,5 +209,5 @@ npm run docker:up
 
 ```powershell
 npm run backup:verify -- <backup.db>
-npm run backup:restore -- <backup.db> <target.db>
+npm run backup:restore -- <backup.db> <target.db> --offline
 ```

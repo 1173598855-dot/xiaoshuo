@@ -236,6 +236,43 @@ describe("auto-novel full client flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开正式正文" }));
     await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent(candidate.candidateText));
   });
+
+  it("registers with an invitation when the author API requires an account", async () => {
+    let authenticated = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!authenticated && url.endsWith("/api/books")) {
+        return json({ error: { code: "AUTHENTICATION_REQUIRED", message: "需要有效的访问令牌。" } }, 401);
+      }
+      if (url.endsWith("/api/auth/register")) {
+        authenticated = true;
+        expect(init?.method).toBe("POST");
+        return json({
+          accessToken: "account-session-token-12345678901234567890",
+          expiresAt: "2026-09-22T00:00:00.000Z",
+          user: {
+            id: "f2fcea89-9d4e-4f45-84d2-a0e40d86f706",
+            username: "writer",
+            createdAt: "2026-09-15T00:00:00.000Z",
+          },
+        }, 201);
+      }
+      if (url.endsWith("/api/books")) return json([]);
+      if (url.endsWith("/api/providers")) return json([provider]);
+      throw new Error(`Unhandled request ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "没有账号？使用邀请码注册" }));
+    fireEvent.change(screen.getByPlaceholderText("用户名"), { target: { value: "writer" } });
+    fireEvent.change(screen.getByPlaceholderText("密码（至少 12 位）"), { target: { value: "a-strong-password-123" } });
+    fireEvent.change(screen.getByPlaceholderText("邀请码"), { target: { value: "xiaoyi-test-code" } });
+    fireEvent.click(screen.getByRole("button", { name: "注册并登录" }));
+
+    await waitFor(() => expect(screen.getByText("一个想法。")).toBeInTheDocument());
+    expect(sessionStorage.getItem("xiaoyi.access-token.v1")).toContain("account-session-token");
+  });
 });
 
 function json(body: unknown, status = 200): Response {

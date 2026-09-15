@@ -14,15 +14,25 @@ export class SlidingWindowRateLimiter {
     private readonly limit: number,
     private readonly windowMs = 60_000,
     private readonly now: () => number = Date.now,
+    private readonly maxKeys = 10_000,
   ) {
     if (!Number.isInteger(limit) || limit < 1) {
       throw new Error("Rate limiter limit must be a positive integer");
+    }
+    if (!Number.isInteger(maxKeys) || maxKeys < 1) {
+      throw new Error("Rate limiter maxKeys must be a positive integer");
     }
   }
 
   check(key: string): RateLimitDecision {
     const now = this.now();
     const cutoff = now - this.windowMs;
+    this.pruneExpired(cutoff);
+    if (!this.entries.has(key) && this.entries.size >= this.maxKeys) {
+      const oldestKey = [...this.entries.entries()]
+        .sort((left, right) => (left[1][0] ?? now) - (right[1][0] ?? now))[0]?.[0];
+      if (oldestKey !== undefined) this.entries.delete(oldestKey);
+    }
     const recent = (this.entries.get(key) ?? []).filter((timestamp) => timestamp > cutoff);
     const allowed = recent.length < this.limit;
     if (allowed) recent.push(now);
@@ -39,16 +49,24 @@ export class SlidingWindowRateLimiter {
   clear(): void {
     this.entries.clear();
   }
+
+  private pruneExpired(cutoff: number): void {
+    for (const [key, timestamps] of this.entries) {
+      const recent = timestamps.filter((timestamp) => timestamp > cutoff);
+      if (recent.length === 0) this.entries.delete(key);
+      else if (recent.length !== timestamps.length) this.entries.set(key, recent);
+    }
+  }
 }
 
 export function extractAccessToken(request: Request): string | undefined {
   const authorization = request.headers.get("authorization")?.trim();
   if (authorization?.toLowerCase().startsWith("bearer ")) {
     const token = authorization.slice(7).trim();
-    if (token) return token;
+    if (token && token.length <= 4_096) return token;
   }
   const headerToken = request.headers.get("x-xiaoyi-access-token")?.trim();
-  return headerToken || undefined;
+  return headerToken && headerToken.length <= 4_096 ? headerToken : undefined;
 }
 
 export function isAccessTokenValid(

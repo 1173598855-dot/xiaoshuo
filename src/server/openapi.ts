@@ -4,13 +4,16 @@ export const OPENAPI_DOCUMENT = {
   info: {
     title: "小奕小说生成工具 API",
     version: "0.4.0",
-    description: "单用户内网创作工作台 API。除健康探针外均使用 Bearer 访问令牌。",
+    description: "账号制作者工作台 API。邀请码只用于注册，作者使用账号密码登录后获得 Bearer 会话令牌。",
   },
   servers: [{ url: "/" }],
   security: [{ bearerAuth: [] }],
   paths: {
     "/api/health": { get: { summary: "存活探针", security: [] } },
     "/api/ready": { get: { summary: "就绪探针", security: [] } },
+    "/api/auth/register": { post: { summary: "使用邀请码注册账号", security: [] } },
+    "/api/auth/login": { post: { summary: "账号登录", security: [] } },
+    "/api/auth/logout": { post: { summary: "退出当前账号会话" } },
     "/api/providers": { get: { summary: "Provider 目录" } },
     "/api/providers/models": { post: { summary: "拉取兼容端点模型列表" } },
     "/api/providers/test": { post: { summary: "测试 Provider 连接" } },
@@ -42,6 +45,11 @@ export const OPENAPI_DOCUMENT = {
     "/api/admin/usage": { get: { summary: "用量与成本" } },
     "/api/admin/backups": { get: { summary: "备份状态" }, post: { summary: "创建备份" } },
     "/api/admin/backups/verify": { post: { summary: "校验备份" } },
+    "/api/admin/invitations": {
+      get: { summary: "列出邀请码" },
+      post: { summary: "创建邀请码" },
+    },
+    "/api/admin/invitations/{invitationId}/revoke": { post: { summary: "撤销邀请码" } },
   },
   components: {
     securitySchemes: {

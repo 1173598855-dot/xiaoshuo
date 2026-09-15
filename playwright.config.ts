@@ -18,7 +18,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "npm run dev:server",
+      command: "npm run e2e:server",
       url: `http://127.0.0.1:${serverPort}/api/health`,
       timeout: 120_000,
       reuseExistingServer: false,
@@ -29,7 +29,7 @@ export default defineConfig({
       },
     },
     {
-      command: "npm run dev:web",
+      command: "npm run e2e:web",
       url: `http://127.0.0.1:${webPort}`,
       timeout: 120_000,
       reuseExistingServer: false,

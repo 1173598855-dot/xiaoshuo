@@ -4,6 +4,7 @@ const AUTO_NOVEL_SCHEMA = `
   CREATE TABLE IF NOT EXISTS books (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     director_idempotency_key TEXT UNIQUE,
     idea TEXT NOT NULL,
@@ -181,6 +182,9 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
+  if (!columns.some(({ name }) => name === "owner_user_id")) {
+    database.exec("ALTER TABLE books ADD COLUMN owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL");
+  }
   if (!columns.some(({ name }) => name === "memory_revision")) {
     database.exec("ALTER TABLE books ADD COLUMN memory_revision INTEGER NOT NULL DEFAULT 0");
   }

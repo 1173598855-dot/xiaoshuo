@@ -84,6 +84,18 @@ describe("ProductionWorker", () => {
     production.releaseRunLease(second.lease, "paused");
   });
 
+  it("fences and clears a lease when an operator controls a running run", () => {
+    const { production, run } = fixture();
+    expect(production.claimNextRun("worker-a", 10_000, new Date().toISOString())).not.toBeNull();
+    expect(production.controlRun(run.id, "paused").status).toBe("paused");
+    expect(production.getQueueState(run.id)).toMatchObject({
+      leaseOwner: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+    });
+  });
+
   it("applies bounded exponential delay when recovering an expired lease", () => {
     const { database, production, run } = fixture();
     const start = new Date().toISOString();
@@ -189,6 +201,41 @@ describe("ProductionWorker", () => {
     await second.start();
     await waitFor(() => production.getRun(next.id).status === "completed");
     expect(calls).toBe(2);
+  });
+
+  it("clears the in-memory provider config after a terminal run", async () => {
+    const { production, run } = fixture();
+    const service: Pick<ProductionService, "start"> = {
+      start: async (runId) => production.updateRun(runId, { status: "completed", stage: "accept" }),
+    };
+    const worker = new ProductionWorker({ productionRepository: production, productionService: service }, {
+      workerId: "worker-cleanup",
+      pollIntervalMs: 5,
+    });
+    workers.push(worker);
+    worker.enqueue(run.id, providerConfig);
+    await worker.start();
+    await waitFor(() => production.getRun(run.id).status === "completed");
+    expect((worker as unknown as { providerConfigs: Map<string, ProviderConfig> }).providerConfigs.has(run.id)).toBe(false);
+  });
+
+  it("reports not ready when startup recovery fails", async () => {
+    const { production } = fixture();
+    production.recoverExpiredLeases = () => {
+      throw new Error("database unavailable");
+    };
+    const service: Pick<ProductionService, "start"> = {
+      start: async () => {
+        throw new Error("must not be called");
+      },
+    };
+    const worker = new ProductionWorker({ productionRepository: production, productionService: service }, {
+      workerId: "worker-not-ready",
+      pollIntervalMs: 5,
+    });
+    workers.push(worker);
+    await worker.start();
+    expect(worker.getStatus().ready).toBe(false);
   });
 
   it("claims an interrupted running run on startup after its lease expires", async () => {

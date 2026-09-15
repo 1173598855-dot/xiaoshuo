@@ -8,8 +8,7 @@ export function loadAccessToken(): string | undefined {
   } catch {
     // sessionStorage may be unavailable in a restricted browser context.
   }
-  const configured = import.meta.env.VITE_XIAOYI_ACCESS_TOKEN?.trim();
-  return configured || undefined;
+  return undefined;
 }
 
 export function storeAccessToken(token: string): void {

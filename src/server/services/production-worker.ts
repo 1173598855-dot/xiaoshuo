@@ -61,6 +61,7 @@ export interface ProductionWorkerOptions {
 export interface ProductionWorkerStatus {
   readonly workerId: string;
   readonly started: boolean;
+  readonly ready: boolean;
   readonly stopping: boolean;
   readonly running: number;
   readonly maxConcurrentRuns: number;
@@ -95,6 +96,7 @@ export class ProductionWorker {
   private readonly active = new Map<string, ActiveExecution>();
   private readonly providerConfigs = new Map<string, ProviderConfig>();
   private started = false;
+  private recoveryReady = false;
   private stopping = false;
   private pumping = false;
   private wakeRequested = false;
@@ -129,6 +131,7 @@ export class ProductionWorker {
     if (this.started && !this.stopping) return;
     this.started = true;
     this.stopping = false;
+    this.recoveryReady = false;
     this.log("info", "production.worker_started", {
       workerId: this.workerId,
       concurrency: this.concurrency,
@@ -142,7 +145,9 @@ export class ProductionWorker {
       if (recovered.length > 0) {
         this.log("info", "production.worker_recovered", { count: recovered.length });
       }
+      this.recoveryReady = true;
     } catch (error) {
+      this.recoveryReady = false;
       this.log("error", "production.worker_recovery_failed", { error: errorName(error) });
     }
     await this.pump();
@@ -158,6 +163,7 @@ export class ProductionWorker {
     if (!this.started && this.active.size === 0) return;
     this.stopping = true;
     this.started = false;
+    this.recoveryReady = false;
     if (this.pollTimer !== undefined) {
       clearTimeout(this.pollTimer);
       this.pollTimer = undefined;
@@ -212,10 +218,25 @@ export class ProductionWorker {
     return {
       workerId: this.workerId,
       started: this.started,
+      ready: this.started && this.recoveryReady,
       stopping: this.stopping,
       running: this.active.size,
       maxConcurrentRuns: this.concurrency,
     };
+  }
+
+  pause(runId: string): ReturnType<ProductionRepository["getRun"]> {
+    this.active.get(runId)?.controller.abort();
+    const run = this.dependencies.productionRepository.controlRun(runId, "paused");
+    if (run.status !== "queued") this.providerConfigs.delete(runId);
+    return run;
+  }
+
+  cancel(runId: string): ReturnType<ProductionRepository["getRun"]> {
+    this.active.get(runId)?.controller.abort();
+    const run = this.dependencies.productionRepository.controlRun(runId, "cancelled");
+    this.providerConfigs.delete(runId);
+    return run;
   }
 
   /** Trigger an immediate poll after an API request queues work. */
@@ -244,7 +265,9 @@ export class ProductionWorker {
           this.retryBaseDelayMs,
           this.retryMaxDelayMs,
         );
+        this.recoveryReady = true;
       } catch (error) {
+        this.recoveryReady = false;
         this.log("warn", "production.worker_sweep_failed", { error: errorName(error) });
       }
       while (this.active.size < this.concurrency && this.started && !this.stopping) {
@@ -338,6 +361,12 @@ export class ProductionWorker {
     } finally {
       this.stopHeartbeat(execution);
       if (this.active.get(runId)?.lease.token === lease.token) this.active.delete(runId);
+      try {
+        const current = this.dependencies.productionRepository.getRun(runId);
+        if (current.status !== "queued") this.providerConfigs.delete(runId);
+      } catch {
+        this.providerConfigs.delete(runId);
+      }
       if (this.started && !this.stopping) void this.pump();
     }
   }

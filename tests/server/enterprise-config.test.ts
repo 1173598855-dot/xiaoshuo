@@ -77,5 +77,18 @@ describe("enterprise server configuration", () => {
     expect(() =>
       loadEnterpriseConfig({ XIAOYI_SERVER_PROVIDERS_JSON: "{}" }),
     ).toThrow(EnterpriseConfigError);
+    expect(() =>
+      loadEnterpriseConfig({ XIAOYI_INVITATIONS_REQUIRED: "1" }),
+    ).toThrow(EnterpriseConfigError);
+  });
+
+  it("parses invitation session policy", () => {
+    const config = loadEnterpriseConfig({
+      XIAOYI_ACCESS_TOKEN: "admin-invitation-token-123",
+      XIAOYI_INVITATIONS_REQUIRED: "1",
+      XIAOYI_AUTH_SESSION_DAYS: "14",
+    });
+    expect(config.invitationsRequired).toBe(true);
+    expect(config.authSessionDays).toBe(14);
   });
 });

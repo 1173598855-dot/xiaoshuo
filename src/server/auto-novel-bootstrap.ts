@@ -19,6 +19,8 @@ import type { PersistedProviderResolver } from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
 import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
+import { InvitationRepository } from "./repositories/invitation-repository";
+import { AuthRepository } from "./repositories/auth-repository";
 import { MetricsRegistry, StructuredLogger } from "./enterprise/observability";
 import { createOperationalProviderResolver } from "./enterprise/provider-stack";
 
@@ -53,6 +55,8 @@ export interface AutoNovelRuntime {
   readonly memoryService: MemoryService;
   readonly auditRepository: AuditRepository;
   readonly usageRepository: UsageRepository;
+  readonly invitationRepository: InvitationRepository;
+  readonly authRepository: AuthRepository;
   readonly metrics: MetricsRegistry;
   readonly logger: StructuredLogger;
   close(): void;
@@ -73,6 +77,8 @@ export function createAutoNovelRuntime(
     const metrics = options.metrics ?? new MetricsRegistry({ logger });
     const auditRepository = new AuditRepository(database);
     const usageRepository = new UsageRepository(database);
+    const invitationRepository = new InvitationRepository(database);
+    const authRepository = new AuthRepository(database);
     const providerResolver = createOperationalProviderResolver({
       baseResolver: options.providerResolver ?? new ProviderRegistry(),
       fallbackProviders: options.fallbackProviders,
@@ -116,6 +122,8 @@ export function createAutoNovelRuntime(
       memoryService,
       auditRepository,
       usageRepository,
+      invitationRepository,
+      authRepository,
       metrics,
       logger,
       close: () => database.close(),

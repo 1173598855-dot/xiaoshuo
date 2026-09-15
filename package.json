@@ -46,6 +46,8 @@
     "desktop:icon": "node scripts/create-desktop-icon.mjs",
     "desktop:dist": "npm run desktop:icon && npm run desktop:build && electron-builder --win nsis --x64 --publish never",
     "e2e": "playwright test",
+    "e2e:server": "tsx src/server/index.ts",
+    "e2e:web": "vite --host 127.0.0.1",
     "e2e:external": "playwright test -c playwright.external.config.ts"
   },
   "build": {

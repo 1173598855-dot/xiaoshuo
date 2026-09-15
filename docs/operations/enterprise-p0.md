@@ -10,6 +10,8 @@
 Authorization: Bearer <XIAOYI_ACCESS_TOKEN>
 ```
 
+需要限制注册人数时，额外设置 `XIAOYI_INVITATIONS_REQUIRED=1`。管理员令牌必须同时配置；作者必须先通过邀请码注册账号，再使用用户名和密码登录；账号只能访问自己的作品。邀请码的 `maxUses` 是注册次数硬上限，撤销邀请码不会影响已经注册的账号。
+
 最小启动示例：
 
 ```powershell
@@ -56,6 +58,8 @@ TLS profile 默认发布 443，并通过内部 Docker 网络代理到 app；HTTP
 | `XIAOYI_MAX_CONCURRENT_RUNS` | `1` | 生产 run 并发上限；队列状态会持久化为 `queued` |
 | `XIAOYI_RATE_LIMIT_PER_MINUTE` | `120` | 单租户访问令牌/IP 的 API 滑动窗口限流 |
 | `XIAOYI_ALLOWED_ORIGIN` | 不限制 | 浏览器 CORS 来源白名单 |
+| `XIAOYI_INVITATIONS_REQUIRED` | `0` | 是否要求作者先使用邀请码注册并登录 |
+| `XIAOYI_AUTH_SESSION_DAYS` | `7` | 账号会话有效天数，范围 1–90 |
 | `XIAOYI_HTTP_PORT` | `8080`（Compose） | Nginx 对外监听端口；直连 Node 时不生效 |
 | `XIAOYI_HTTP_BIND` | `127.0.0.1`（Compose） | 本地 HTTP 代理的宿主绑定地址；只有主动配置 `0.0.0.0` 时才暴露给局域网 |
 | `XIAOYI_HTTPS_PORT` | `443` | 可选 HTTPS Nginx profile 的宿主端口 |
@@ -79,6 +83,7 @@ Provider 密钥只能通过部署环境的 Secret 注入 `XIAOYI_SERVER_PROVIDER
 
 - `GET /api/health`：存活探针，不要求令牌；只返回服务存活状态。
 - `GET /api/ready`：就绪探针，不要求令牌；只返回 SQLite 与 Worker 是否就绪，不返回队列数量、备份时间或文件路径。
+- `POST /api/auth/register`：使用邀请码注册账号并创建会话；`POST /api/auth/login`：账号登录；`POST /api/auth/logout`：撤销当前会话。
 - `GET /api/metrics`：Prometheus 文本指标，需要令牌。
 - `GET /api/admin/metrics`：JSON 指标、队列状态和当月用量，需要令牌。
 - `GET /api/admin/runs`：按状态、作品、失败码和更新时间游标搜索生产 run，返回重试与租约摘要，需要令牌。
@@ -106,7 +111,7 @@ npm run backup:verify -- C:\ProgramData\Xiaoyi\backups\xiaoyi-backup-<timestamp>
 恢复前必须停止服务，确认目标数据库不存在 `-wal` / `-shm` 活动 sidecar：
 
 ```powershell
-npm run backup:restore -- C:\ProgramData\Xiaoyi\backups\xiaoyi-backup-<timestamp>.db C:\ProgramData\Xiaoyi\xiaoyi.db
+npm run backup:restore -- C:\ProgramData\Xiaoyi\backups\xiaoyi-backup-<timestamp>.db C:\ProgramData\Xiaoyi\xiaoyi.db --offline
 npm start
 ```
 

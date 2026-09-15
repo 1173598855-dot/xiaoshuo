@@ -31,6 +31,13 @@ import {
   type ProviderConfig,
   type ProviderErrorCode,
 } from "../shared/contracts";
+import {
+  CreateInvitationInputSchema,
+} from "../shared/invitations";
+import {
+  LoginInputSchema,
+  RegisterAccountInputSchema,
+} from "../shared/auth";
 import { listOpenAICompatibleModels, resolveOpenAICompatibleModelListConfig } from "./providers/openai-compatible-models";
 import { autoNovelErrorStatus, toAutoNovelPublicError } from "./auto-novel-errors";
 import { getProviderCatalog } from "./providers/catalog";
@@ -48,10 +55,21 @@ import type { MemoryService } from "./services/memory-service";
 import type { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import {
   MetricsRegistry,
+  currentRequestContext,
   requestContextStorage,
   StructuredLogger,
 } from "./enterprise/observability";
 import type { BackupService } from "./enterprise/backup-service";
+import {
+  InvitationInvalidError,
+  type InvitationRepository,
+} from "./repositories/invitation-repository";
+import {
+  AccountAccessDeniedError,
+  InvalidCredentialsError,
+  UsernameTakenError,
+} from "./repositories/auth-repository";
+import type { AuthRepository } from "./repositories/auth-repository";
 import {
   extractAccessToken,
   isAccessTokenValid,
@@ -111,6 +129,10 @@ export interface AutoNovelAppDependencies {
   readonly logger?: StructuredLogger;
   readonly backupService?: BackupService;
   readonly accessToken?: string;
+  readonly invitationsRequired?: boolean;
+  readonly authSessionMs?: number;
+  readonly invitationRepository?: InvitationRepository;
+  readonly authRepository?: AuthRepository;
   readonly allowedOrigin?: string;
   readonly trustProxy?: boolean;
   readonly rateLimitPerMinute?: number;
@@ -134,6 +156,8 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     ? undefined
     : new SlidingWindowRateLimiter(dependencies.rateLimitPerMinute);
   const maxBodyBytes = Math.max(1_024, Math.min(32 * 1024 * 1024, Math.trunc(dependencies.maxBodyBytes ?? 8 * 1024 * 1024)));
+  const invitationsRequired = dependencies.invitationsRequired === true;
+  const authSessionMs = Math.max(60_000, Math.trunc(dependencies.authSessionMs ?? 7 * 24 * 60 * 60 * 1_000));
 
   app.use("*", async (context, next) => {
     const startedAt = Date.now();
@@ -141,10 +165,22 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const path = context.req.path;
     const method = context.req.method;
     let rateDecision: RateLimitDecision | undefined;
+    const suppliedToken = extractAccessToken(context.req.raw);
+    const globalTokenValid = dependencies.accessToken !== undefined &&
+      isAccessTokenValid(suppliedToken, dependencies.accessToken);
+    const authSession = dependencies.authRepository?.authenticate(suppliedToken);
+    const requestPrincipal = globalTokenValid
+      ? "single-tenant"
+      : authSession
+        ? "authenticated-user"
+        : dependencies.accessToken
+          ? "anonymous"
+          : "anonymous";
     const response = await requestContextStorage.run(
       {
         requestId,
-        principal: dependencies.accessToken ? "single-tenant" : "anonymous",
+        principal: requestPrincipal,
+        ...(authSession ? { userId: authSession.user.id } : {}),
       },
       async () => {
         if (!isAllowedOrigin(context.req.raw, dependencies.allowedOrigin)) {
@@ -155,6 +191,9 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
         }
         const isApiPath = path === "/api" || path.startsWith("/api/");
         const isPublicProbe = path === "/api/health" || path === "/api/ready";
+        const isPublicAuthRoute =
+          method === "POST" &&
+          (path === "/api/auth/register" || path === "/api/auth/login");
         const requiresConfiguredToken =
           path === "/api/metrics" ||
           path === "/api/openapi.json" ||
@@ -166,14 +205,22 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
             "运维接口尚未配置访问令牌。",
           ), 503);
         }
+        if (requiresConfiguredToken && !globalTokenValid) {
+          return context.json(apiError("AUTHENTICATION_REQUIRED", "需要管理员访问令牌。"), 401);
+        }
         if (isApiPath) {
           const contentLength = Number(context.req.header("content-length") ?? "");
           if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
             return context.json(apiError("REQUEST_TOO_LARGE", "请求正文超过服务端限制。"), 413);
           }
         }
-        if (isApiPath && !isPublicProbe && dependencies.accessToken) {
-          if (!isAccessTokenValid(extractAccessToken(context.req.raw), dependencies.accessToken)) {
+        const authenticationRequired =
+          isApiPath &&
+          !isPublicProbe &&
+          !isPublicAuthRoute &&
+          (dependencies.accessToken !== undefined || invitationsRequired);
+        if (authenticationRequired) {
+          if (!globalTokenValid && !authSession) {
             return context.json(apiError("AUTHENTICATION_REQUIRED", "需要有效的访问令牌。"), 401);
           }
         }
@@ -232,12 +279,12 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     metrics.recordHttp({ method, route: path, status, durationMs });
     safeRecordAudit(dependencies.auditRepository, {
       requestId,
-      actor: dependencies.accessToken ? "single-tenant" : "anonymous",
+      actor: requestPrincipal === "anonymous" ? "anonymous" : "single-tenant",
       action: `${method} ${path}`,
       resourceType: resourceTypeOf(path),
       resourceId: resourceIdOf(path),
       outcome: status >= 400 ? "failure" : "success",
-      metadata: { status, durationMs },
+      metadata: { status, durationMs, principal: requestPrincipal },
     }, logger);
     logger.info("http.request", {
       method,
@@ -263,7 +310,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     };
     metrics.setQueue(queue);
     const workerStatus = dependencies.productionWorker?.getStatus();
-    const workerReady = workerStatus?.started ?? true;
+    const workerReady = workerStatus?.ready ?? workerStatus?.started ?? true;
     const ready = databaseReady && workerReady;
     return context.json({
       status: ready ? "ready" : "not_ready",
@@ -275,11 +322,72 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8" },
   }));
   app.get("/api/openapi.json", (context) => context.json(OPENAPI_DOCUMENT));
+  app.post("/api/auth/register", async (context) => {
+    if (!dependencies.authRepository) {
+      return context.json(apiError("AUTH_NOT_CONFIGURED", "账号功能尚未配置。"), 503);
+    }
+    const parsed = await parseJson(context.req.raw, RegisterAccountInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    try {
+      return context.json(dependencies.authRepository.register(parsed.data, authSessionMs), 201);
+    } catch (error) {
+      if (error instanceof InvitationInvalidError) {
+        return context.json(apiError("INVITATION_INVALID", error.message), 400);
+      }
+      if (error instanceof UsernameTakenError) {
+        return context.json(apiError("USERNAME_TAKEN", error.message), 409);
+      }
+      throw error;
+    }
+  });
+  app.post("/api/auth/login", async (context) => {
+    if (!dependencies.authRepository) {
+      return context.json(apiError("AUTH_NOT_CONFIGURED", "账号功能尚未配置。"), 503);
+    }
+    const parsed = await parseJson(context.req.raw, LoginInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    try {
+      return context.json(dependencies.authRepository.login(parsed.data, authSessionMs));
+    } catch (error) {
+      if (error instanceof InvalidCredentialsError) {
+        return context.json(apiError("AUTHENTICATION_REQUIRED", error.message), 401);
+      }
+      throw error;
+    }
+  });
+  app.post("/api/auth/logout", (context) => {
+    dependencies.authRepository?.logout(extractAccessToken(context.req.raw));
+    return context.json({ ok: true });
+  });
   app.get("/api/admin/metrics", (context) => context.json({
     metrics: metrics.snapshot(),
     usage: dependencies.usageRepository?.getMonthlySummary() ?? null,
     ...(dependencies.productionWorker ? { worker: dependencies.productionWorker.getStatus() } : {}),
   }));
+  app.get("/api/admin/invitations", (context) => {
+    if (!dependencies.invitationRepository) {
+      return context.json(apiError("INVITATIONS_NOT_CONFIGURED", "邀请码功能尚未配置。"), 503);
+    }
+    return context.json(dependencies.invitationRepository.list());
+  });
+  app.post("/api/admin/invitations", async (context) => {
+    if (!dependencies.invitationRepository) {
+      return context.json(apiError("INVITATIONS_NOT_CONFIGURED", "邀请码功能尚未配置。"), 503);
+    }
+    const parsed = await parseJson(context.req.raw, CreateInvitationInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    return context.json(dependencies.invitationRepository.create(parsed.data), 201);
+  });
+  app.post("/api/admin/invitations/:invitationId/revoke", (context) => {
+    if (!dependencies.invitationRepository) {
+      return context.json(apiError("INVITATIONS_NOT_CONFIGURED", "邀请码功能尚未配置。"), 503);
+    }
+    try {
+      return context.json(dependencies.invitationRepository.revoke(context.req.param("invitationId")));
+    } catch {
+      return context.json(apiError("NOT_FOUND", "邀请码不存在。"), 404);
+    }
+  });
   app.get("/api/admin/audit", (context) => {
     const query = context.req.query();
     const limit = query.limit === undefined ? undefined : Number(query.limit);
@@ -398,14 +506,14 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   });
 
   app.get("/api/books", (context) =>
-    context.json(dependencies.bookRepository.listBooks()),
+    context.json(dependencies.bookRepository.listBooks(currentRequestContext()?.userId)),
   );
 
   app.post("/api/books", async (context) => {
     const parsed = await parseJson(context.req.raw, CreateBookRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
 
-    const book = dependencies.bookRepository.createBook(parsed.data, parsed.data.idempotencyKey);
+    const book = dependencies.bookRepository.createBook(parsed.data, parsed.data.idempotencyKey, currentRequestContext()?.userId);
     const run = dependencies.productionRepository.createRun(
       book.id,
       "director",
@@ -447,19 +555,22 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       throw error;
     }
   });
-  app.get("/api/books/:bookId", (context) =>
-    context.json(dependencies.bookRepository.getBook(context.req.param("bookId"))),
-  );
+  app.get("/api/books/:bookId", (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    return context.json(dependencies.bookRepository.getBook(context.req.param("bookId")));
+  });
 
   app.get("/api/books/:bookId/directions", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
     return context.json(dependencies.bookRepository.listDirections(bookId.data));
   });
 
   app.get("/api/books/:bookId/chapters", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
     const details = dependencies.bookRepository.getBook(bookId.data);
     return context.json({
       bookId: bookId.data,
@@ -471,6 +582,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.get("/api/books/:bookId/memory", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
     const query = context.req.query();
     const parsed = MemoryQuerySchema.safeParse({
       ...(query.kind !== undefined ? { kind: query.kind } : {}),
@@ -487,6 +599,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.get("/api/books/:bookId/memory/context/:chapterNumber", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
     const chapterNumber = Number(context.req.param("chapterNumber"));
     if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
       return context.json(apiError("VALIDATION_ERROR", "章节编号无效。"), 400);
@@ -512,18 +625,21 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/books/:bookId/memory/refresh", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
     return context.json(requireMemoryService(dependencies).refresh(bookId.data));
   });
 
   app.get("/api/memory/:entryId/history", (context) => {
     const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
     if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    assertMemoryAccess(dependencies, entryId.data);
     return context.json(requireMemoryService(dependencies).history(entryId.data));
   });
 
   app.patch("/api/memory/:entryId", async (context) => {
     const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
     if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    assertMemoryAccess(dependencies, entryId.data);
     const parsed = await parseJson(context.req.raw, UpdateMemoryInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     if (parsed.data.entryId !== entryId.data) {
@@ -537,6 +653,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/memory/:entryId/rollback", async (context) => {
     const entryId = MemoryPathIdSchema.safeParse(context.req.param("entryId"));
     if (!entryId.success) return context.json(apiError("VALIDATION_ERROR", "记忆条目标识无效。"), 400);
+    assertMemoryAccess(dependencies, entryId.data);
     const parsed = await parseJson(context.req.raw, RollbackMemoryInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     if (parsed.data.entryId !== entryId.data) {
@@ -553,6 +670,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       SelectDirectionRequestSchema,
     );
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertBookAccess(dependencies, context.req.param("bookId"));
     const currentDetails = dependencies.bookRepository.getBook(context.req.param("bookId"));
     const sameDirection = currentDetails.book.selectedDirectionId === context.req.param("directionId");
     const foundationReady = currentDetails.foundation !== null && currentDetails.chapterPlans.length > 0;
@@ -609,6 +727,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       StartProductionInputSchema.and(ProviderRequestSchema),
     );
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertBookAccess(dependencies, context.req.param("bookId"));
     const run = dependencies.productionRepository.createProductionRun(
       context.req.param("bookId"),
       parsed.data.idempotencyKey,
@@ -624,23 +743,26 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     return context.json(run, 202);
   });
 
-  app.get("/api/production-runs/:runId", (context) =>
-    context.json(
-      dependencies.productionService.getDetails(context.req.param("runId")),
-    ),
-  );
+  app.get("/api/production-runs/:runId", (context) => {
+    assertRunAccess(dependencies, context.req.param("runId"));
+    return context.json(dependencies.productionService.getDetails(context.req.param("runId")));
+  });
 
   app.post("/api/production-runs/:runId/pause", async (context) => {
     const parsed = await parseCommand(context.req.raw, "pause");
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertRunAccess(dependencies, context.req.param("runId"));
     return context.json(
-      dependencies.productionService.pause(context.req.param("runId")),
+      dependencies.productionWorker
+        ? dependencies.productionWorker.pause(context.req.param("runId"))
+        : dependencies.productionService.pause(context.req.param("runId")),
     );
   });
 
   app.post("/api/production-runs/:runId/resume", async (context) => {
     const parsed = await parseJson(context.req.raw, ResumeRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertRunAccess(dependencies, context.req.param("runId"));
     const run = dependencies.productionRepository.getRun(context.req.param("runId"));
     if (dependencies.productionWorker) {
       dependencies.productionWorker.enqueue(run.id, parsed.data.provider);
@@ -659,6 +781,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/production-runs/:runId/rewrite", async (context) => {
     const parsed = await parseJson(context.req.raw, RewriteRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertRunAccess(dependencies, context.req.param("runId"));
     const candidate = await dependencies.productionService.rewriteCurrentChapter(
       context.req.param("runId"),
       parsed.data.provider,
@@ -671,14 +794,18 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/production-runs/:runId/cancel", async (context) => {
     const parsed = await parseCommand(context.req.raw, "cancel");
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertRunAccess(dependencies, context.req.param("runId"));
     return context.json(
-      dependencies.productionService.cancel(context.req.param("runId")),
+      dependencies.productionWorker
+        ? dependencies.productionWorker.cancel(context.req.param("runId"))
+        : dependencies.productionService.cancel(context.req.param("runId")),
     );
   });
 
   app.post("/api/chapter-candidates/:candidateId/accept", async (context) => {
     const parsed = await parseJson(context.req.raw, AcceptCandidateInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertCandidateAccess(dependencies, context.req.param("candidateId"));
     return context.json(
       await dependencies.productionRepository.acceptCandidate(
         context.req.param("candidateId"),
@@ -690,20 +817,19 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.get("/api/chapter-candidates/:candidateId", (context) => {
     const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
     if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    assertCandidateAccess(dependencies, candidateId.data);
     return context.json(dependencies.productionRepository.getCandidate(candidateId.data));
   });
 
-  app.post("/api/chapter-candidates/:candidateId/discard", (context) =>
-    context.json(
-      dependencies.productionRepository.discardCandidate(
-        context.req.param("candidateId"),
-      ),
-    ),
-  );
+  app.post("/api/chapter-candidates/:candidateId/discard", (context) => {
+    assertCandidateAccess(dependencies, context.req.param("candidateId"));
+    return context.json(dependencies.productionRepository.discardCandidate(context.req.param("candidateId")));
+  });
 
   app.patch("/api/chapter-candidates/:candidateId/text", async (context) => {
     const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
     if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    assertCandidateAccess(dependencies, candidateId.data);
     const parsed = await parseJson(context.req.raw, UpdateCandidateTextInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     if (parsed.data.candidateId !== candidateId.data) {
@@ -717,6 +843,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.patch("/api/chapter-candidates/:candidateId/memory-review", async (context) => {
     const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
     if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    assertCandidateAccess(dependencies, candidateId.data);
     const parsed = await parseJson(context.req.raw, UpdateCandidateMemoryReviewInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     if (parsed.data.candidateId !== candidateId.data) {
@@ -734,6 +861,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/books/:bookId/export", async (context) => {
     const parsed = await parseJson(context.req.raw, ExportBookInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
+    assertBookAccess(dependencies, context.req.param("bookId"));
     return context.json({
       format: parsed.data.format,
       content: exportBook(dependencies, context.req.param("bookId"), parsed.data.format),
@@ -947,6 +1075,34 @@ function getServerProvider(
   const index = Number(indexValue);
   if (!Number.isSafeInteger(index) || index < 0) return undefined;
   return dependencies.serverProviders?.[index];
+}
+
+function assertBookAccess(dependencies: AutoNovelAppDependencies, bookId: string): void {
+  const userId = currentRequestContext()?.userId;
+  if (!userId) return;
+  const row = dependencies.database?.prepare("SELECT owner_user_id FROM books WHERE id = ?").get(bookId) as { owner_user_id: string | null } | undefined;
+  if (!row || row.owner_user_id !== userId) throw new AccountAccessDeniedError();
+}
+
+function assertRunAccess(dependencies: AutoNovelAppDependencies, runId: string): void {
+  const userId = currentRequestContext()?.userId;
+  if (!userId) return;
+  const row = dependencies.database?.prepare("SELECT b.owner_user_id FROM production_runs r JOIN books b ON b.id = r.book_id WHERE r.id = ?").get(runId) as { owner_user_id: string | null } | undefined;
+  if (!row || row.owner_user_id !== userId) throw new AccountAccessDeniedError();
+}
+
+function assertCandidateAccess(dependencies: AutoNovelAppDependencies, candidateId: string): void {
+  const userId = currentRequestContext()?.userId;
+  if (!userId) return;
+  const row = dependencies.database?.prepare("SELECT owner_user_id FROM chapter_candidates c JOIN books b ON b.id = c.book_id WHERE c.id = ?").get(candidateId) as { owner_user_id: string | null } | undefined;
+  if (!row || row.owner_user_id !== userId) throw new AccountAccessDeniedError();
+}
+
+function assertMemoryAccess(dependencies: AutoNovelAppDependencies, entryId: string): void {
+  const userId = currentRequestContext()?.userId;
+  if (!userId) return;
+  const row = dependencies.database?.prepare("SELECT owner_user_id FROM memory_entries m JOIN books b ON b.id = m.book_id WHERE m.id = ?").get(entryId) as { owner_user_id: string | null } | undefined;
+  if (!row || row.owner_user_id !== userId) throw new AccountAccessDeniedError();
 }
 
 function requireMemoryService(

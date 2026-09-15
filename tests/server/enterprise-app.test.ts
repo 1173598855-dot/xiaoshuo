@@ -238,4 +238,102 @@ describe("enterprise HTTP boundary", () => {
     });
     expect(chunked.status).toBe(413);
   });
+
+  it("requires an invitation to register and then supports account login", async () => {
+    const runtime = createAutoNovelRuntime({ databasePath: ":memory:" });
+    runtimes.push(runtime);
+    const app = createAutoNovelApp({
+      ...runtime,
+      accessToken: "admin-invitation-token-123",
+      invitationsRequired: true,
+      authSessionMs: 86_400_000,
+    });
+    const adminHeaders = { authorization: "Bearer admin-invitation-token-123" };
+    const createdResponse = await app.request("/api/admin/invitations", {
+      method: "POST",
+      headers: { ...adminHeaders, "content-type": "application/json" },
+      body: JSON.stringify({ maxUses: 1 }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json() as { code: string; invitation: { id: string } };
+    expect(created.code).toMatch(/^xiaoyi-/);
+
+    const unauthorized = await app.request("/api/providers");
+    expect(unauthorized.status).toBe(401);
+
+    const registeredResponse = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inviteCode: created.code, username: "writer", password: "a-strong-password-123" }),
+    });
+    expect(registeredResponse.status).toBe(201);
+    const registered = await registeredResponse.json() as { accessToken: string };
+
+    const invited = await app.request("/api/providers", {
+      headers: { authorization: `Bearer ${registered.accessToken}` },
+    });
+    expect(invited.status).toBe(200);
+
+    const adminOnly = await app.request("/api/admin/invitations", {
+      headers: { authorization: `Bearer ${registered.accessToken}` },
+    });
+    expect(adminOnly.status).toBe(401);
+
+    const exhausted = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inviteCode: created.code, username: "other-writer", password: "another-strong-password-123" }),
+    });
+    expect(exhausted.status).toBe(400);
+
+    const loggedIn = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "writer", password: "a-strong-password-123" }),
+    });
+    expect(loggedIn.status).toBe(200);
+  });
+
+  it("can run in invitation-only mode without exposing author APIs anonymously", async () => {
+    const runtime = createAutoNovelRuntime({ databasePath: ":memory:" });
+    runtimes.push(runtime);
+    const created = runtime.invitationRepository.create({ maxUses: 1 });
+    const app = createAutoNovelApp({
+      ...runtime,
+      invitationsRequired: true,
+      authSessionMs: 86_400_000,
+    });
+    expect((await app.request("/api/providers")).status).toBe(401);
+    const registered = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inviteCode: created.code, username: "writer", password: "a-strong-password-123" }),
+    });
+    const body = await registered.json() as { accessToken: string };
+    expect(registered.status).toBe(201);
+    expect((await app.request("/api/providers", {
+      headers: { authorization: `Bearer ${body.accessToken}` },
+    })).status).toBe(200);
+  });
+
+  it("isolates the book library between authenticated accounts", async () => {
+    const runtime = createAutoNovelRuntime({ databasePath: ":memory:" });
+    runtimes.push(runtime);
+    const firstInvite = runtime.invitationRepository.create({ maxUses: 1 });
+    const secondInvite = runtime.invitationRepository.create({ maxUses: 1 });
+    const first = runtime.authRepository.register({ inviteCode: firstInvite.code, username: "first-writer", password: "a-strong-password-123" }, 86_400_000);
+    const second = runtime.authRepository.register({ inviteCode: secondInvite.code, username: "second-writer", password: "another-strong-password-123" }, 86_400_000);
+    const firstBook = runtime.bookRepository.createBook({ idea: "第一位作者的故事" }, "first-book", first.user.id);
+    const secondBook = runtime.bookRepository.createBook({ idea: "第二位作者的故事" }, "second-book", second.user.id);
+    const app = createAutoNovelApp({
+      ...runtime,
+      accessToken: "admin-invitation-token-123",
+      invitationsRequired: true,
+      authSessionMs: 86_400_000,
+    });
+    const firstHeaders = { authorization: `Bearer ${first.accessToken}` };
+    const visible = await app.request("/api/books", { headers: firstHeaders });
+    expect(await visible.json()).toEqual([expect.objectContaining({ id: firstBook.id })]);
+    expect((await app.request(`/api/books/${secondBook.id}`, { headers: firstHeaders })).status).toBe(404);
+  });
 });

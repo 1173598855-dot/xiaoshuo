@@ -22,11 +22,20 @@ describe("container deployment configuration", () => {
     expect(compose).toContain("./deploy/nginx.conf:/etc/nginx/nginx.conf:ro");
     expect(compose).toContain("max-size: 10m");
     expect(compose).toContain("${XIAOYI_HTTP_BIND:-127.0.0.1}");
+    expect(compose).toContain("${XIAOYI_ALLOWED_ORIGIN:-http://127.0.0.1:8080}");
+    expect(compose).toContain("XIAOYI_INVITATIONS_REQUIRED:");
     expect(compose).toContain("profiles: [\"https\"]");
     const tlsNginx = readFileSync(resolve(root, "deploy/nginx-tls.conf"), "utf8");
     expect(tlsNginx).toContain("listen 8443 ssl");
     expect(tlsNginx).toContain("fullchain.pem");
     expect(tlsNginx).toContain("privkey.pem");
+  });
+
+  it("guards the runtime image against placeholder access tokens", () => {
+    const dockerfile = readFileSync(resolve(root, "Dockerfile"), "utf8");
+    expect(dockerfile).toContain("docker-entrypoint.mjs");
+    const entrypoint = readFileSync(resolve(root, "scripts/docker-entrypoint.mjs"), "utf8");
+    expect(entrypoint).toContain("replace-with-a-random-token-at-least-16-characters");
   });
 
   it("keeps runtime database backups and local secrets out of the build context", () => {

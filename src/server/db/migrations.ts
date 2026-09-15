@@ -112,6 +112,44 @@ const V1_SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS usage_events_provider_created_idx
     ON usage_events(provider, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS invitation_codes (
+    id TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    code_prefix TEXT NOT NULL,
+    max_uses INTEGER NOT NULL CHECK (max_uses BETWEEN 1 AND 100000),
+    used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+    expires_at TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    username_normalized TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    disabled_at TEXT
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS invitation_codes_created_idx
+    ON invitation_codes(created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS auth_sessions_expiry_idx
+    ON auth_sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS auth_sessions_user_idx
+    ON auth_sessions(user_id, created_at DESC);
 `;
 
 export function migrate(database: DatabaseSync): void {

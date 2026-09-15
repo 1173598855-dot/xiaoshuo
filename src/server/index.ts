@@ -68,6 +68,8 @@ const app = createAutoNovelApp({
   database: runtime.database,
   backupService,
   accessToken: enterpriseConfig.accessToken,
+  invitationsRequired: enterpriseConfig.invitationsRequired,
+  authSessionMs: enterpriseConfig.authSessionDays * 24 * 60 * 60 * 1_000,
   allowedOrigin: enterpriseConfig.allowedOrigin,
   trustProxy: enterpriseConfig.trustProxy,
   rateLimitPerMinute: enterpriseConfig.rateLimitPerMinute,
@@ -101,7 +103,7 @@ let shutdownStarted = false;
 runtime.logger.info("server.started", {
   host: enterpriseConfig.host,
   port: enterpriseConfig.port,
-  authEnabled: enterpriseConfig.accessToken !== undefined,
+  authEnabled: enterpriseConfig.accessToken !== undefined || enterpriseConfig.invitationsRequired,
   backupRemoteEnabled: enterpriseConfig.remoteBackupDirectory !== undefined,
 });
 

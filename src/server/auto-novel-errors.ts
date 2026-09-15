@@ -18,6 +18,7 @@ const AUTO_MESSAGES: Record<string, string> = {
   BACKUP_FAILED: "数据库备份失败，请检查备份目标和磁盘空间。",
   BACKUP_VERIFICATION_FAILED: "数据库备份校验失败，未将其视为可恢复副本。",
   BACKUP_NOT_CONFIGURED: "备份服务尚未配置。",
+  ACCOUNT_ACCESS_DENIED: "请求的资源不存在。",
 };
 
 export function toAutoNovelPublicError(error: unknown): ApiError["error"] {
@@ -29,7 +30,7 @@ export function toAutoNovelPublicError(error: unknown): ApiError["error"] {
 
 export function autoNovelErrorStatus(error: unknown): PublicErrorStatus {
   if (hasKnownAutoCode(error)) {
-    if (error.code === "NOT_FOUND") return 404;
+    if (error.code === "NOT_FOUND" || error.code === "ACCOUNT_ACCESS_DENIED") return 404;
     if (error.code === "REVISION_CONFLICT" || error.code === "MEMORY_REVISION_CONFLICT" || error.code.includes("CANDIDATE") || error.code.includes("DIRECTION") || error.code.includes("STATE")) return 409;
     if (error.code.startsWith("BACKUP_")) return 503;
     return 400;
