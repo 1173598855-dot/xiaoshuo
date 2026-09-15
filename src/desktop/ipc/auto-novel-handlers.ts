@@ -16,6 +16,7 @@ import {
   UpdateMemoryInputSchema,
 } from "../../shared/memory";
 import type { ProviderVault } from "../provider-vault";
+import type { DesktopAuthService } from "../desktop-auth";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
 import { exportBook } from "../../server/services/export-service";
@@ -72,6 +73,7 @@ export interface AutoNovelDesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
   readonly getServices: () => AutoNovelServices;
   readonly providerVault: Pick<ProviderVault, "resolveGeneration">;
+  readonly authService?: DesktopAuthService;
   readonly isTrustedSender: (event: unknown) => boolean;
 }
 
@@ -82,23 +84,25 @@ export function registerAutoNovelIpcHandlers(
   for (const channel of channels) dependencies.ipcMain.removeHandler(channel);
 
   register(dependencies, AUTO_NOVEL_CHANNELS.booksList, z.undefined(), () =>
-    dependencies.getServices().bookRepository.listBooks(),
+    dependencies.getServices().bookRepository.listBooks(dependencies.authService?.currentUserId()),
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, providerId, idempotencyKey }) => {
     const services = dependencies.getServices();
-    const book = services.bookRepository.createBook(input, idempotencyKey);
+    const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());
     const provider = await resolveProvider(dependencies.providerVault, providerId);
     const directions = await services.directorService.generateDirections(book.id, provider, idempotencyKey);
     return { book: services.bookRepository.getBook(book.id).book, directions };
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.booksGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) =>
-    dependencies.getServices().bookRepository.getBook(bookId),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().bookRepository.getBook(bookId);
+  });
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.booksChapters,
     z.object({ bookId: z.string().uuid() }).strict(),
     ({ bookId }) => {
+      dependencies.authService?.assertBookAccess(bookId);
       const services = dependencies.getServices();
       const details = services.bookRepository.getBook(bookId);
       return {
@@ -112,9 +116,13 @@ export function registerAutoNovelIpcHandlers(
     dependencies,
     AUTO_NOVEL_CHANNELS.directionsList,
     z.object({ bookId: z.string().uuid() }).strict(),
-    ({ bookId }) => dependencies.getServices().bookRepository.listDirections(bookId),
+    ({ bookId }) => {
+      dependencies.authService?.assertBookAccess(bookId);
+      return dependencies.getServices().bookRepository.listDirections(bookId);
+    },
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.directionsSelect, SelectRequestSchema, async ({ bookId, directionId, expectedBookRevision, providerId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
     const services = dependencies.getServices();
     const currentDetails = services.bookRepository.getBook(bookId);
     const current = currentDetails.book;
@@ -129,18 +137,22 @@ export function registerAutoNovelIpcHandlers(
     return services.bookRepository.getBook(book.id);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, providerId, idempotencyKey, memoryContextConfig }) => {
+    dependencies.authService?.assertBookAccess(bookId);
     const services = dependencies.getServices();
     const run = services.productionRepository.createProductionRun(bookId, idempotencyKey, memoryContextConfig);
     void services.productionService.start(run.id, await resolveProvider(dependencies.providerVault, providerId)).catch(() => undefined);
     return run;
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionGet, RunRequestSchema, ({ runId }) =>
-    dependencies.getServices().productionService.getDetails(runId),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionPause, RunRequestSchema, ({ runId }) =>
-    dependencies.getServices().productionService.pause(runId),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionGet, RunRequestSchema, ({ runId }) => {
+    dependencies.authService?.assertRunAccess(runId);
+    return dependencies.getServices().productionService.getDetails(runId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionPause, RunRequestSchema, ({ runId }) => {
+    dependencies.authService?.assertRunAccess(runId);
+    return dependencies.getServices().productionService.pause(runId);
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionResume, ResumeRequestSchema, async ({ runId, providerId }) => {
+    dependencies.authService?.assertRunAccess(runId);
     const services = dependencies.getServices();
     const run = services.productionRepository.getRun(runId);
     void Promise.resolve()
@@ -152,6 +164,7 @@ export function registerAutoNovelIpcHandlers(
     return run;
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionRewrite, RewriteRequestSchema, async ({ runId, providerId, instruction }) => {
+    dependencies.authService?.assertRunAccess(runId);
     const services = dependencies.getServices();
     return services.productionService.rewriteCurrentChapter(
       runId,
@@ -159,60 +172,72 @@ export function registerAutoNovelIpcHandlers(
       instruction,
     );
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionCancel, RunRequestSchema, ({ runId }) =>
-    dependencies.getServices().productionService.cancel(runId),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionCancel, RunRequestSchema, ({ runId }) => {
+    dependencies.authService?.assertRunAccess(runId);
+    return dependencies.getServices().productionService.cancel(runId);
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.candidateAccept, CandidateAcceptRequestSchema, ({ candidateId, expectedRevision }) =>
-    dependencies.getServices().productionRepository.acceptCandidate(candidateId, expectedRevision),
+      (dependencies.authService?.assertCandidateAccess(candidateId), dependencies.getServices().productionRepository.acceptCandidate(candidateId, expectedRevision)),
   );
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.candidateGet,
     z.object({ candidateId: z.string().uuid() }).strict(),
-    ({ candidateId }) => dependencies.getServices().productionRepository.getCandidate(candidateId),
+    ({ candidateId }) => {
+      dependencies.authService?.assertCandidateAccess(candidateId);
+      return dependencies.getServices().productionRepository.getCandidate(candidateId);
+    },
   );
-  register(dependencies, AUTO_NOVEL_CHANNELS.candidateDiscard, CandidateDiscardRequestSchema, ({ candidateId }) =>
-    dependencies.getServices().productionRepository.discardCandidate(candidateId),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.candidateDiscard, CandidateDiscardRequestSchema, ({ candidateId }) => {
+    dependencies.authService?.assertCandidateAccess(candidateId);
+    return dependencies.getServices().productionRepository.discardCandidate(candidateId);
+  });
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.candidateMemoryReview,
     UpdateCandidateMemoryReviewInputSchema,
     ({ candidateId, expectedReviewRevision, review }) =>
-      dependencies.getServices().productionRepository.updateCandidateMemoryReview(
+      (dependencies.authService?.assertCandidateAccess(candidateId), dependencies.getServices().productionRepository.updateCandidateMemoryReview(
         candidateId,
         expectedReviewRevision,
         review,
-      ),
+      )),
   );
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.candidateTextUpdate,
     CandidateTextUpdateRequestSchema,
-    (input) => dependencies.getServices().productionRepository.editCandidateText(input),
+    (input) => (dependencies.authService?.assertCandidateAccess(input.candidateId), dependencies.getServices().productionRepository.editCandidateText(input)),
   );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
+    ...(dependencies.authService?.assertBookAccess(bookId), {}),
     format,
     content: exportBook(dependencies.getServices(), bookId, format),
   }));
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryList, MemoryListRequestSchema, ({ bookId, filter }) =>
-    dependencies.getServices().memoryService.snapshot(bookId, filter),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryContext, MemoryContextRequestSchema, ({ bookId, chapterNumber, memoryContextConfig }) =>
-    dependencies.getServices().memoryService.getContextForChapter(bookId, chapterNumber, memoryContextConfig),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryHistory, MemoryHistoryRequestSchema, ({ entryId }) =>
-    dependencies.getServices().memoryService.history(entryId),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryUpdate, UpdateMemoryInputSchema, (input) =>
-    dependencies.getServices().memoryService.updateManual(input),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRollback, RollbackMemoryInputSchema, (input) =>
-    dependencies.getServices().memoryService.rollbackManual(input),
-  );
-  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRefresh, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) =>
-    dependencies.getServices().memoryService.refresh(bookId),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryList, MemoryListRequestSchema, ({ bookId, filter }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().memoryService.snapshot(bookId, filter);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryContext, MemoryContextRequestSchema, ({ bookId, chapterNumber, memoryContextConfig }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().memoryService.getContextForChapter(bookId, chapterNumber, memoryContextConfig);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryHistory, MemoryHistoryRequestSchema, ({ entryId }) => {
+    dependencies.authService?.assertMemoryAccess(entryId);
+    return dependencies.getServices().memoryService.history(entryId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryUpdate, UpdateMemoryInputSchema, (input) => {
+    dependencies.authService?.assertMemoryAccess(input.entryId);
+    return dependencies.getServices().memoryService.updateManual(input);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRollback, RollbackMemoryInputSchema, (input) => {
+    dependencies.authService?.assertMemoryAccess(input.entryId);
+    return dependencies.getServices().memoryService.rollbackManual(input);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.memoryRefresh, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().memoryService.refresh(bookId);
+  });
 
   return () => {
     for (const channel of channels) dependencies.ipcMain.removeHandler(channel);
@@ -241,6 +266,11 @@ function register<T extends z.ZodType>(
 ): void {
   dependencies.ipcMain.handle(channel, async (event, input) => {
     if (!dependencies.isTrustedSender(event)) return failure("INTERNAL_ERROR", "本地服务暂时无法完成请求。");
+    try {
+      dependencies.authService?.requireUser();
+    } catch (error) {
+      return { ok: false, error: toAutoNovelPublicError(error) } satisfies DesktopResult<never>;
+    }
     const parsed = schema.safeParse(input);
     if (!parsed.success) return failure("VALIDATION_ERROR", "请求参数无效。");
     try {

@@ -25,6 +25,7 @@
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 - 企业部署可开启账号邀请码模式：管理员创建带最大注册次数和过期时间的邀请码；没有邀请码不能注册账号，注册后使用用户名和密码登录。密码哈希和会话令牌只保存安全摘要，账号只能看到自己的作品，管理员令牌保留运维权限。
 - 注册用户可以在浏览器“模型设置”中自行填写 Provider、模型、端点和 API Key；用户 Key 只保存在当前浏览器会话并随当前请求使用，不要求管理员把用户 Key 注入服务端。`XIAOYI_SERVER_PROVIDERS_JSON` 仅用于可选的服务端托管 Provider 和重启后的后台恢复。
+- 桌面端当前使用离线授权：管理员用本地私钥生成签名邀请码，用户首次启动桌面端输入邀请码后才能注册账号。生成示例：`npm run desktop:invite -- --private-key secrets/desktop-invitation-private.pem --max-uses 1 --expires-at 2026-12-31T00:00:00.000Z`。私钥位于被 Git 忽略的 `secrets/` 目录，生产使用前应替换为自己的密钥对并重新构建桌面端。
 
 ## 界面方向
 

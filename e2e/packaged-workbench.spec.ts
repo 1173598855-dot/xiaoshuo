@@ -1,4 +1,5 @@
 import { access, mkdtemp, rm } from "node:fs/promises";
+import { randomUUID, sign } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -24,6 +25,14 @@ test("loads the packaged application into the new idea director", async () => {
     });
     const window = await electronApp.firstWindow();
     await expect(window).toHaveURL(/^file:/);
+    const invitationCode = createTestInvitationCode();
+    await window.getByPlaceholder("输入桌面邀请码").fill(invitationCode);
+    await window.getByRole("button", { name: "激活" }).click();
+    await window.getByRole("button", { name: "没有账号？使用邀请码注册" }).click();
+    await window.getByPlaceholder("用户名").fill("packaged-writer");
+    await window.getByPlaceholder("密码（至少 12 位）").fill("packaged-test-password-123");
+    await window.getByPlaceholder("邀请码").fill(invitationCode);
+    await window.getByRole("button", { name: "注册并登录" }).click();
     await expect(window.getByRole("textbox", { name: "故事想法" })).toBeVisible();
     await expect(window.getByRole("button", { name: "模型设置" })).toBeVisible();
   } finally {
@@ -31,4 +40,16 @@ test("loads the packaged application into the new idea director", async () => {
     await rm(userDataDirectory, { recursive: true, force: true });
   }
 });
+
+function createTestInvitationCode(): string {
+  const payloadPart = Buffer.from(JSON.stringify({
+    v: 1,
+    id: randomUUID(),
+    expiresAt: "2035-01-01T00:00:00.000Z",
+    maxUses: 10,
+  }), "utf8").toString("base64url");
+  const privateKey = `-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEICri35CsnRq0JSXW37rdTWLzZKRcOTuimhrC5/mHpOdO\n-----END PRIVATE KEY-----`;
+  const signature = sign(null, Buffer.from(payloadPart), privateKey).toString("base64url");
+  return `XIAOYI1.${payloadPart}.${signature}`;
+}
 

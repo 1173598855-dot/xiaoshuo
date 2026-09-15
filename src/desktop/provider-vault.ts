@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 
 import {
@@ -74,12 +74,23 @@ export interface ProviderVaultOptions {
 
 export class ProviderVault {
   private readonly sessionKeys = new Map<string, string>();
+  private activeAccountId: string | undefined;
 
   constructor(
     private readonly paths: DesktopPaths,
     private readonly safeStorage: SafeStorageLike,
     private readonly options: ProviderVaultOptions = {},
   ) {}
+
+  setActiveAccount(userId: string): void {
+    this.activeAccountId = userId;
+    this.sessionKeys.clear();
+  }
+
+  clearActiveAccount(): void {
+    this.activeAccountId = undefined;
+    this.sessionKeys.clear();
+  }
 
   async getSettings(): Promise<ProviderSettings | null> {
     const settings = this.readSettings();
@@ -350,7 +361,7 @@ export class ProviderVault {
   private readSettings(): PersistedSettings | null {
     try {
       const parsed = JSON.parse(
-        readFileSync(this.paths.settingsPath, "utf8"),
+        readFileSync(this.settingsPath(), "utf8"),
       ) as unknown;
       if (!parsed || typeof parsed !== "object") {
         return null;
@@ -419,7 +430,7 @@ export class ProviderVault {
   }
 
   private writeSettings(settings: PersistedSettings): void {
-    this.writeAtomically(this.paths.settingsPath, JSON.stringify(settings));
+    this.writeAtomically(this.settingsPath(), JSON.stringify(settings));
   }
 
   private getKey(settings: PersistedSettings): string | undefined {
@@ -481,7 +492,7 @@ export class ProviderVault {
   private readEncryptedVault(): PersistedVault {
     try {
       const decrypted = this.safeStorage.decryptString(
-        readFileSync(this.paths.vaultPath),
+        readFileSync(this.vaultPath()),
       );
       const parsed = JSON.parse(decrypted) as unknown;
       if (!parsed || typeof parsed !== "object") {
@@ -532,7 +543,7 @@ export class ProviderVault {
       return undefined;
     }
     try {
-      return { payload: readFileSync(this.paths.vaultPath) };
+      return { payload: readFileSync(this.vaultPath()) };
     } catch (error) {
       if (isFileNotFoundError(error)) {
         return { payload: null };
@@ -552,15 +563,29 @@ export class ProviderVault {
       return;
     }
     if (snapshot.payload === null) {
-      rmSync(this.paths.vaultPath, { force: true });
+      rmSync(this.vaultPath(), { force: true });
       return;
     }
-    this.writeAtomically(this.paths.vaultPath, snapshot.payload);
+    this.writeAtomically(this.vaultPath(), snapshot.payload);
   }
 
   private writeEncryptedVault(vault: PersistedVaultV2): void {
     const encrypted = this.safeStorage.encryptString(JSON.stringify(vault));
-    this.writeAtomically(this.paths.vaultPath, encrypted);
+    this.writeAtomically(this.vaultPath(), encrypted);
+  }
+
+  private settingsPath(): string {
+    return this.accountPath(this.paths.settingsPath);
+  }
+
+  private vaultPath(): string {
+    return this.accountPath(this.paths.vaultPath);
+  }
+
+  private accountPath(basePath: string): string {
+    return this.activeAccountId
+      ? join(dirname(basePath), "accounts", this.activeAccountId, basename(basePath))
+      : basePath;
   }
 
   private writeAtomically(targetPath: string, contents: string | Buffer): void {

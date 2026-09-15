@@ -19,6 +19,12 @@ import {
   type Workspace,
 } from "../shared/contracts";
 import { DESKTOP_CHANNELS } from "./ipc/channels";
+import {
+  type LoginInput,
+  type RegisterAccountInput,
+  type AuthSessionResult,
+} from "../shared/auth";
+import { type DesktopActivationStatus } from "../shared/desktop-invitation";
 
 export interface DesktopIpcRenderer {
   invoke(channel: string, input?: unknown): Promise<unknown>;
@@ -41,6 +47,13 @@ export interface DesktopApi {
     getSettings(): Promise<DesktopResult<ProviderSettings | null>>;
     saveSettings(input: SaveProviderSettingsInput): Promise<DesktopResult<ProviderSettings>>;
     clearKey(providerId: ProviderId): Promise<DesktopResult<ProviderSettings | null>>;
+  };
+  readonly auth: {
+    activationStatus(): Promise<DesktopResult<DesktopActivationStatus>>;
+    activate(input: { code: string }): Promise<DesktopResult<DesktopActivationStatus>>;
+    register(input: RegisterAccountInput): Promise<DesktopResult<AuthSessionResult>>;
+    login(input: LoginInput): Promise<DesktopResult<AuthSessionResult>>;
+    logout(): Promise<DesktopResult<void>>;
   };
   readonly database: {
     status(): Promise<DesktopResult<DatabaseStatus>>;
@@ -69,6 +82,13 @@ export function createPreloadApi(ipcRenderer: DesktopIpcRenderer): DesktopApi {
       getSettings: () => invoke(ipcRenderer, DESKTOP_CHANNELS.providerGetSettings),
       saveSettings: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerSaveSettings, input),
       clearKey: (providerId) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerClearKey, { providerId }),
+    },
+    auth: {
+      activationStatus: () => invoke(ipcRenderer, DESKTOP_CHANNELS.authActivationStatus),
+      activate: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.authActivate, input),
+      register: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.authRegister, input),
+      login: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.authLogin, input),
+      logout: () => invoke(ipcRenderer, DESKTOP_CHANNELS.authLogout),
     },
     database: {
       status: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseStatus),

@@ -21,5 +21,6 @@ deploy/tls/
 *.bak
 *.log
 .env
+secrets/
 .env.*
 !.env.example

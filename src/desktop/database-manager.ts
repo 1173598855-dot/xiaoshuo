@@ -265,6 +265,10 @@ export class DesktopDatabaseManager {
     };
   }
 
+  getDatabase(): DatabaseSyncType {
+    return this.getReadableRuntime().database;
+  }
+
 getAutoNovelServices(): AutoNovelServices {
     const runtime = this.getReadableRuntime();
     if (this.autoNovelServices?.runtime !== runtime) {

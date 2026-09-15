@@ -24,6 +24,7 @@
     "smoke:server": "node scripts/smoke-built-server.mjs",
     "backup:verify": "node scripts/verify-backup.mjs",
     "backup:restore": "node scripts/restore-database.mjs",
+    "desktop:invite": "node scripts/generate-desktop-invite.mjs",
     "docker:build": "node scripts/docker-deploy.mjs build",
     "docker:up": "node scripts/docker-deploy.mjs up",
     "docker:up:https": "node scripts/docker-deploy.mjs up-https",

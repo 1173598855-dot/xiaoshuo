@@ -14,6 +14,8 @@ import type {
   UpdateChapterInput,
   Workspace,
 } from "../../shared/contracts";
+import type { AuthSessionResult, LoginInput, RegisterAccountInput } from "../../shared/auth";
+import type { DesktopActivationStatus } from "../../shared/desktop-invitation";
 
 export type ClientProviderSettings =
   | (ProviderSettings & { platform: "desktop"; apiKey?: never })
@@ -61,6 +63,11 @@ export interface WorkbenchTransport {
     providerId: ProviderId,
     options?: ClearProviderKeyOptions,
   ): Promise<ClientProviderSettings | null>;
+  getActivationStatus(): Promise<DesktopActivationStatus>;
+  activateInvitation(code: string): Promise<DesktopActivationStatus>;
+  registerAccount(input: RegisterAccountInput): Promise<AuthSessionResult>;
+  loginAccount(input: LoginInput): Promise<AuthSessionResult>;
+  logoutAccount(): Promise<void>;
   getDatabaseStatus(): Promise<DatabaseStatus>;
   importDatabase(): Promise<DatabaseOperationResult>;
   exportDatabase(): Promise<DatabaseOperationResult>;

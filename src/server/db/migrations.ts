@@ -144,6 +144,12 @@ const V1_SCHEMA = `
     revoked_at TEXT
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS desktop_activation (
+    id TEXT PRIMARY KEY CHECK (id = 'current'),
+    invitation_code_id TEXT NOT NULL REFERENCES invitation_codes(id),
+    activated_at TEXT NOT NULL
+  ) STRICT;
+
   CREATE INDEX IF NOT EXISTS invitation_codes_created_idx
     ON invitation_codes(created_at DESC, id DESC);
   CREATE INDEX IF NOT EXISTS auth_sessions_expiry_idx

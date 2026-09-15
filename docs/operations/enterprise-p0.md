@@ -12,6 +12,8 @@ Authorization: Bearer <XIAOYI_ACCESS_TOKEN>
 
 需要限制注册人数时，额外设置 `XIAOYI_INVITATIONS_REQUIRED=1`。管理员令牌必须同时配置；作者必须先通过邀请码注册账号，再使用用户名和密码登录；账号只能访问自己的作品。注册用户在浏览器模型设置中自行填写 Provider 和 API Key，管理员不需要代为提供用户模型 Key。邀请码的 `maxUses` 是注册次数硬上限，撤销邀请码不会影响已经注册的账号。
 
+桌面端不依赖 Web 账号中心：管理员使用 `npm run desktop:invite -- --private-key <private.pem> --max-uses <n> --expires-at <ISO>` 生成签名邀请码，桌面端首次激活后才允许本地注册。离线模式只能限制每台电脑本地数据库中的注册次数，不能防止邀请码被复制到另一台电脑；需要全局人数限制时再接入 Web 账号中心。
+
 最小启动示例：
 
 ```powershell

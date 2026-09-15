@@ -24,6 +24,8 @@ import { DesktopDatabaseManager } from "./database-manager";
 import { createFinalShutdownCoordinator } from "./final-shutdown";
 import { getDesktopPaths } from "./paths";
 import { ProviderVault } from "./provider-vault";
+import { DesktopAuthService } from "./desktop-auth";
+import { AuthRepository } from "../server/repositories/auth-repository";
 import {
   isTrustedDesktopIpcSender,
   resolveDesktopRuntimeConfig,
@@ -150,10 +152,17 @@ async function bootstrap(): Promise<void> {
     getDesktopPaths(userDataDirectory),
     safeStorage,
   );
+  const authService = new DesktopAuthService(
+    databaseManager.getDatabase(),
+    new AuthRepository(databaseManager.getDatabase()),
+    providerVault,
+    { testMode: runtimeConfig.desktopSmoke },
+  );
   unregisterIpcHandlers = registerDesktopIpcHandlers({
     ipcMain,
     databaseManager,
     providerVault,
+    authService,
     dialogs: createDialogAdapter(),
     resolveClose: (input) => {
       closeDecisionCoordinator.resolve(input);
@@ -172,6 +181,7 @@ async function bootstrap(): Promise<void> {
     ipcMain,
     getServices: () => databaseManager!.getAutoNovelServices(),
     providerVault,
+    authService,
     isTrustedSender: (event) =>
       isTrustedDesktopIpcSender(
         event as {

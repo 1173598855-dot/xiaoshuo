@@ -12,6 +12,8 @@ import {
   type ProviderId,
 } from "../../shared/contracts";
 import type { DesktopApi } from "../../desktop/preload-api";
+import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema } from "../../shared/auth";
+import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
 import {
   ApiRequestError,
   type WorkbenchTransport,
@@ -77,6 +79,21 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
         ProviderSettingsSchema.nullable(),
       );
       return settings ? { ...settings, platform: "desktop" as const } : null;
+    },
+    async getActivationStatus() {
+      return parseResult(await api.auth.activationStatus(), DesktopActivationStatusSchema);
+    },
+    async activateInvitation(code) {
+      return parseResult(await api.auth.activate({ code }), DesktopActivationStatusSchema);
+    },
+    async registerAccount(input) {
+      return parseResult(await api.auth.register(RegisterAccountInputSchema.parse(input)), AuthSessionResultSchema);
+    },
+    async loginAccount(input) {
+      return parseResult(await api.auth.login(LoginInputSchema.parse(input)), AuthSessionResultSchema);
+    },
+    async logoutAccount() {
+      parseResult(await api.auth.logout(), undefinedSchema);
     },
     async getDatabaseStatus() {
       return parseResult(await api.database.status(), DatabaseStatusSchema);

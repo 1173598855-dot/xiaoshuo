@@ -15,6 +15,7 @@ import {
 } from "../../shared/contracts";
 import type { DesktopDatabaseManager, DesktopRuntimeReader } from "../database-manager";
 import type { ProviderVault } from "../provider-vault";
+import type { DesktopAuthService } from "../desktop-auth";
 import { toPublicError } from "../../server/public-error";
 import { getProviderCatalog } from "../../server/providers/catalog";
 import { listOpenAICompatibleModels } from "../../server/providers/openai-compatible-models";
@@ -40,6 +41,7 @@ export interface DesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
   readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase">;
   readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest">>;
+  readonly authService: DesktopAuthService;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
   readonly dialogs: DesktopDialogAdapter;
   readonly resolveClose?: (input: { requestId: string; canClose: boolean }) => void;
@@ -49,6 +51,12 @@ export interface DesktopIpcDependencies {
 export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies): () => void {
   const channels = Object.values(DESKTOP_CHANNELS);
   for (const channel of channels) dependencies.ipcMain.removeHandler(channel);
+
+  registerHandler(dependencies, DESKTOP_CHANNELS.authActivationStatus, EmptyInputSchema, () => dependencies.authService.getActivationStatus(), false);
+  registerHandler(dependencies, DESKTOP_CHANNELS.authActivate, z.object({ code: z.string().trim().min(32).max(2048) }).strict(), (input) => dependencies.authService.activate(input), false);
+  registerHandler(dependencies, DESKTOP_CHANNELS.authRegister, z.object({ inviteCode: z.string().trim().min(8).max(256), username: z.string().trim().min(3).max(32), password: z.string().min(12).max(256) }).strict(), (input) => dependencies.authService.register(input), false);
+  registerHandler(dependencies, DESKTOP_CHANNELS.authLogin, z.object({ username: z.string().trim().min(3).max(32), password: z.string().min(12).max(256) }).strict(), (input) => dependencies.authService.login(input), false);
+  registerHandler(dependencies, DESKTOP_CHANNELS.authLogout, EmptyInputSchema, () => dependencies.authService.logout(), false);
 
   registerHandler(dependencies, DESKTOP_CHANNELS.workspaceGet, EmptyInputSchema, () => getWorkspace(dependencies.databaseManager.getRuntime()));
   registerHandler(dependencies, DESKTOP_CHANNELS.projectCreate, CreateProjectInputSchema.strict(), (input) => dependencies.databaseManager.runWrite((runtime) => runtime.workspaceRepository.createProject(input)));
@@ -95,9 +103,16 @@ function getWorkspace(runtime: DesktopRuntimeReader) {
   return runtime.workspaceRepository.getWorkspace();
 }
 
-function registerHandler<T extends z.ZodType>(dependencies: DesktopIpcDependencies, channel: DesktopChannel, schema: T, action: (input: z.output<T>) => unknown | Promise<unknown>): void {
+function registerHandler<T extends z.ZodType>(dependencies: DesktopIpcDependencies, channel: DesktopChannel, schema: T, action: (input: z.output<T>) => unknown | Promise<unknown>, requiresAuth = true): void {
   dependencies.ipcMain.handle(channel, async (event, input) => {
     if (!dependencies.isTrustedSender(event)) return failure("INTERNAL_ERROR", "本地服务暂时无法完成请求。");
+    if (requiresAuth) {
+      try {
+        dependencies.authService.requireUser();
+      } catch (error) {
+        return { ok: false, error: toPublicError(error) } satisfies DesktopResult<never>;
+      }
+    }
     const parsed = schema.safeParse(input);
     if (!parsed.success) return validationFailure(parsed.error);
     try {

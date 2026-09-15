@@ -8,7 +8,6 @@ import type {
   SaveProviderSettingsInput,
 } from "../shared/contracts";
 import type { Book, BookDetails, CreateBookInput, StoryDirection } from "../shared/auto-novel";
-import { AuthSessionResultSchema } from "../shared/auth";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   type MemoryContextConfig,
@@ -52,6 +51,8 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activationPrompt, setActivationPrompt] = useState(false);
+  const [activationCodeInput, setActivationCodeInput] = useState("");
   const [accessTokenPrompt, setAccessTokenPrompt] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authUsername, setAuthUsername] = useState("");
@@ -74,6 +75,14 @@ export function App() {
 
   const loadLibrary = useCallback(async () => {
     try {
+      if (apiClient.platform === "desktop") {
+        const activation = await apiClient.getActivationStatus();
+        if (!activation.activated) {
+          setActivationPrompt(true);
+          setLoading(false);
+          return;
+        }
+      }
       const [nextBooks, nextProviders, nextSettings] = await Promise.all([
         autoApi.listBooks(),
         apiClient.getProviders(),
@@ -371,26 +380,9 @@ export function App() {
     event.preventDefault();
     setInvitationError(null);
     try {
-      const isRegister = authMode === "register";
-      const response = await fetch(isRegister ? "/api/auth/register" : "/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          username: authUsername.trim(),
-          password: authPassword,
-          ...(isRegister ? { inviteCode: invitationCodeInput.trim() } : {}),
-        }),
-      });
-      const body = await response.json().catch(() => undefined);
-      if (!response.ok) {
-        const message = body && typeof body === "object" && "error" in body &&
-          typeof body.error === "object" && body.error !== null &&
-          "message" in body.error && typeof body.error.message === "string"
-          ? body.error.message
-          : "邀请码兑换失败。";
-        throw new Error(message);
-      }
-      const result = AuthSessionResultSchema.parse(body);
+      const result = authMode === "register"
+        ? await apiClient.registerAccount({ inviteCode: invitationCodeInput.trim(), username: authUsername.trim(), password: authPassword })
+        : await apiClient.loginAccount({ username: authUsername.trim(), password: authPassword });
       storeAccessToken(result.accessToken);
       setAuthUsername("");
       setAuthPassword("");
@@ -403,7 +395,43 @@ export function App() {
     }
   };
 
+  const activateDesktop = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const code = activationCodeInput.trim();
+    if (!code) return;
+    setInvitationError(null);
+    try {
+      await apiClient.activateInvitation(code);
+      setActivationCodeInput("");
+      setActivationPrompt(false);
+      setAccessTokenPrompt(true);
+    } catch (activationError) {
+      setInvitationError(activationError instanceof Error ? activationError.message : "邀请码激活失败。" );
+    }
+  };
+
   if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
+  if (activationPrompt) {
+    return (
+      <main className="app-error" role="dialog" aria-labelledby="activation-title">
+        <span className="brand-mark">奕</span>
+        <h1 id="activation-title">激活桌面端</h1>
+        <p>首次使用需要管理员生成的邀请码。激活只绑定当前桌面端，邀请码不会直接登录账号。</p>
+        <form onSubmit={(event) => void activateDesktop(event)}>
+          <input
+            type="text"
+            value={activationCodeInput}
+            onChange={(event) => setActivationCodeInput(event.target.value)}
+            placeholder="输入桌面邀请码"
+            autoComplete="off"
+            autoFocus
+          />
+          <button type="submit" disabled={!activationCodeInput.trim()}>激活</button>
+        </form>
+        {invitationError ? <p role="alert">{invitationError}</p> : null}
+      </main>
+    );
+  }
   if (accessTokenPrompt) {
     return (
       <main className="app-error" role="dialog" aria-labelledby="access-token-title">

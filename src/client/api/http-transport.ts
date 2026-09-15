@@ -12,6 +12,8 @@ import {
   TestProviderConnectionInputSchema,
   type ProviderId,
 } from "../../shared/contracts";
+import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema } from "../../shared/auth";
+import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
 import {
   clearProviderSettings,
   loadProviderSettings,
@@ -126,6 +128,27 @@ export function createHttpTransport(
       const clearedSettings = { ...settings, apiKey: "" };
       storeProviderSettings(clearedSettings);
       return toWebSettings(clearedSettings);
+    },
+    async getActivationStatus() {
+      return DesktopActivationStatusSchema.parse({ activated: true, invitationId: null, expiresAt: null, maxUses: null, usedCount: null });
+    },
+    async activateInvitation() {
+      return DesktopActivationStatusSchema.parse({ activated: true, invitationId: null, expiresAt: null, maxUses: null, usedCount: null });
+    },
+    async registerAccount(input) {
+      return AuthSessionResultSchema.parse(await requestJson(fetchImpl, "/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify(RegisterAccountInputSchema.parse(input)),
+      }));
+    },
+    async loginAccount(input) {
+      return AuthSessionResultSchema.parse(await requestJson(fetchImpl, "/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify(LoginInputSchema.parse(input)),
+      }));
+    },
+    async logoutAccount() {
+      await requestJson(fetchImpl, "/api/auth/logout", { method: "POST" });
     },
     async getDatabaseStatus() {
       return DatabaseStatusSchema.parse({
