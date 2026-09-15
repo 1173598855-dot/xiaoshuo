@@ -39,7 +39,7 @@ export interface DesktopDialogAdapter {
 
 export interface DesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
-  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase">;
+  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase" | "exportEncryptedDatabase">;
   readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest">>;
   readonly authService: DesktopAuthService;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
@@ -87,6 +87,12 @@ export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies)
     const selection = await dependencies.dialogs.selectExportTarget();
     if (selection.cancelled || !selection.destinationPath) return { cancelled: true };
     await dependencies.databaseManager.exportDatabase(selection.destinationPath);
+    return { cancelled: false, fileName: basename(selection.destinationPath) };
+  });
+  registerHandler(dependencies, DESKTOP_CHANNELS.databaseExportEncrypted, z.object({ password: z.string().min(12).max(512) }).strict(), async ({ password }) => {
+    const selection = await dependencies.dialogs.selectExportTarget();
+    if (selection.cancelled || !selection.destinationPath) return { cancelled: true };
+    await dependencies.databaseManager.exportEncryptedDatabase(selection.destinationPath, password);
     return { cancelled: false, fileName: basename(selection.destinationPath) };
   });
   registerHandler(dependencies, DESKTOP_CHANNELS.lifecycleResolveClose, LifecycleResolveCloseRequestSchema, (input) => {

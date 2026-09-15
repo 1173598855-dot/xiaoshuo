@@ -16,6 +16,10 @@ import {
   type StoryDirection,
   type UpdateChapterPlanInput,
 } from "../../shared/auto-novel";
+import type {
+  ReorderChapterPlansInput,
+  UpdateChapterPlansInput,
+} from "../../shared/authoring";
 import { MemoryContextConfigSchema } from "../../shared/memory";
 
 export type DirectionDraft = Omit<
@@ -161,6 +165,15 @@ export class DirectionAlreadySelectedError extends Error {
   constructor(bookId: string) {
     super(`A direction has already been selected for book ${bookId}`);
     this.name = "DirectionAlreadySelectedError";
+  }
+}
+
+export class TimelineReorderBlockedError extends Error {
+  readonly code = "TIMELINE_REORDER_BLOCKED";
+
+  constructor() {
+    super("已采纳正文的时间线不能重排，请先从未采纳章节开始调整。");
+    this.name = "TimelineReorderBlockedError";
   }
 }
 
@@ -488,57 +501,80 @@ export class BookRepository {
   }
 
   updateChapterPlan(bookId: string, input: UpdateChapterPlanInput): ChapterPlan {
+    const result = this.updateChapterPlans(bookId, {
+      bookId,
+      expectedBookRevision: input.expectedBookRevision,
+      plans: [{
+        planId: input.planId,
+        volumeNumber: input.volumeNumber,
+        volumeTitle: input.volumeTitle,
+        title: input.title,
+        summary: input.summary,
+        objective: input.objective,
+        hook: input.hook,
+        foreshadowing: input.foreshadowing,
+      }],
+    });
+    return result[0]!;
+  }
+
+  updateChapterPlans(bookId: string, input: UpdateChapterPlansInput): readonly ChapterPlan[] {
     return this.withTransaction(() => {
       const book = this.requireBookRow(bookId);
       if (book.revision !== input.expectedBookRevision) {
         throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
       }
-      const current = this.database
-        .prepare(
-          `SELECT id, book_id, volume_number, volume_title, chapter_number,
-                  title, summary, objective, hook, foreshadowing_json, status,
-                  created_at, updated_at
-           FROM chapter_plans WHERE id = ? AND book_id = ?`,
-        )
-        .get(input.planId, bookId) as ChapterPlanRow | undefined;
-      if (!current) throw new ChapterPlanNotFoundError(input.planId);
-
+      const current = this.getChapterPlans(bookId);
+      const byId = new Map(current.map((plan) => [plan.id, plan]));
+      for (const draft of input.plans) {
+        if (!byId.has(draft.planId)) throw new ChapterPlanNotFoundError(draft.planId);
+      }
       const timestamp = this.now();
-      this.database
-        .prepare(
-          `UPDATE chapter_plans
-           SET volume_number = ?, volume_title = ?, title = ?, summary = ?,
-               objective = ?, hook = ?, foreshadowing_json = ?, updated_at = ?
-           WHERE id = ? AND book_id = ?`,
-        )
-        .run(
-          input.volumeNumber,
-          input.volumeTitle,
-          input.title,
-          input.summary,
-          input.objective,
-          input.hook,
-          JSON.stringify(input.foreshadowing),
+      const update = this.database.prepare(
+        `UPDATE chapter_plans
+         SET volume_number = ?, volume_title = ?, title = ?, summary = ?,
+             objective = ?, hook = ?, foreshadowing_json = ?, updated_at = ?
+         WHERE id = ? AND book_id = ?`,
+      );
+      for (const draft of input.plans) {
+        update.run(
+          draft.volumeNumber,
+          draft.volumeTitle,
+          draft.title,
+          draft.summary,
+          draft.objective,
+          draft.hook,
+          JSON.stringify(draft.foreshadowing),
           timestamp,
-          input.planId,
+          draft.planId,
           bookId,
         );
+      }
       this.database
-        .prepare(
-          `UPDATE books SET revision = revision + 1, updated_at = ?
-           WHERE id = ? AND revision = ?`,
-        )
+        .prepare("UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
         .run(timestamp, bookId, input.expectedBookRevision);
-      return toChapterPlan(
-        this.database
-          .prepare(
-            `SELECT id, book_id, volume_number, volume_title, chapter_number,
-                    title, summary, objective, hook, foreshadowing_json, status,
-                    created_at, updated_at
-             FROM chapter_plans WHERE id = ? AND book_id = ?`,
-          )
-          .get(input.planId, bookId) as unknown as ChapterPlanRow,
-      );
+      return this.getChapterPlans(bookId);
+    });
+  }
+
+  reorderChapterPlans(bookId: string, input: ReorderChapterPlansInput): readonly ChapterPlan[] {
+    return this.withTransaction(() => {
+      const book = this.requireBookRow(bookId);
+      if (book.revision !== input.expectedBookRevision) {
+        throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+      }
+      const current = this.getChapterPlans(bookId);
+      if (current.some((plan) => plan.status === "accepted")) throw new TimelineReorderBlockedError();
+      const currentIds = new Set(current.map((plan) => plan.id));
+      if (current.length !== input.planIds.length || new Set(input.planIds).size !== current.length || input.planIds.some((id) => !currentIds.has(id))) {
+        throw new ChapterPlanNotFoundError(input.planIds.find((id) => !currentIds.has(id)) ?? "00000000-0000-4000-8000-000000000000");
+      }
+      const timestamp = this.now();
+      this.database.prepare("UPDATE chapter_plans SET chapter_number = chapter_number + 10000, updated_at = ? WHERE book_id = ?").run(timestamp, bookId);
+      const update = this.database.prepare("UPDATE chapter_plans SET chapter_number = ?, updated_at = ? WHERE id = ? AND book_id = ?");
+      input.planIds.forEach((planId, index) => update.run(index + 1, timestamp, planId, bookId));
+      this.database.prepare("UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?").run(timestamp, bookId, input.expectedBookRevision);
+      return this.getChapterPlans(bookId);
     });
   }
 

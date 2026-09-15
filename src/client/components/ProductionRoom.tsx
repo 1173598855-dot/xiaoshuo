@@ -19,6 +19,8 @@ interface ProductionRoomProps {
   onOpenMemory: () => void;
   onOpenTimeline: () => void;
   onOpenStoryBible: () => void;
+  onOpenConsistency: () => void;
+  onOpenSearch: () => void;
   onConfigureProvider: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
@@ -38,6 +40,8 @@ export function ProductionRoom({
   onOpenMemory,
   onOpenTimeline,
   onOpenStoryBible,
+  onOpenConsistency,
+  onOpenSearch,
   onConfigureProvider,
   connectionState = "connected",
   onRetryConnection,
@@ -46,11 +50,12 @@ export function ProductionRoom({
   const total = book.chapterPlans.length;
   const status = run?.run.status ?? "ready";
   const progress = total > 0 ? Math.round((accepted / total) * 100) : 0;
+  const estimatedTokens = Math.ceil((run?.acceptedChapters.reduce((sum, chapter) => sum + chapter.content.length, 0) ?? 0) / 4);
   return (
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>
@@ -60,6 +65,7 @@ export function ProductionRoom({
           <small className="memory-mode-note">
             Provider 记忆：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`}
           </small>
+          {run ? <small className="production-telemetry">生产版本：{run.run.version} · 估算 Token {estimatedTokens.toLocaleString()} · 费用按 Provider 价格结算</small> : null}
         </div>
         <div className="production-stat"><strong>{progress}%</strong><span>{accepted} / {total || "—"} 章已完成</span></div>
       </section>

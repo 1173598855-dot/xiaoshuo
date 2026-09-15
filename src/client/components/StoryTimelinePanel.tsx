@@ -7,12 +7,15 @@ import {
   type ChapterPlan,
 } from "../../shared/auto-novel";
 import type { AutoNovelApi } from "../auto-novel-api";
+import type { AutoNovelProviderInput } from "../auto-novel-api";
+import type { ChapterPlanPreviewEnvelope } from "../../shared/authoring";
 
 interface StoryTimelinePanelProps {
   details: BookDetails;
   api: AutoNovelApi;
   onUpdated: (details: BookDetails) => void;
   onClose: () => void;
+  provider?: AutoNovelProviderInput | null;
 }
 
 type TimelineDraft = Pick<
@@ -20,12 +23,13 @@ type TimelineDraft = Pick<
   "volumeNumber" | "volumeTitle" | "title" | "summary" | "objective" | "hook"
 > & { foreshadowingText: string };
 
-export function StoryTimelinePanel({ details, api, onUpdated, onClose }: StoryTimelinePanelProps) {
+export function StoryTimelinePanel({ details, api, onUpdated, onClose, provider }: StoryTimelinePanelProps) {
   const [drafts, setDrafts] = useState<Record<string, TimelineDraft>>(() => createDrafts(details.chapterPlans));
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ChapterPlanPreviewEnvelope | null>(null);
 
   useEffect(() => {
     setDrafts(createDrafts(details.chapterPlans));
@@ -61,11 +65,85 @@ export function StoryTimelinePanel({ details, api, onUpdated, onClose }: StoryTi
         ...editableFields,
         foreshadowing: splitLines(foreshadowingText),
       });
-      const next = await api.updateChapterPlan(input);
+      const { bookId, expectedBookRevision, planId, ...editable } = input;
+      const next = typeof api.updateChapterPlans === "function"
+        ? await api.updateChapterPlans({ bookId, expectedBookRevision, plans: [{ ...editable, planId }] })
+        : await api.updateChapterPlan(input);
       onUpdated(next);
       setNotice(`第 ${plan.chapterNumber} 章已保存，后续 AI 生产会读取新设定。`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "时间线保存失败。请重新加载后再试。");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const saveAll = async () => {
+    setSavingId("all");
+    setError(null);
+    setNotice(null);
+    try {
+      const plans = details.chapterPlans.map((plan) => {
+        const draft = drafts[plan.id];
+        const { foreshadowingText, ...editableFields } = draft;
+        return { planId: plan.id, ...editableFields, foreshadowing: splitLines(foreshadowingText) };
+      });
+      const next = await api.updateChapterPlans({ bookId: details.book.id, expectedBookRevision: details.book.revision, plans });
+      onUpdated(next);
+      setNotice("全部时间线已保存，后续 AI 生产会读取新设定。");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "时间线批量保存失败。");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const movePlan = async (planId: string, direction: -1 | 1) => {
+    const index = details.chapterPlans.findIndex((plan) => plan.id === planId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= details.chapterPlans.length) return;
+    const planIds = details.chapterPlans.map((plan) => plan.id);
+    [planIds[index], planIds[nextIndex]] = [planIds[nextIndex]!, planIds[index]!];
+    setSavingId("reorder");
+    setError(null);
+    try {
+      onUpdated(await api.reorderChapterPlans({ bookId: details.book.id, expectedBookRevision: details.book.revision, planIds }));
+      setNotice("时间线顺序已安全调整。");
+    } catch (reorderError) {
+      setError(reorderError instanceof Error ? reorderError.message : "时间线重排失败。");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const generatePreview = async () => {
+    if (!provider) return;
+    setSavingId("preview");
+    setError(null);
+    try {
+      setPreview(await api.previewChapterPlans(details.book.id, provider));
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : "AI 时间线预览失败。");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const acceptPreview = async () => {
+    if (!preview) return;
+    setSavingId("preview");
+    setError(null);
+    try {
+      const plans = preview.plans.flatMap((plan) => {
+        const current = details.chapterPlans.find((item) => item.chapterNumber === plan.chapterNumber);
+        return current ? [{ planId: current.id, ...plan }] : [];
+      });
+      const next = await api.updateChapterPlans({ bookId: preview.bookId, expectedBookRevision: preview.baseRevision, plans });
+      onUpdated(next);
+      setPreview(null);
+      setNotice("AI 时间线建议已采纳，旧版本仍可通过数据库备份恢复。");
+    } catch (acceptError) {
+      setError(acceptError instanceof Error ? acceptError.message : "AI 时间线采纳失败。");
     } finally {
       setSavingId(null);
     }
@@ -99,12 +177,15 @@ export function StoryTimelinePanel({ details, api, onUpdated, onClose }: StoryTi
       </div>
       <div className="timeline-toolbar">
         <span><Check size={14} /> 当前作品版本 v{details.book.revision}</span>
-        <button className="ghost-button" type="button" disabled={loading || savingId !== null} onClick={() => void reload()}>
-          <RefreshCw size={14} /> 重新加载
-        </button>
+        <div className="timeline-toolbar-actions">
+          <button className="ghost-button" type="button" disabled={loading || savingId !== null || !provider} onClick={() => void generatePreview()}>AI 重新规划</button>
+          <button className="ghost-button" type="button" disabled={loading || savingId !== null} onClick={() => void reload()}><RefreshCw size={14} /> 重新加载</button>
+          <button className="primary-button" type="button" disabled={loading || savingId !== null || details.chapterPlans.length === 0} onClick={() => void saveAll()}><Save size={14} /> 保存全部</button>
+        </div>
       </div>
       {error ? <p className="form-error timeline-error" role="alert"><AlertTriangle size={14} /> {error}</p> : null}
       {notice ? <p className="timeline-notice" role="status"><Check size={14} /> {notice}</p> : null}
+      {preview ? <TimelinePreview preview={preview} current={details.chapterPlans} busy={savingId !== null} onAccept={() => void acceptPreview()} onCancel={() => setPreview(null)} /> : null}
       <div className="timeline-list">
         {details.chapterPlans.length === 0 ? (
           <p className="memory-empty">选择故事方向后，AI 会自动生成卷章时间线。</p>
@@ -133,9 +214,13 @@ export function StoryTimelinePanel({ details, api, onUpdated, onClose }: StoryTi
                     <label>伏笔（每行一条）<textarea value={draft.foreshadowingText} onChange={(event) => updateDraft(plan.id, { foreshadowingText: event.target.value })} /></label>
                     <div className="timeline-card-footer">
                       <span>更新时间 {formatDate(plan.updatedAt)}</span>
+                      <div className="timeline-card-actions">
+                      <button className="ghost-button" type="button" disabled={savingId !== null || indexOfPlan(details.chapterPlans, plan.id) === 0} onClick={() => void movePlan(plan.id, -1)} aria-label={`第 ${plan.chapterNumber} 章上移`}>↑</button>
+                      <button className="ghost-button" type="button" disabled={savingId !== null || indexOfPlan(details.chapterPlans, plan.id) === details.chapterPlans.length - 1} onClick={() => void movePlan(plan.id, 1)} aria-label={`第 ${plan.chapterNumber} 章下移`}>↓</button>
                       <button className="primary-button" type="button" disabled={saving || loading} onClick={() => void save(plan)}>
                         <Save size={14} /> {saving ? "保存中…" : `保存第 ${plan.chapterNumber} 章`}
                       </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -146,6 +231,14 @@ export function StoryTimelinePanel({ details, api, onUpdated, onClose }: StoryTi
       </div>
     </aside>
   );
+}
+
+function TimelinePreview({ preview, current, busy, onAccept, onCancel }: { preview: ChapterPlanPreviewEnvelope; current: readonly ChapterPlan[]; busy: boolean; onAccept: () => void; onCancel: () => void }) {
+  const changed = preview.plans.filter((plan) => {
+    const old = current.find((item) => item.chapterNumber === plan.chapterNumber);
+    return old && JSON.stringify({ ...old, id: undefined, bookId: undefined, status: undefined, createdAt: undefined, updatedAt: undefined }) !== JSON.stringify(plan);
+  });
+  return <section className="timeline-preview" aria-label="AI 时间线差异预览"><div className="timeline-preview-heading"><strong>AI 建议差异</strong><span>{changed.length} 章有变化 · 基于作品版本 v{preview.baseRevision}</span></div>{changed.slice(0, 12).map((plan) => <div className="timeline-preview-row" key={plan.chapterNumber}><strong>第 {plan.chapterNumber} 章</strong><span>{current.find((item) => item.chapterNumber === plan.chapterNumber)?.title} → {plan.title}</span></div>)}<div className="timeline-preview-actions"><button className="primary-button" type="button" disabled={busy} onClick={onAccept}>采纳 AI 建议</button><button className="ghost-button" type="button" disabled={busy} onClick={onCancel}>取消预览</button></div></section>;
 }
 
 function createDrafts(plans: readonly ChapterPlan[]): Record<string, TimelineDraft> {
@@ -166,4 +259,8 @@ function splitLines(value: string): string[] {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(value));
+}
+
+function indexOfPlan(plans: readonly ChapterPlan[], id: string): number {
+  return plans.findIndex((plan) => plan.id === id);
 }

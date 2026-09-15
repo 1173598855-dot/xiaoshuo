@@ -17,6 +17,7 @@ export const DESKTOP_CHANNELS = {
   databaseStatus: "database:status",
   databaseImport: "database:import",
   databaseExport: "database:export",
+  databaseExportEncrypted: "database:export-encrypted",
   lifecycleResolveClose: "lifecycle:resolve-close",
   lifecycleCommand: "lifecycle:command",
 } as const;

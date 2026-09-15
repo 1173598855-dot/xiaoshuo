@@ -39,6 +39,7 @@ import {
   type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
+import { ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, UpdateChapterPlansInputSchema, UsageSummarySchema } from "../shared/authoring";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -63,6 +64,24 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         await api.books.updateTimeline(UpdateChapterPlanInputSchema.parse(input)),
         BookDetailsSchema,
       );
+    },
+    async updateChapterPlans(input) {
+      return parseResult(await api.books.updateTimelineBatch(UpdateChapterPlansInputSchema.parse(input)), BookDetailsSchema);
+    },
+    async reorderChapterPlans(input) {
+      return parseResult(await api.books.reorderTimeline(ReorderChapterPlansInputSchema.parse(input)), BookDetailsSchema);
+    },
+    async searchBook(bookId, query, limit) {
+      return parseResult(await api.books.search({ bookId, query: SearchQuerySchema.parse({ q: query, ...(limit === undefined ? {} : { limit }) }) }), SearchResponseSchema);
+    },
+    async checkConsistency(bookId) {
+      return parseResult(await api.books.consistency(bookId), ConsistencyReportSchema);
+    },
+    async previewChapterPlans(bookId, provider) {
+      return parseResult(await api.books.previewTimeline({ bookId, providerId: providerId(provider) }), ChapterPlanPreviewEnvelopeSchema);
+    },
+    async getUsageSummary() {
+      return parseResult(await api.books.usageSummary(), UsageSummarySchema);
     },
     async listDirections(bookId) {
       return parseResult(await api.directions.list(bookId), z.array(StoryDirectionSchema));

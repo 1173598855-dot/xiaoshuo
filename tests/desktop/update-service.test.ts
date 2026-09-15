@@ -89,7 +89,7 @@ describe("desktop update checks", () => {
     expect(updater.checkForUpdates).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalledWith({ type: "update-failed" });
     controller.dispose();
-    expect(updater.off).toHaveBeenCalledOnce();
+    expect(updater.off).toHaveBeenCalledTimes(2);
   });
 
   it("coalesces concurrent explicit checks", async () => {

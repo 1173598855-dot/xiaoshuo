@@ -17,6 +17,11 @@ import {
   UpdateChapterPlanInputSchema,
 } from "../shared/auto-novel";
 import {
+  ReorderChapterPlansInputSchema,
+  SearchQuerySchema,
+  UpdateChapterPlansInputSchema,
+} from "../shared/authoring";
+import {
   MemoryFilterSchema,
   MemoryContextConfigSchema,
   DEFAULT_MEMORY_CONTEXT_CONFIG,
@@ -53,6 +58,7 @@ import type { FoundationService } from "./services/foundation-service";
 import type { ProductionService } from "./services/production-service";
 import type { ProductionWorker } from "./services/production-worker";
 import type { MemoryService } from "./services/memory-service";
+import type { AuthoringService } from "./services/authoring-service";
 import type { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import {
   MetricsRegistry,
@@ -123,6 +129,7 @@ export interface AutoNovelAppDependencies {
   /** Optional durable server worker. Omitted in unit/desktop runtimes. */
   readonly productionWorker?: ProductionWorker;
   readonly memoryService?: MemoryService;
+  readonly authoringService?: AuthoringService;
   readonly database?: DatabaseSync;
   readonly auditRepository?: AuditRepository;
   readonly usageRepository?: UsageRepository;
@@ -596,6 +603,55 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     return context.json(dependencies.bookRepository.getBook(bookId.data));
   });
 
+  app.patch("/api/books/:bookId/timeline", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, UpdateChapterPlansInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data) return context.json(apiError("VALIDATION_ERROR", "作品标识不一致。"), 400);
+    const repository = dependencies.bookRepository;
+    repository.updateChapterPlans(bookId.data, parsed.data);
+    return context.json(repository.getBook(bookId.data));
+  });
+
+  app.post("/api/books/:bookId/timeline/preview", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, ProviderRequestSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    return context.json(await dependencies.foundationService.previewOutline(bookId.data, parsed.data.provider, context.req.raw.signal));
+  });
+
+  app.post("/api/books/:bookId/timeline/reorder", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, ReorderChapterPlansInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data) return context.json(apiError("VALIDATION_ERROR", "作品标识不一致。"), 400);
+    dependencies.bookRepository.reorderChapterPlans(bookId.data, parsed.data);
+    return context.json(dependencies.bookRepository.getBook(bookId.data));
+  });
+
+  app.get("/api/books/:bookId/search", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = SearchQuerySchema.safeParse({ q: context.req.query("q"), limit: context.req.query("limit") ? Number(context.req.query("limit")) : undefined });
+    if (!parsed.success || !dependencies.authoringService) return context.json(apiError("VALIDATION_ERROR", "搜索参数无效。"), 400);
+    return context.json(dependencies.authoringService.search(bookId.data, parsed.data));
+  });
+
+  app.get("/api/books/:bookId/consistency", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    if (!dependencies.authoringService) return context.json(apiError("INTERNAL_ERROR", "一致性检查暂不可用。"), 503);
+    return context.json(dependencies.authoringService.consistency(bookId.data));
+  });
+
   app.get("/api/books/:bookId/memory", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
     if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
@@ -915,6 +971,9 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.notFound((context) =>
     context.json(apiError("NOT_FOUND", "请求的资源不存在。"), 404),
   );
+  app.get("/api/usage", (context) => context.json(dependencies.usageRepository?.getMonthlySummary() ?? {
+    from: new Date().toISOString(), to: new Date().toISOString(), requests: 0, successfulRequests: 0, failedRequests: 0, blockedRequests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostMicros: 0, byProvider: [],
+  }));
   app.onError((error, context) =>
     context.json({ error: toAutoNovelPublicError(error) }, autoNovelErrorStatus(error)),
   );

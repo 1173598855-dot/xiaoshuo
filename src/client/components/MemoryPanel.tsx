@@ -282,7 +282,7 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
             {kind === "relevant" && selectionReasons.get(entry.id) ? <div className="memory-selection-reason">注入原因：{selectionReasons.get(entry.id)?.reason}</div> : null}
             {editingId === entry.id ? (
               <>
-                <textarea className="memory-editor" value={draftContent} onChange={(event) => setDraftContent(event.target.value)} aria-label={`${entry.subject} 内容`} />
+                <MemoryEntryForm entry={entry} draftContent={draftContent} onChange={setDraftContent} />
                 <div className="memory-entry-actions">
                   <button className="primary-button" type="button" disabled={busy} onClick={() => void saveEdit(entry)}><Save size={14} /> 保存</button>
                   <button className="ghost-button" type="button" disabled={busy} onClick={() => setEditingId(null)}>取消</button>
@@ -351,4 +351,28 @@ function revisionSourceLabel(source: MemoryRevision["source"]): string {
   if (source === "accepted_candidate") return "候选采纳";
   if (source === "manual_edit") return "手动修正";
   return "基础设定";
+}
+
+function MemoryEntryForm({ entry, draftContent, onChange }: { entry: MemoryEntry; draftContent: string; onChange: (value: string) => void }) {
+  let content: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(draftContent) as unknown;
+    content = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return <textarea className="memory-editor" value={draftContent} onChange={(event) => onChange(event.target.value)} aria-label={`${entry.subject} 内容`} />;
+  }
+  const set = (key: string, value: unknown) => onChange(JSON.stringify({ ...content, [key]: value }, null, 2));
+  const text = (key: string) => content[key] === null || content[key] === undefined ? "" : String(content[key]);
+  const lines = (key: string) => Array.isArray(content[key]) ? content[key].join("\n") : "";
+  const setLines = (key: string, value: string) => set(key, value.split("\n").map((item) => item.trim()).filter(Boolean));
+  const field = (label: string, key: string, multiline = false, numeric = false, ariaLabel?: string) => <label className="memory-form-field">{label}{multiline ? <textarea aria-label={ariaLabel} value={text(key)} onChange={(event) => set(key, event.target.value)} /> : <input aria-label={ariaLabel} type={numeric ? "number" : "text"} value={text(key)} onChange={(event) => set(key, numeric ? (event.target.value === "" ? null : Number(event.target.value)) : event.target.value)} />}</label>;
+  switch (entry.kind) {
+    case "world_rule": return <div className="memory-structured-editor">{field("规则摘要", "summary", false, false, `${entry.subject} 内容`)}{field("规则内容", "rule", true)}</div>;
+    case "character_state": return <div className="memory-structured-editor">{field("姓名", "name")}{field("目标", "goal", true)}{<label className="memory-form-field">关系（每行一条）<textarea value={lines("relationships")} onChange={(event) => setLines("relationships", event.target.value)} /></label>}{field("当前状态与弧光", "state", true)}</div>;
+    case "location": return <div className="memory-structured-editor">{field("地点名称", "name")}{field("地点描述", "description", true)}{field("剧情作用", "significance", true)}{<label className="memory-form-field">地点规则（每行一条）<textarea value={lines("rules")} onChange={(event) => setLines("rules", event.target.value)} /></label>}</div>;
+    case "fact": return <div className="memory-structured-editor">{field("事实", "statement", true)}{field("证据", "evidence", true)}</div>;
+    case "timeline_event": return <div className="memory-structured-editor">{field("事件", "event", true)}{field("发生章节", "chapterNumber", false, true)}{field("之前", "before", true)}{field("之后", "after", true)}</div>;
+    case "foreshadowing": return <div className="memory-structured-editor">{field("伏笔种子", "seed", true)}{field("计划回收章节", "plannedReturnChapter", false, true)}{<label className="memory-form-check"><input type="checkbox" checked={content.resolved === true} onChange={(event) => set("resolved", event.target.checked)} /> 已回收</label>}</div>;
+    case "style_constraint": return <div className="memory-structured-editor">{field("写法约束", "instruction", true)}</div>;
+  }
 }

@@ -8,6 +8,7 @@ import { DirectorService } from "../server/services/director-service";
 import { FoundationService } from "../server/services/foundation-service";
 import { ProductionService } from "../server/services/production-service";
 import { MemoryService } from "../server/services/memory-service";
+import { AuthoringService } from "../server/services/authoring-service";
 import { ProviderRegistry } from "../server/providers/provider-registry";
 import { AuditRepository, UsageRepository } from "../server/enterprise/operational-repository";
 import { MetricsRegistry, StructuredLogger } from "../server/enterprise/observability";
@@ -21,6 +22,7 @@ export interface AutoNovelServices {
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
   readonly memoryService: MemoryService;
+  readonly authoringService: AuthoringService;
   readonly auditRepository: AuditRepository;
   readonly usageRepository: UsageRepository;
   readonly metrics: MetricsRegistry;
@@ -35,6 +37,7 @@ export function createAutoNovelServices(
   const productionRepository = new ProductionRepository(database);
   const memoryRepository = new MemoryRepository(database);
   const memoryService = new MemoryService(memoryRepository);
+  const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
   const logger = new StructuredLogger();
   const metrics = new MetricsRegistry({ logger });
   const auditRepository = new AuditRepository(database);
@@ -50,6 +53,7 @@ export function createAutoNovelServices(
     productionRepository,
     providerResolver: operationalProviderResolver,
     memoryService,
+    authoringService,
     metrics,
     auditRepository,
     logger,
@@ -62,6 +66,7 @@ export function createAutoNovelServices(
     foundationService: new FoundationService(shared),
     productionService: new ProductionService(shared),
     memoryService,
+    authoringService,
     auditRepository,
     usageRepository,
     metrics,

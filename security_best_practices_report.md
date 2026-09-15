@@ -25,6 +25,8 @@
 - 产物加固：`package.json:58` 启用 ASAR；`tsup.desktop.config.ts:15` 只有显式 `XIAOYI_DESKTOP_SOURCEMAP=1` 才生成桌面 source map。
 - 数据边界：浏览器 Provider 配置和账号会话只进入当前 `sessionStorage`/请求内存；桌面凭据由 Main 的 Vault 管理，Renderer 不接收已保存 API Key。
 - 输入与授权：新增时间线 PATCH 和桌面 IPC 都使用共享 Zod schema；服务端/桌面 Main 都按作品所有权校验，保存要求 `expectedBookRevision`。
+- 作者工具边界：批量时间线、重排、AI 预览采纳、搜索和一致性检查均经过共享 schema 与作品所有权校验；AI 预览不会直接写入正文或章纲，只有作者采纳才会提交。
+- 备份边界：桌面加密备份使用 AES-256-GCM 和 scrypt 派生密钥，密码不进入 SQLite、日志或导出内容；更新配置显式要求签名可验证。
 - UI 输出：故事想法、时间线和资料卡内容通过 React 正常文本节点/表单渲染，没有新增 HTML 注入点。
 
 ## 残余风险与发布要求

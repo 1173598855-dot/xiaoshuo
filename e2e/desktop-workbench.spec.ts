@@ -44,6 +44,9 @@ test("runs the full idea director and production room in Electron", async () => 
     await expect(window.getByRole("button", { name: "开始整本生产" })).toBeVisible();
     await window.getByRole("button", { name: "故事时间线" }).click();
     await expect(window.getByRole("complementary", { name: "故事时间线" })).toBeVisible();
+    await window.getByRole("button", { name: "AI 重新规划" }).click();
+    await expect(window.getByRole("region", { name: "AI 时间线差异预览" })).toBeVisible();
+    await window.getByRole("button", { name: "取消预览" }).click();
     await window.locator(".timeline-card input").nth(1).fill("第一章·桌面端修订");
     await window.getByRole("button", { name: "保存第 1 章" }).click();
     await expect(window.getByRole("status")).toContainText("后续 AI 生产会读取新设定");

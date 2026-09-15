@@ -181,6 +181,43 @@ describe("BookRepository", () => {
     })).toThrow(BookRevisionConflictError);
   });
 
+  it("updates several timeline plans atomically and safely reorders planned chapters", () => {
+    const { repository } = createRepository();
+    const book = repository.createBook({ idea: "批量章纲" });
+    const plans = repository.saveChapterPlans(book.id, [1, 2].map((chapterNumber) => ({
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      chapterNumber,
+      title: `第${chapterNumber}章`,
+      summary: "摘要",
+      objective: "目标",
+      hook: "钩子",
+      foreshadowing: [],
+    })));
+    const updated = repository.updateChapterPlans(book.id, {
+      bookId: book.id,
+      expectedBookRevision: 0,
+      plans: plans.map((plan) => ({
+        planId: plan.id,
+        volumeNumber: plan.volumeNumber,
+        volumeTitle: plan.volumeTitle,
+        title: `${plan.title}·批量修改`,
+        summary: plan.summary,
+        objective: plan.objective,
+        hook: plan.hook,
+        foreshadowing: plan.foreshadowing,
+      })),
+    });
+    expect(updated.every(({ title }) => title.includes("批量修改"))).toBe(true);
+    const reordered = repository.reorderChapterPlans(book.id, {
+      bookId: book.id,
+      expectedBookRevision: 1,
+      planIds: [plans[1]!.id, plans[0]!.id],
+    });
+    expect(reordered.map(({ chapterNumber }) => chapterNumber)).toEqual([1, 2]);
+    expect(reordered[0]?.id).toBe(plans[1]?.id);
+  });
+
   it("returns the persisted production memory selection when reopening a book", () => {
     const { database, repository } = createRepository();
     const book = repository.createBook({ idea: "重新打开后仍保留记忆选择" });

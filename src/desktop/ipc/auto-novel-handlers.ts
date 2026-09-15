@@ -10,6 +10,7 @@ import {
   UpdateChapterPlanInputSchema,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
+import { ReorderChapterPlansInputSchema, SearchQuerySchema, UpdateChapterPlansInputSchema } from "../../shared/authoring";
 import {
   MemoryFilterSchema,
   MemoryContextConfigSchema,
@@ -120,6 +121,31 @@ export function registerAutoNovelIpcHandlers(
     services.bookRepository.updateChapterPlan(input.bookId, input);
     return services.bookRepository.getBook(input.bookId);
   });
+  register(dependencies, AUTO_NOVEL_CHANNELS.timelineBatchUpdate, UpdateChapterPlansInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    const services = dependencies.getServices();
+    services.bookRepository.updateChapterPlans(input.bookId, input);
+    return services.bookRepository.getBook(input.bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.timelineReorder, ReorderChapterPlansInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    const services = dependencies.getServices();
+    services.bookRepository.reorderChapterPlans(input.bookId, input);
+    return services.bookRepository.getBook(input.bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.timelinePreview, z.object({ bookId: z.string().uuid(), providerId: ProviderIdSchema }).strict(), async ({ bookId, providerId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().foundationService.previewOutline(bookId, await resolveProvider(dependencies.providerVault, providerId));
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringSearch, z.object({ bookId: z.string().uuid(), query: SearchQuerySchema }).strict(), ({ bookId, query }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().authoringService.search(bookId, query);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringConsistency, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().authoringService.consistency(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.usageSummary, z.undefined(), () => dependencies.getServices().usageRepository.getMonthlySummary());
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.directionsList,

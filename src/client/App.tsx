@@ -28,6 +28,7 @@ import { useProductionRun } from "./hooks/use-production-run";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { StoryBiblePanel } from "./components/StoryBiblePanel";
 import { StoryTimelinePanel } from "./components/StoryTimelinePanel";
+import { ConsistencyPanel, SearchPanel } from "./components/AuthoringToolsPanel";
 import { DataManagementDialog } from "./components/DataManagementDialog";
 import { storeAccessToken } from "./access-token";
 
@@ -51,6 +52,8 @@ export function App() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [storyBibleOpen, setStoryBibleOpen] = useState(false);
+  const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [memoryContextConfig, setMemoryContextConfig] = useState<MemoryContextConfig>(DEFAULT_MEMORY_CONTEXT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -159,6 +162,7 @@ export function App() {
     return apiClient.onDesktopCommand((command: DesktopCommand) => {
       if (command.type === "provider-settings") setProviderOpen(true);
       if (command.type === "import" || command.type === "export") setDataOpen(true);
+      if (command.type === "update-downloaded") setError("新版本已下载，重启桌面端即可完成更新。");
       if (command.type === "shutdown-requested") {
         void apiClient.resolveClose({ requestId: command.requestId, canClose: true });
       }
@@ -497,7 +501,7 @@ export function App() {
   if (page === "manuscript") {
     return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onConfigureProvider={() => setProviderOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{consistencyOpen ? <ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} /> : null}{searchOpen ? <SearchPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setSearchOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
 }
 
 function providerDialog(

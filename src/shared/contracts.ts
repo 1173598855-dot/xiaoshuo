@@ -392,6 +392,7 @@ export const DesktopCommandSchema = z.discriminatedUnion("type", [
     requestId: z.string().uuid(),
   }),
   z.object({ type: z.literal("update-available") }),
+  z.object({ type: z.literal("update-downloaded") }),
   z.object({ type: z.literal("update-failed") }),
 ]);
 export type DesktopCommand = z.infer<typeof DesktopCommandSchema>;

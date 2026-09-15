@@ -82,6 +82,7 @@ const AUTO_NOVEL_MESSAGES = {
   CANDIDATE_MEMORY_REVIEW_INVALID: "候选记忆审阅内容与候选变化不匹配。",
   PRODUCTION_STATE_INVALID: "生产任务当前状态不允许此操作。",
   MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
+  TIMELINE_REORDER_BLOCKED: "已采纳正文的时间线不能重排，请先从未采纳章节开始调整。",
 } as const;
 
 function hasAutoNovelCode(

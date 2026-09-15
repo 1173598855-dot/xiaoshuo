@@ -13,6 +13,7 @@ import { DirectorService } from "./services/director-service";
 import { FoundationService } from "./services/foundation-service";
 import { ProductionService } from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
+import { AuthoringService } from "./services/authoring-service";
 import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import { MetricsRegistry, StructuredLogger } from "./enterprise/observability";
 import { createOperationalProviderResolver } from "./enterprise/provider-stack";
@@ -42,6 +43,7 @@ export interface ServerRuntime {
   readonly foundationService: FoundationService;
   readonly productionService: ProductionService;
   readonly memoryService: MemoryService;
+  readonly authoringService: AuthoringService;
   readonly auditRepository: AuditRepository;
   readonly usageRepository: UsageRepository;
   readonly metrics: MetricsRegistry;
@@ -60,6 +62,7 @@ export function createServerRuntime(
     const productionRepository = new ProductionRepository(database);
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
+    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
     const logger = options.logger ?? new StructuredLogger();
     const metrics = options.metrics ?? new MetricsRegistry({ logger });
     const auditRepository = new AuditRepository(database);
@@ -79,6 +82,7 @@ export function createServerRuntime(
       productionRepository,
       providerResolver,
       memoryService,
+      authoringService,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
       auditRepository,
@@ -98,6 +102,7 @@ export function createServerRuntime(
       foundationService: new FoundationService(shared),
       productionService,
       memoryService,
+      authoringService,
       auditRepository,
       usageRepository,
       metrics,

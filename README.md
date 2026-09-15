@@ -26,6 +26,10 @@
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 - 企业部署可开启账号邀请码模式：管理员创建带最大注册次数和过期时间的邀请码；没有邀请码不能注册账号，注册后使用用户名和密码登录。密码哈希和会话令牌只保存安全摘要，账号只能看到自己的作品，管理员令牌保留运维权限。
 - 注册用户可以在浏览器“模型设置”中自行填写 Provider、模型、端点和 API Key；用户 Key 只保存在当前浏览器会话并随当前请求使用，不要求管理员把用户 Key 注入服务端。`XIAOYI_SERVER_PROVIDERS_JSON` 仅用于可选的服务端托管 Provider 和重启后的后台恢复。
+- 故事资料卡支持结构化表单编辑；时间线支持批量保存、未采纳章节安全重排和 AI 重新规划 Diff，必须由作者确认后才会采纳。
+- 生产室新增一致性检查和全局搜索，检查人物/地点/时间线/伏笔/矛盾状态，并搜索资料卡、章纲和已采纳正文。
+- 桌面端更新检查会校验 HTTPS 更新源和 Windows 签名；本地备份可用 `XIAOYI_BACKUP_PASSWORD=<12位以上密码> npm run backup:encrypt -- --input backup.db --output backup.db.xb` 加密保存，也可用 `backup:decrypt` 解密恢复。
+- 桌面数据管理对已登录用户提供加密备份导出，密码不会写入日志、数据库或备份文件；更新下载完成后会提示重启安装。
 - 桌面端当前使用离线授权：管理员用本地私钥生成签名邀请码，用户首次启动桌面端输入邀请码后才能注册账号。生成示例：`npm run desktop:invite -- --private-key secrets/desktop-invitation-private.pem --max-uses 1 --expires-at 2026-12-31T00:00:00.000Z`。私钥位于被 Git 忽略的 `secrets/` 目录，生产使用前应替换为自己的密钥对并重新构建桌面端。
 - 桌面发布包启用 ASAR、去除生产 source map、关闭打包版 DevTools、拒绝常见调试启动参数，并依赖 Windows 代码签名提高篡改和逆向成本；这些措施不能替代服务端授权，也不能保证离线程序绝对不可破解。
 - 本轮主动安全审查记录在 [`security_best_practices_report.md`](security_best_practices_report.md)，结论是没有新增 Critical/High 问题；浏览器 sessionStorage 会话和离线程序可被本机分析属于已记录的设计残余风险。
@@ -81,6 +85,12 @@ npm run dev
 | `POST` | `/api/books/:bookId/directions/:directionId/select` | 选择方向并生成基础设定与章纲 |
 | `GET` | `/api/books/:bookId/chapters` | 读取章纲与已采纳正文 |
 | `PATCH` | `/api/books/:bookId/timeline/:planId` | 使用作品 revision 修改 AI 生成的卷章时间线 |
+| `PATCH` | `/api/books/:bookId/timeline` | 批量修改卷章时间线 |
+| `POST` | `/api/books/:bookId/timeline/reorder` | 安全重排未采纳章节 |
+| `POST` | `/api/books/:bookId/timeline/preview` | 生成 AI 时间线 Diff 预览 |
+| `GET` | `/api/books/:bookId/search` | 搜索资料卡、章纲和正文 |
+| `GET` | `/api/books/:bookId/consistency` | 检查故事一致性 |
+| `GET` | `/api/usage` | 读取当前周期 Token 与费用统计 |
 | `POST` | `/api/books/:bookId/production` | 启动整本生产 |
 | `GET` | `/api/production-runs/:runId` | 查询生产进度、候选和检查点 |
 | `POST` | `/api/production-runs/:runId/pause\|resume\|cancel` | 控制任务 |

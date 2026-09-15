@@ -14,6 +14,7 @@
     "dev:server": "tsx watch src/server/index.ts",
     "dev:web": "vite --host 127.0.0.1",
     "build:client": "vite build",
+    "build:server": "tsup src/server/index.ts --format esm --out-dir dist/server --sourcemap --clean",
     "build:desktop": "tsup --config tsup.desktop.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
@@ -24,6 +25,8 @@
     "smoke:server": "node scripts/smoke-built-server.mjs",
     "backup:verify": "node scripts/verify-backup.mjs",
     "backup:restore": "node scripts/restore-database.mjs",
+    "backup:encrypt": "npm run build:server && node scripts/encrypt-backup.mjs",
+    "backup:decrypt": "node scripts/decrypt-backup.mjs",
     "desktop:invite": "node scripts/generate-desktop-invite.mjs",
     "docker:build": "node scripts/docker-deploy.mjs build",
     "docker:up": "node scripts/docker-deploy.mjs up",
@@ -66,6 +69,9 @@
     ],
     "icon": "build/icon.ico",
     "win": {
+      "signAndEditExecutable": true,
+      "signExecutable": true,
+      "verifyUpdateCodeSignature": true,
       "target": [
         {
           "target": "nsis",

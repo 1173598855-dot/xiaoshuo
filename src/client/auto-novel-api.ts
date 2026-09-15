@@ -28,6 +28,7 @@ import {
   type StoryDirection,
   type UpdateChapterPlanInput,
 } from "../shared/auto-novel";
+import { ChapterPlanPreviewEnvelopeSchema, type ChapterPlanPreviewEnvelope } from "../shared/authoring";
 import {
   MemoryBookSnapshotSchema,
   MemoryContextSchema,
@@ -44,6 +45,18 @@ import {
   type UpdateMemoryInput,
   type MemoryContextConfig,
 } from "../shared/memory";
+import {
+  ConsistencyReportSchema,
+  ReorderChapterPlansInputSchema,
+  SearchResponseSchema,
+  UpdateChapterPlansInputSchema,
+  type ConsistencyReport,
+  type ReorderChapterPlansInput,
+  type SearchResponse,
+  UsageSummarySchema,
+  type UsageSummary,
+  type UpdateChapterPlansInput,
+} from "../shared/authoring";
 import {
   ApiErrorSchema,
   ChapterSchema,
@@ -78,6 +91,12 @@ export interface AutoNovelApi {
   ): Promise<{ book: Book; directions: readonly StoryDirection[] }>;
   getBook(bookId: string): Promise<BookDetails>;
   updateChapterPlan(input: UpdateChapterPlanInput): Promise<BookDetails>;
+  updateChapterPlans(input: UpdateChapterPlansInput): Promise<BookDetails>;
+  reorderChapterPlans(input: ReorderChapterPlansInput): Promise<BookDetails>;
+  searchBook(bookId: string, query: string, limit?: number): Promise<SearchResponse>;
+  checkConsistency(bookId: string): Promise<ConsistencyReport>;
+  previewChapterPlans(bookId: string, provider: AutoNovelProviderInput): Promise<ChapterPlanPreviewEnvelope>;
+  getUsageSummary(): Promise<UsageSummary>;
   listDirections(bookId: string): Promise<readonly StoryDirection[]>;
   getChapters(bookId: string): Promise<BookChapters>;
   getCandidate(candidateId: string): Promise<ChapterCandidate>;
@@ -154,6 +173,28 @@ export function createAutoNovelApi(
           body: JSON.stringify(parsed),
         }),
       );
+    },
+    async updateChapterPlans(input) {
+      const parsed = UpdateChapterPlansInputSchema.parse(input);
+      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${parsed.bookId}/timeline`, { method: "PATCH", body: JSON.stringify(parsed) }));
+    },
+    async reorderChapterPlans(input) {
+      const parsed = ReorderChapterPlansInputSchema.parse(input);
+      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${parsed.bookId}/timeline/reorder`, { method: "POST", body: JSON.stringify(parsed) }));
+    },
+    async searchBook(bookId, query, limit) {
+      const params = new URLSearchParams({ q: query });
+      if (limit !== undefined) params.set("limit", String(limit));
+      return SearchResponseSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/search?${params.toString()}`));
+    },
+    async checkConsistency(bookId) {
+      return ConsistencyReportSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/consistency`));
+    },
+    async previewChapterPlans(bookId, provider) {
+      return ChapterPlanPreviewEnvelopeSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/timeline/preview`, { method: "POST", body: JSON.stringify({ provider: providerForHttp(provider) }) }));
+    },
+    async getUsageSummary() {
+      return UsageSummarySchema.parse(await requestJson(fetchImpl, "/api/usage"));
     },
     async listDirections(bookId) {
       return z.array(StoryDirectionSchema).parse(

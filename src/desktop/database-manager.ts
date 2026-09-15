@@ -37,6 +37,7 @@ import {
   DatabaseSchemaError,
 } from "./database-schema";
 import { getDesktopPaths, type DesktopPaths } from "./paths";
+import { encryptBackup } from "../server/enterprise/backup-crypto";
 
 // Keep the Node builtin as a runtime-loaded dependency so desktop bundling does
 // not rewrite it into a package import.
@@ -459,6 +460,25 @@ getAutoNovelServices(): AutoNovelServices {
         this.renameFile(temporaryPath, destinationPath);
       } finally {
         this.removeDatabaseFamily(temporaryPath);
+      }
+    });
+  }
+
+  async exportEncryptedDatabase(destinationPath: string, password: string): Promise<void> {
+    await this.runMaintenance(async () => {
+      if (samePath(destinationPath, this.paths.databasePath, this.platform)) throw new Error("The active database cannot be its own export target");
+      if (this.isReservedDatabaseTarget(destinationPath)) throw new Error("The export target is reserved by the active database manager");
+      this.assertActiveRuntimeCanonical();
+      mkdirSync(dirname(destinationPath), { recursive: true });
+      const temporaryPath = this.temporaryPathFor(destinationPath, "encrypted-export");
+      const encryptedPath = `${temporaryPath}.xb`;
+      try {
+        await this.snapshotDatabase(this.getMutableRuntime().database, temporaryPath);
+        writeFileSync(encryptedPath, encryptBackup(readFileSync(temporaryPath), password));
+        this.renameFile(encryptedPath, destinationPath);
+      } finally {
+        this.removeDatabaseFamily(temporaryPath);
+        this.removeFile(encryptedPath);
       }
     });
   }

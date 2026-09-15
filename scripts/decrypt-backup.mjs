@@ -1,0 +1,22 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { createDecipheriv, scryptSync } from "node:crypto";
+import { Buffer } from "node:buffer";
+
+const args = new Map();
+for (let index = 2; index < process.argv.length; index += 2) args.set(process.argv[index], process.argv[index + 1]);
+const input = args.get("--input");
+const output = args.get("--output");
+const password = process.env.XIAOYI_BACKUP_PASSWORD;
+if (!input || !output || !password) throw new Error("Usage: set XIAOYI_BACKUP_PASSWORD then node scripts/decrypt-backup.mjs --input backup.db.xb --output backup.db");
+const encrypted = await readFile(input);
+const magic = Buffer.from("XIAOYI-BACKUP-V1", "utf8");
+const headerLength = magic.length + 16 + 12 + 16;
+if (encrypted.length <= headerLength || !encrypted.subarray(0, magic.length).equals(magic)) throw new Error("Invalid encrypted backup format");
+const saltStart = magic.length;
+const ivStart = saltStart + 16;
+const tagStart = ivStart + 12;
+const key = scryptSync(password, encrypted.subarray(saltStart, ivStart), 32, { N: 16_384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 });
+const decipher = createDecipheriv("aes-256-gcm", key, encrypted.subarray(ivStart, tagStart));
+decipher.setAuthTag(encrypted.subarray(tagStart, headerLength));
+await writeFile(output, Buffer.concat([decipher.update(encrypted.subarray(headerLength)), decipher.final()]));
+console.log(`Decrypted backup written to ${output}`);

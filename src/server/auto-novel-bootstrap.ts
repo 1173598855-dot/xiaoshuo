@@ -17,6 +17,7 @@ import {
 } from "./services/production-worker";
 import type { PersistedProviderResolver } from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
+import { AuthoringService } from "./services/authoring-service";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
 import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import { InvitationRepository } from "./repositories/invitation-repository";
@@ -53,6 +54,7 @@ export interface AutoNovelRuntime {
   readonly productionService: ProductionService;
   readonly productionWorker: ProductionWorker;
   readonly memoryService: MemoryService;
+  readonly authoringService: AuthoringService;
   readonly auditRepository: AuditRepository;
   readonly usageRepository: UsageRepository;
   readonly invitationRepository: InvitationRepository;
@@ -73,6 +75,7 @@ export function createAutoNovelRuntime(
     const productionRepository = new ProductionRepository(database);
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
+    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
     const logger = options.logger ?? new StructuredLogger();
     const metrics = options.metrics ?? new MetricsRegistry({ logger });
     const auditRepository = new AuditRepository(database);
@@ -94,6 +97,7 @@ export function createAutoNovelRuntime(
       productionRepository,
       providerResolver,
       memoryService,
+      authoringService,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
       auditRepository,
@@ -120,6 +124,7 @@ export function createAutoNovelRuntime(
       productionService,
       productionWorker,
       memoryService,
+      authoringService,
       auditRepository,
       usageRepository,
       invitationRepository,

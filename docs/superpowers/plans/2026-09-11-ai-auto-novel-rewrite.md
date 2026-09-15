@@ -563,3 +563,14 @@ git commit -m "docs: record auto-novel rewrite verification"
 - [x] `npm run smoke:desktop`、`npm run desktop:test`、NSIS 正式签名模式、`node scripts/assert-desktop-artifact.mjs`、`npm run desktop:package:test`、`npm run desktop:installed:test` 全部通过；最终安装包 106,810,595 bytes，安装版验收后已卸载。
 - [x] 主进程启动参数、IPC、Renderer 输出、凭据边界完成主动安全审查，报告见仓库根目录 `security_best_practices_report.md`。
 
+---
+
+## Task 13：创作工作台全量增强（2026-09-16）
+
+- [x] 资料卡结构化编辑：世界规则、人物、地点、事实、时间线、伏笔和文风均可用表单修改。
+- [x] 时间线批量保存、AI 重规划 Diff 预览/采纳、未采纳章节安全重排，并保持作品 revision 原子更新。
+- [x] 一致性检查与全局搜索接入 Web/Electron，覆盖章纲、记忆资料和已采纳正文。
+- [x] 桌面更新下载通知、签名校验配置、加密备份工具、Provider/生产版本与 Token 估算展示。
+- [x] 新增共享契约、HTTP/OpenAPI、白名单 IPC、单测和 E2E 覆盖。
+- [x] 桌面数据管理支持 AES-256-GCM 加密备份导出，更新服务支持自动下载通知，发布配置显式要求 Windows 签名和更新签名校验。
+

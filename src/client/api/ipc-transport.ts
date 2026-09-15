@@ -110,6 +110,9 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
         DatabaseOperationResultSchema,
       );
     },
+    async exportEncryptedDatabase(password) {
+      return parseResult(await api.database.exportEncrypted(password), DatabaseOperationResultSchema);
+    },
     onDesktopCommand(listener) {
       return api.lifecycle.onCommand(listener);
     },

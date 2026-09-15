@@ -16,6 +16,8 @@ import type {
   RewriteChapterInput,
   UpdateChapterPlanInput,
 } from "../shared/auto-novel";
+import type { ChapterPlanPreviewEnvelope, ConsistencyReport, ReorderChapterPlansInput, SearchQuery, SearchResponse, UpdateChapterPlansInput } from "../shared/authoring";
+import type { UsageSummary } from "../shared/authoring";
 import type {
   MemoryBookSnapshot,
   MemoryContext,
@@ -42,6 +44,12 @@ export interface AutoNovelDesktopApiV2 {
     }): Promise<DesktopResult<{ book: Book; directions: readonly StoryDirection[] }>>;
     get(bookId: string): Promise<DesktopResult<BookDetails>>;
     updateTimeline(input: UpdateChapterPlanInput): Promise<DesktopResult<BookDetails>>;
+    updateTimelineBatch(input: UpdateChapterPlansInput): Promise<DesktopResult<BookDetails>>;
+    reorderTimeline(input: ReorderChapterPlansInput): Promise<DesktopResult<BookDetails>>;
+    previewTimeline(input: { bookId: string; providerId: ProviderId }): Promise<DesktopResult<ChapterPlanPreviewEnvelope>>;
+    search(input: { bookId: string; query: SearchQuery }): Promise<DesktopResult<SearchResponse>>;
+    consistency(bookId: string): Promise<DesktopResult<ConsistencyReport>>;
+    usageSummary(): Promise<DesktopResult<UsageSummary>>;
     chapters(bookId: string): Promise<DesktopResult<BookChapters>>;
     export(input: {
       bookId: string;
@@ -96,6 +104,12 @@ export function createAutoNovelPreloadApiV2(
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
       updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),
+      updateTimelineBatch: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineBatchUpdate, input),
+      reorderTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineReorder, input),
+      previewTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelinePreview, input),
+      search: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringSearch, input),
+      consistency: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringConsistency, { bookId }),
+      usageSummary: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.usageSummary),
       chapters: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksChapters, { bookId }),
       export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),
     },

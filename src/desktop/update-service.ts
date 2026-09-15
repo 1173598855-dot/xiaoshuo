@@ -5,12 +5,18 @@ export interface UpdaterLike {
   setFeedURL(options: { provider: "generic"; url: string }): void;
   on(event: "update-available", listener: () => void): void;
   off(event: "update-available", listener: () => void): void;
+  on(event: "update-downloaded", listener: () => void): void;
+  off(event: "update-downloaded", listener: () => void): void;
+  downloadUpdate?(): Promise<unknown>;
+  quitAndInstall?(): void;
   checkForUpdates(): Promise<unknown>;
 }
 
 export interface UpdateCheckController {
   readonly enabled: boolean;
   check(): Promise<void>;
+  download(): Promise<void>;
+  install(): void;
   dispose(): void;
 }
 
@@ -24,14 +30,21 @@ export function configureUpdateChecks(options: {
     return {
       enabled: false,
       check: async () => undefined,
+      download: async () => undefined,
+      install: () => undefined,
       dispose: () => undefined,
     };
   }
 
   options.updater.autoDownload = false;
   options.updater.setFeedURL({ provider: "generic", url: feedUrl });
-  const onAvailable = () => options.notify({ type: "update-available" });
+  const onAvailable = () => {
+    options.notify({ type: "update-available" });
+    void Promise.resolve(options.updater.downloadUpdate?.()).catch(() => options.notify({ type: "update-failed" }));
+  };
   options.updater.on("update-available", onAvailable);
+  const onDownloaded = () => options.notify({ type: "update-downloaded" });
+  options.updater.on("update-downloaded", onDownloaded);
   let checkInFlight: Promise<void> | undefined;
 
   return {
@@ -67,7 +80,9 @@ export function configureUpdateChecks(options: {
       }
       return currentCheck;
     },
-    dispose: () => options.updater.off("update-available", onAvailable),
+    download: async () => { await options.updater.downloadUpdate?.(); },
+    install: () => { options.updater.quitAndInstall?.(); },
+    dispose: () => { options.updater.off("update-available", onAvailable); options.updater.off("update-downloaded", onDownloaded); },
   };
 }
 

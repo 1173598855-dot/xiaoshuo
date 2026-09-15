@@ -30,6 +30,9 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
   await page.getByRole("button", { name: "故事时间线" }).click();
   await expect(page.getByRole("complementary", { name: "故事时间线" })).toBeVisible();
+  await page.getByRole("button", { name: "AI 重新规划" }).click();
+  await expect(page.getByRole("region", { name: "AI 时间线差异预览" })).toBeVisible();
+  await page.getByRole("button", { name: "取消预览" }).click();
   await page.locator(".timeline-card input").nth(1).fill("第一章·作者修订");
   await page.getByRole("button", { name: "保存第 1 章" }).click();
   await expect(page.getByRole("status")).toContainText("后续 AI 生产会读取新设定");
@@ -38,6 +41,14 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "故事资料卡" })).toBeVisible();
   await expect(page.locator(".story-bible-drawer .memory-kind").filter({ hasText: "地点资料" })).toBeVisible();
   await page.getByRole("button", { name: "关闭故事资料卡" }).click();
+  await page.getByRole("button", { name: "一致性检查" }).click();
+  await expect(page.getByRole("complementary", { name: "一致性检查" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭一致性检查" }).click();
+  await page.getByRole("button", { name: "全局搜索" }).click();
+  await page.getByRole("textbox", { name: "搜索内容" }).fill("异常");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page.locator(".search-result").first()).toBeVisible();
+  await page.getByRole("button", { name: "关闭全局搜索" }).click();
   await page.getByRole("button", { name: "记忆中心" }).click();
   await expect(page.getByRole("complementary", { name: "长篇记忆中心" })).toBeVisible();
   const worldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();

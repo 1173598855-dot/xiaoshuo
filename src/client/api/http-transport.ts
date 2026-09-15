@@ -162,6 +162,9 @@ export function createHttpTransport(
     async exportDatabase() {
       return DatabaseOperationResultSchema.parse({ cancelled: true });
     },
+    async exportEncryptedDatabase() {
+      return DatabaseOperationResultSchema.parse({ cancelled: true });
+    },
     onDesktopCommand() {
       return () => undefined;
     },

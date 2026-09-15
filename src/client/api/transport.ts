@@ -71,6 +71,7 @@ export interface WorkbenchTransport {
   getDatabaseStatus(): Promise<DatabaseStatus>;
   importDatabase(): Promise<DatabaseOperationResult>;
   exportDatabase(): Promise<DatabaseOperationResult>;
+  exportEncryptedDatabase?(password: string): Promise<DatabaseOperationResult>;
   onDesktopCommand(listener: (command: DesktopCommand) => void): () => void;
   resolveClose(result: { requestId: string; canClose: boolean }): Promise<void>;
 }

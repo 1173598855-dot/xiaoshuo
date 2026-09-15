@@ -23,7 +23,8 @@ export function DataManagementDialog({
   onImported,
 }: DataManagementDialogProps) {
   const titleId = useId();
-  const [busy, setBusy] = useState<"import" | "export" | null>(null);
+  const [busy, setBusy] = useState<"import" | "export" | "export-encrypted" | null>(null);
+  const [backupPassword, setBackupPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -35,6 +36,7 @@ export function DataManagementDialog({
     setBusy(null);
     setMessage(null);
     setError(null);
+    setBackupPassword("");
   }, [open]);
 
   useEffect(() => {
@@ -134,6 +136,20 @@ export function DataManagementDialog({
     }
   };
 
+  const runEncryptedExport = async () => {
+    if (busy || apiClient.platform !== "desktop" || backupPassword.length < 12 || !apiClient.exportEncryptedDatabase) return;
+    setBusy("export-encrypted");
+    setMessage(null);
+    setError(null);
+    try {
+      if (!(await onBeforeOperation())) { setError("请先解决当前章节的保存问题，再执行数据操作。"); return; }
+      const result = await apiClient.exportEncryptedDatabase(backupPassword);
+      if (result.cancelled) { onClose(); return; }
+      setMessage(result.fileName ? `加密备份已导出：${result.fileName}` : "加密备份导出成功。");
+    } catch (requestError) { setError(dataErrorMessage(requestError)); }
+    finally { setBusy(null); }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={requestClose}>
       <section
@@ -189,6 +205,14 @@ export function DataManagementDialog({
               <Download size={16} />
               <span>{busy === "export" ? "正在导出" : "导出数据库"}</span>
             </button>
+            {apiClient.platform === "desktop" ? (
+              <>
+                <label className="backup-password-field">加密备份密码<input type="password" value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} placeholder="至少 12 位" autoComplete="new-password" /></label>
+                <button className="secondary-button" type="button" disabled={busy !== null || backupPassword.length < 12} aria-label="导出加密备份" onClick={() => void runEncryptedExport()}>
+                  <Download size={16} /><span>{busy === "export-encrypted" ? "正在加密" : "导出加密备份"}</span>
+                </button>
+              </>
+            ) : null}
           </div>
           {message ? (
             <div className="data-dialog-success" role="status">
