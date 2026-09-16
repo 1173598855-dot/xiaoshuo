@@ -159,7 +159,7 @@ npm run desktop:package:test
 npm run desktop:installed:test
 ```
 
-浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、三方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。若本机默认开发端口被系统占用，可用隔离端口运行：
+浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、三方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。测试默认使用独立的 `24310`/`25173` 端口，不占用开发服务的 `4310`/`5173`；若本机仍有端口冲突，可覆盖端口运行：
 
 ```powershell
 $env:XIAOYI_E2E_SERVER_PORT = "24310"

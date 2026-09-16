@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const serverPort = readPort("XIAOYI_E2E_SERVER_PORT", 4310);
-const webPort = readPort("XIAOYI_E2E_WEB_PORT", 5173);
+// Keep the test harness on ports separate from the development server.  Some
+// Windows hosts reserve the 4302-4401 range, which makes the app's 4310 port
+// unusable even when no process is listening on it.
+const serverPort = readPort("XIAOYI_E2E_SERVER_PORT", 24310);
+const webPort = readPort("XIAOYI_E2E_WEB_PORT", 25173);
 
 export default defineConfig({
   testDir: "./e2e",

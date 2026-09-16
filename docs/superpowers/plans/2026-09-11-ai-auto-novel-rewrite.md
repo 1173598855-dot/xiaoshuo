@@ -483,7 +483,7 @@ Files:
 - Modify: docs/superpowers/plans/2026-09-11-ai-auto-novel-rewrite.md
 - Modify: README.md only if verification finds stale commands or behavior
 
-- [ ] Step 1: 运行项目质量门禁
+- [x] Step 1: 运行项目质量门禁
 
 ~~~
 npm run lint
@@ -500,7 +500,7 @@ npm run desktop:package:test
 
 每条命令读取退出码和失败数量；不以“应该通过”替代证据。
 
-- [ ] Step 2: 密钥和契约自审
+- [x] Step 2: 密钥和契约自审
 
 ~~~
 rg -n "apiKey|ANTHROPIC_API_KEY|OPENAI_API_KEY|provider-vault|production_runs" src tests scripts
@@ -509,11 +509,11 @@ git diff --check
 
 确认 Key 只在 Provider 输入、Main-only Vault、测试 sentinel 或当前请求内存中出现，不能进入 DTO、日志、SQLite、备份和导出。
 
-- [ ] Step 3: 用户流程自审
+- [x] Step 3: 用户流程自审
 
 逐项验证首屏想法输入、空想法错误、3 个方向、单次选择、自动基础构建、逐章生产、审核修复、暂停恢复、revision 冲突保护、旧入口消失和正式正文导出。
 
-- [ ] Step 4: 删除范围和 diff 自审
+- [x] Step 4: 删除范围和 diff 自审
 
 ~~~
 git status --short --branch
@@ -523,7 +523,7 @@ git diff --check
 
 确认没有误删用户数据、密钥、审计记录和桌面安全代码；确认所有新增文件被测试或构建入口引用。
 
-- [ ] Step 5: 更新计划并提交验证记录
+- [x] Step 5: 更新计划并提交验证记录
 
 只有在有真实命令输出后勾选复选框，提交：
 
@@ -558,9 +558,9 @@ git commit -m "docs: record auto-novel rewrite verification"
 
 ### Task 12：最终门禁与安全审查证据
 
-- [x] `npm run lint`、`npm run typecheck`、`npm run test:run`：72 个测试文件、312 个测试通过。
-- [x] `npm run build` 与服务端 smoke 通过；默认 `npm run e2e` 4/4、外部端口 E2E 4/4。
-- [x] `npm run smoke:desktop`、`npm run desktop:test`、NSIS 正式签名模式、`node scripts/assert-desktop-artifact.mjs`、`npm run desktop:package:test`、`npm run desktop:installed:test` 全部通过；最终安装包 106,810,595 bytes，安装版验收后已卸载。
+- [x] `npm run lint`、`npm run typecheck`、`npm run test:run`：74 个测试文件、318 个测试通过。
+- [x] `npm run build` 与服务端 smoke 通过；默认隔离端口 `npm run e2e` 4/4，外部端口 E2E 4/4。
+- [x] `npm run smoke:desktop`、`npm run desktop:test`、NSIS 正式签名模式、`node scripts/assert-desktop-artifact.mjs`、`npm run desktop:package:test`、`npm run desktop:installed:test` 全部通过；最终安装包 106,817,836 bytes，安装版验收后已卸载。
 - [x] 主进程启动参数、IPC、Renderer 输出、凭据边界完成主动安全审查，报告见仓库根目录 `security_best_practices_report.md`。
 
 ---
