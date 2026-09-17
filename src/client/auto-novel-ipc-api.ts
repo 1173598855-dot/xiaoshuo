@@ -12,6 +12,8 @@ import {
   StoryDirectionSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  DesktopModelWorkflowSelectionSchema,
+  type DesktopModelWorkflowSelection,
   RewriteChapterInputSchema,
   UpdateChapterPlanInputSchema,
   type UpdateCandidateTextInput,
@@ -50,7 +52,7 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.books.create({
           input: CreateBookInputSchema.parse(input),
-          providerId: providerId(provider),
+          ...desktopProvider(provider),
           idempotencyKey,
         }),
         z.object({ book: BookSchema, directions: z.array(StoryDirectionSchema) }).strict(),
@@ -98,7 +100,7 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
           bookId,
           directionId,
           expectedBookRevision,
-          providerId: providerId(provider),
+          ...desktopProvider(provider),
         }),
         BookDetailsSchema,
       );
@@ -107,7 +109,7 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.production.start({
           bookId,
-          providerId: providerId(provider),
+          ...desktopProvider(provider),
           idempotencyKey,
           ...(memoryContextConfig ? { memoryContextConfig } : {}),
         }),
@@ -122,7 +124,7 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async resumeRun(runId, provider) {
       return parseResult(
-        await api.production.resume({ runId, providerId: providerId(provider) }),
+        await api.production.resume({ runId, ...desktopProvider(provider) }),
         ProductionRunSchema,
       );
     },
@@ -140,7 +142,7 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.production.rewrite({
           runId,
-          providerId: providerId(provider),
+          ...desktopProvider(provider),
           ...parsed,
         }),
         ChapterCandidateSchema,
@@ -209,9 +211,21 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
   };
 }
 
-function providerId(provider: AutoNovelProviderInput): ProviderId {
-  if ("providerId" in provider) return ProviderIdSchema.parse(provider.providerId);
+function desktopProvider(provider: AutoNovelProviderInput):
+  | { providerId: ProviderId }
+  | { workflow: DesktopModelWorkflowSelection } {
+  if ("providerId" in provider) return { providerId: ProviderIdSchema.parse(provider.providerId) };
+  if ("mode" in provider) {
+    return { workflow: DesktopModelWorkflowSelectionSchema.parse(provider) };
+  }
   throw new ApiRequestError(400, "PROVIDER_CONFIG_INVALID", "桌面端请先保存模型配置。" );
+}
+
+function providerId(provider: AutoNovelProviderInput): ProviderId {
+  const selection = desktopProvider(provider);
+  if ("providerId" in selection) return selection.providerId;
+  if (selection.workflow.mode === "single") return selection.workflow.providerId;
+  return selection.workflow.assignments[0]!.providerId;
 }
 
 function parseResult<T>(

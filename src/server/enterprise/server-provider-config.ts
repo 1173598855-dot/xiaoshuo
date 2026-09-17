@@ -4,8 +4,11 @@ import {
 } from "../../shared/contracts";
 import {
   PersistedProviderDescriptorSchema,
+  PersistedWorkflowDescriptorSchema,
   type PersistedProviderDescriptor,
+  type PersistedWorkflowDescriptor,
 } from "../repositories/production-repository";
+import { ModelWorkflowConfigSchema, type ModelWorkflowConfig } from "../../shared/auto-novel";
 
 export interface ServerProviderSummary {
   readonly index: number;
@@ -49,6 +52,36 @@ export function resolveServerProvider(
     if (config.kind !== "openai-compatible" || parsedDescriptor.kind !== "openai-compatible") return true;
     return config.baseUrl === parsedDescriptor.baseUrl;
   });
+}
+
+/** Resolve a persisted key-free workflow envelope against server secrets. */
+export function resolveServerWorkflow(
+  descriptor: PersistedWorkflowDescriptor,
+  configs: readonly ProviderConfig[],
+): ModelWorkflowConfig | undefined {
+  const parsed = PersistedWorkflowDescriptorSchema.parse(descriptor);
+  if (parsed.mode === "single") {
+    const provider = resolveServerProvider(parsed.provider, configs);
+    if (!provider) return undefined;
+    return ModelWorkflowConfigSchema.parse({ mode: "single", provider });
+  }
+  const collaborative = parsed as unknown as {
+    mode: "collaborative";
+    assignments: Extract<
+      ModelWorkflowConfig,
+      { mode: "collaborative" }
+    >["assignments"];
+  };
+  const assignments: Extract<
+    ModelWorkflowConfig,
+    { mode: "collaborative" }
+  >["assignments"] = [];
+  for (const assignment of collaborative.assignments) {
+    const provider = resolveServerProvider(assignment.provider, configs);
+    if (!provider) return undefined;
+    assignments.push({ role: assignment.role, provider });
+  }
+  return ModelWorkflowConfigSchema.parse({ mode: "collaborative", assignments });
 }
 
 export function summarizeServerProvider(config: ProviderConfig, index = 0): ServerProviderSummary {

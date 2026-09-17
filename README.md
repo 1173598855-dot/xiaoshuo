@@ -1,17 +1,18 @@
 # 小奕小说生成工具
 
-小奕现在是一个本地优先的 AI 长篇小说生产工具：你只需要输入一句故事想法，AI 会先给出 3 套整本方向，再自动完成基础设定、卷章规划、逐章写作、审核修复和正文交付。模型配置支持一键测试连接、兼容端点拉取模型列表和自动选模型；配置好后可以直接“一键开写”。
+小奕现在是一个本地优先的 AI 长篇小说生产工具：你只需要输入一句故事想法，AI 会先按作者选择给出 1–12 套整本方向，再自动完成基础设定、卷章规划、逐章写作、审核修复和正文交付。模型配置支持单模型模式或按规划、写作、审核、修复角色分工的多模型协作模式；配置好后可以直接“一键开写”。
 
 ## 使用流程
 
 ```text
-一句想法 → 一键开写 / 3 套整本方向 → 选择方向 → 记忆选择 → 自动规划 → 逐章生产 → 审核修复 → 候选编辑/Diff → 记忆审阅 → 正式正文
+一句想法 → 选择方向数量 → 单模型/多模型工作流 → 一键开写 / 多套整本方向 → 选择方向 → 记忆选择 → 自动规划 → 逐章生产 → 审核修复 → 候选编辑/Diff → 记忆审阅 → 正式正文
 ```
 
 - 角色、地点、世界观、伏笔和时间线由 AI 自动生成并作为后台上下文维护，不要求手填资料卡；生产室可打开“故事时间线”和“故事资料卡”，作者随时手动修正；
 - 每一章先保存为候选，审核通过后才通过原子 accept 事务进入正式正文；
 - 生产任务会保存检查点，关闭应用后可以继续；
-- 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；
+- 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；方向数量可在 1–12 之间调整；
+- “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 解析凭据。桌面端协作角色必须使用同一已保存 Provider，可分别选择不同模型；
 - 生产室支持暂停、继续、停止、失败阶段重试和重新选择当前模型；应用启动时会自动恢复排队中/运行中的任务；
 - 生产室支持对当前章节发起 AI 重写，重写结果仍然是隔离候选，必须审核并采纳后才会进入正文；
 - Provider 设置支持关闭/低/中/高思考等级；OpenAI、Anthropic、Google 和 OpenAI-compatible 会按各自原生参数映射，不支持时安全降级为关闭。
@@ -62,7 +63,7 @@ npm run dev
 
 打开 `http://127.0.0.1:5173`。服务端只监听 `127.0.0.1:4310`，数据库默认是 `data/xiaoyi.db`；可用 `XIAOYI_DATABASE_PATH` 和 `PORT` 覆盖。
 
-首次使用先点“模型设置”：选择 Provider 后可点击“测试连接”；OpenAI-compatible Provider 可拉取 `/models` 列表，点击“自动选模型”即可填入可用模型。浏览器模式的 API Key 只存在当前标签页 `sessionStorage` 和当前请求内存，不进入 SQLite、生产任务、日志、备份、导出或 API 响应。保存过的会话配置会自动复用匹配端点的 Key，切换端点不会误用旧 Key。
+首次使用先点“模型设置”：选择 Provider 后可点击“测试连接”；OpenAI-compatible Provider 可拉取 `/models` 列表，点击“自动选模型”即可填入可用模型。浏览器模式的 API Key 只存在当前标签页 `sessionStorage` 和当前请求内存，不进入 SQLite、生产任务、日志、备份、导出或 API 响应。保存过的会话配置会自动复用匹配端点的 Key，切换端点不会误用旧 Key；工作流也只保存在当前标签页。
 
 本地自动化可以使用：
 
@@ -81,7 +82,7 @@ npm run dev
 | `GET` | `/api/providers` | Provider 目录（不含凭据） |
 | `POST` | `/api/providers/models` | 拉取兼容端点模型列表 |
 | `POST` | `/api/providers/test` | 用最小生成请求测试 Provider 连接 |
-| `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并生成 3 个方向 |
+| `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并按 `directionCount` 生成 1–12 个方向；请求可携带 `provider` 或 `workflow` |
 | `GET` | `/api/books/:bookId` | 读取作品、基础设定、章纲和任务摘要 |
 | `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |
 | `POST` | `/api/books/:bookId/directions/:directionId/select` | 选择方向并生成基础设定与章纲 |
@@ -122,7 +123,7 @@ npm run desktop:dist
 npm run desktop:package:test
 ```
 
-安装包输出到 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。桌面版 Renderer 只通过白名单 IPC 访问 Main；API Key 由 Main 的 Electron `safeStorage`/Windows DPAPI Vault 管理，Renderer 永远不会收到已保存密钥。
+安装包输出到 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。桌面版 Renderer 只通过白名单 IPC 访问 Main；API Key 由 Main 的 Electron `safeStorage`/Windows DPAPI Vault 管理，Renderer 永远不会收到已保存密钥。桌面工作流设置同样通过白名单 IPC 持久化为无密钥选择；协作角色必须使用当前已保存 Provider。
 
 桌面数据库位于 Electron 用户数据目录：
 
@@ -159,7 +160,7 @@ npm run desktop:package:test
 npm run desktop:installed:test
 ```
 
-浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、三方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。测试默认使用独立的 `24310`/`25173` 端口，不占用开发服务的 `4310`/`5173`；若本机仍有端口冲突，可覆盖端口运行：
+浏览器 E2E 使用内存数据库和 deterministic provider，覆盖想法输入、可变方向数量、协作工作流、方向选择、生产室、正式正文和 `1440x960`、`1024x768`、`390x844` 视口。测试默认使用独立的 `24310`/`25173` 端口，不占用开发服务的 `4310`/`5173`；若本机仍有端口冲突，可覆盖端口运行：
 
 ```powershell
 $env:XIAOYI_E2E_SERVER_PORT = "24310"

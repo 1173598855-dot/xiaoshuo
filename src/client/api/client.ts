@@ -18,7 +18,7 @@ function isCompleteDesktopApi(value: DesktopApi | undefined): value is DesktopAp
     workspace?: { get?: unknown };
     project?: { create?: unknown };
     chapter?: { create?: unknown; update?: unknown };
-    provider?: { list?: unknown; listModels?: unknown; testConnection?: unknown; getSettings?: unknown; saveSettings?: unknown; clearKey?: unknown };
+    provider?: { list?: unknown; listModels?: unknown; testConnection?: unknown; getSettings?: unknown; saveSettings?: unknown; getWorkflowSettings?: unknown; saveWorkflowSettings?: unknown; clearKey?: unknown };
     auth?: { activationStatus?: unknown; activate?: unknown; register?: unknown; login?: unknown; logout?: unknown };
     database?: { status?: unknown; import?: unknown; export?: unknown; exportEncrypted?: unknown };
     lifecycle?: { resolveClose?: unknown; onCommand?: unknown };
@@ -34,6 +34,8 @@ function isCompleteDesktopApi(value: DesktopApi | undefined): value is DesktopAp
       typeof candidate.provider?.testConnection === "function" &&
       typeof candidate.provider?.getSettings === "function" &&
       typeof candidate.provider?.saveSettings === "function" &&
+      typeof candidate.provider?.getWorkflowSettings === "function" &&
+      typeof candidate.provider?.saveWorkflowSettings === "function" &&
       typeof candidate.provider?.clearKey === "function" &&
       typeof candidate.auth?.activationStatus === "function" &&
       typeof candidate.auth?.activate === "function" &&

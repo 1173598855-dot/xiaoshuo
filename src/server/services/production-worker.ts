@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto";
 
 import type { ProviderConfig } from "../../shared/contracts";
+import type { ModelWorkflowConfig } from "../../shared/auto-novel";
 import {
   PersistedProviderUnavailableError,
   type PersistedProviderResolver,
+  type PersistedWorkflowResolver,
   type ProductionService,
 } from "./production-service";
 import {
   type ProductionRepository,
   type ProductionRunLease,
   type PersistedProviderDescriptor,
+  toPersistedWorkflowDescriptor,
 } from "../repositories/production-repository";
 
 const DEFAULT_LEASE_DURATION_MS = 30_000;
@@ -42,6 +45,8 @@ export interface ProductionWorkerDependencies {
   readonly productionService: Pick<ProductionService, "start">;
   /** Resolve a key-free descriptor from a server-side secret store. */
   readonly resolvePersistedProvider?: PersistedProviderResolver;
+  /** Resolve a key-free workflow envelope from a server-side secret store. */
+  readonly resolvePersistedWorkflow?: PersistedWorkflowResolver;
   readonly logger?: ProductionWorkerLogger;
 }
 
@@ -95,6 +100,7 @@ export class ProductionWorker {
   private readonly now: () => string;
   private readonly active = new Map<string, ActiveExecution>();
   private readonly providerConfigs = new Map<string, ProviderConfig>();
+  private readonly workflows = new Map<string, ModelWorkflowConfig>();
   private started = false;
   private recoveryReady = false;
   private stopping = false;
@@ -202,6 +208,19 @@ export class ProductionWorker {
     return this.dependencies.productionRepository.getRun(runId);
   }
 
+  /**
+   * Attach a full model workflow to an enqueued run.  Only the key-free
+   * workflow descriptor is persisted; credentials stay in the worker memory
+   * and are injected at execution time.
+   */
+  setWorkflow(runId: string, workflow: ModelWorkflowConfig): void {
+    this.workflows.set(runId, workflow);
+    this.dependencies.productionRepository.setWorkflowDescriptor(
+      runId,
+      toPersistedWorkflowDescriptor(workflow),
+    );
+  }
+
   /** Queue a paused/failed run for an explicit retry and optionally update its provider. */
   retry(runId: string, providerConfig?: ProviderConfig): ReturnType<ProductionRepository["getRun"]> {
     if (providerConfig) {
@@ -228,7 +247,10 @@ export class ProductionWorker {
   pause(runId: string): ReturnType<ProductionRepository["getRun"]> {
     this.active.get(runId)?.controller.abort();
     const run = this.dependencies.productionRepository.controlRun(runId, "paused");
-    if (run.status !== "queued") this.providerConfigs.delete(runId);
+    if (run.status !== "queued") {
+      this.providerConfigs.delete(runId);
+      this.workflows.delete(runId);
+    }
     return run;
   }
 
@@ -236,6 +258,7 @@ export class ProductionWorker {
     this.active.get(runId)?.controller.abort();
     const run = this.dependencies.productionRepository.controlRun(runId, "cancelled");
     this.providerConfigs.delete(runId);
+    this.workflows.delete(runId);
     return run;
   }
 
@@ -309,10 +332,11 @@ export class ProductionWorker {
   ): Promise<void> {
     this.startHeartbeat(execution);
     try {
+      const workflow = this.workflows.get(runId);
       let providerConfig = this.providerConfigs.get(runId);
-      if (!providerConfig) {
-        const descriptor = this.dependencies.productionRepository.getProviderDescriptor(runId);
-        if (!descriptor) {
+      if (!workflow && !providerConfig) {
+        const workflowDescriptor = this.dependencies.productionRepository.getWorkflowDescriptor(runId);
+        if (!workflowDescriptor) {
           this.dependencies.productionRepository.markRunFailed(
             runId,
             "PROVIDER_CONFIG_UNAVAILABLE",
@@ -320,23 +344,41 @@ export class ProductionWorker {
           );
           return;
         }
+        if (workflowDescriptor.mode === "collaborative") {
+          const resolver = this.dependencies.resolvePersistedWorkflow;
+          if (!resolver) {
+            this.dependencies.productionRepository.markRunFailed(
+              runId,
+              "PROVIDER_CONFIG_UNAVAILABLE",
+              lease,
+            );
+            return;
+          }
+          const resolved = await resolver(workflowDescriptor);
+          const result = await this.dependencies.productionService.start(
+            runId,
+            resolved,
+            controller.signal,
+            execution.lease,
+          );
+          this.finishExecution(runId, result.status, execution, controller);
+          return;
+        }
+        // Legacy single-provider descriptor.
+        const descriptor = workflowDescriptor.provider;
         providerConfig = await this.resolveProvider(descriptor);
         if (providerConfig) this.providerConfigs.set(runId, providerConfig);
       }
 
       const result = await this.dependencies.productionService.start(
         runId,
-        providerConfig,
+        // The workflow (if any) carries its own providers; otherwise fall back
+        // to the single provider config resolved above.
+        (workflow ?? providerConfig) as never,
         controller.signal,
         execution.lease,
       );
-      if (this.stopping || controller.signal.aborted) {
-          this.pauseIfOwned(execution.lease);
-        return;
-      }
-      // The service may pause at a memory review checkpoint.  Preserve that
-      // state while always releasing the lease held by this worker.
-      this.releaseIfOwned(execution.lease, result.status);
+      this.finishExecution(runId, result.status, execution, controller);
     } catch (error) {
       if (this.stopping || controller.signal.aborted) {
         this.pauseIfOwned(execution.lease);
@@ -363,12 +405,31 @@ export class ProductionWorker {
       if (this.active.get(runId)?.lease.token === lease.token) this.active.delete(runId);
       try {
         const current = this.dependencies.productionRepository.getRun(runId);
-        if (current.status !== "queued") this.providerConfigs.delete(runId);
+        if (current.status !== "queued") {
+          this.providerConfigs.delete(runId);
+          this.workflows.delete(runId);
+        }
       } catch {
         this.providerConfigs.delete(runId);
+        this.workflows.delete(runId);
       }
       if (this.started && !this.stopping) void this.pump();
     }
+  }
+
+  private finishExecution(
+    runId: string,
+    status: ReturnType<ProductionRepository["getRun"]>["status"],
+    execution: ActiveExecution,
+    controller: AbortController,
+  ): void {
+    if (this.stopping || controller.signal.aborted) {
+      this.pauseIfOwned(execution.lease);
+      return;
+    }
+    // The service may pause at a memory review checkpoint.  Preserve that
+    // state while always releasing the lease held by this worker.
+    this.releaseIfOwned(execution.lease, status);
   }
 
   private async resolveProvider(

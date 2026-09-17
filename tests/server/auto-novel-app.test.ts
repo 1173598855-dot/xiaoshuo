@@ -28,17 +28,19 @@ function fixture() {
     kind: "openai-compatible" as const,
     async generate(input: { systemPrompt: string }) {
       if (input.systemPrompt.includes("自动导演")) {
+        const countMatch = input.systemPrompt.match(/生成恰好 (\d+) 套/);
+        const count = countMatch ? Number(countMatch[1]) : 3;
         return {
           text: JSON.stringify({
-            directions: [1, 2, 3].map((rank) => ({
-              title: `方向 ${rank}`,
-              logline: `主线 ${rank}`,
+            directions: Array.from({ length: count }, (_, index) => ({
+              title: `方向 ${index + 1}`,
+              logline: `主线 ${index + 1}`,
               genre: "都市悬疑",
-              promise: `承诺 ${rank}`,
-              centralConflict: `冲突 ${rank}`,
-              endingDirection: `结局 ${rank}`,
-              outlinePreview: [`开局 ${rank}`],
-              rank,
+              promise: `承诺 ${index + 1}`,
+              centralConflict: `冲突 ${index + 1}`,
+              endingDirection: `结局 ${index + 1}`,
+              outlinePreview: [`开局 ${index + 1}`],
+              rank: index + 1,
             })),
           }),
           usage: null,
@@ -487,5 +489,59 @@ describe("auto-novel HTTP app", () => {
     // The explicit argument is also accepted by the service API used by the
     // HTTP handler; this assertion ensures the fixture's service remains live.
     expect(memoryService.list(selectedBody.book.id)).toHaveLength(entries.entries.length);
+  });
+
+  it("creates a book with a configurable direction count through HTTP", async () => {
+    const { app, provider } = fixture();
+    const response = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        idea: "方向数可配置的城市",
+        directionCount: 4,
+        provider,
+        idempotencyKey: "director-count-4",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      book: { directionCount: number };
+      directions: unknown[];
+    };
+    expect(body.book.directionCount).toBe(4);
+    expect(body.directions).toHaveLength(4);
+    expect(JSON.stringify(body)).not.toContain("sk-test-only");
+  });
+
+  it("accepts a collaborative model workflow when creating a book", async () => {
+    const { app, provider } = fixture();
+    const directorProvider = {
+      kind: "openai-compatible" as const,
+      model: "director-model",
+      apiKey: "sk-director-only",
+      baseUrl: "https://models.example.test/v1",
+    };
+    const response = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        idea: "协作模式开书",
+        workflow: {
+          mode: "collaborative",
+          assignments: [
+            { role: "director", provider: directorProvider },
+            { role: "writer", provider },
+          ],
+        },
+        idempotencyKey: "collab-book-1",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { directions: unknown[] };
+    expect(body.directions).toHaveLength(3);
+    expect(JSON.stringify(body)).not.toContain("sk-director-only");
+    expect(JSON.stringify(body)).not.toContain("sk-test-only");
   });
 });

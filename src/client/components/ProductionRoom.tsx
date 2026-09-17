@@ -25,6 +25,7 @@ interface ProductionRoomProps {
   onOpenConsistency: () => void;
   onOpenSearch: () => void;
   onConfigureProvider: () => void;
+  onConfigureWorkflow: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
 }
@@ -46,6 +47,7 @@ export function ProductionRoom({
   onOpenConsistency,
   onOpenSearch,
   onConfigureProvider,
+  onConfigureWorkflow,
   connectionState = "connected",
   onRetryConnection,
 }: ProductionRoomProps) {
@@ -60,7 +62,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>

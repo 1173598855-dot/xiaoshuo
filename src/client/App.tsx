@@ -7,7 +7,8 @@ import type {
   ProviderConfig,
   SaveProviderSettingsInput,
 } from "../shared/contracts";
-import type { Book, BookDetails, CreateBookInput, StoryDirection } from "../shared/auto-novel";
+import type { Book, BookDetails, CreateBookInput, StoryDirection, ModelWorkflowConfig } from "../shared/auto-novel";
+import type { DesktopModelWorkflowSelection } from "../shared/auto-novel";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   type MemoryContextConfig,
@@ -30,6 +31,7 @@ import { StoryBiblePanel } from "./components/StoryBiblePanel";
 import { StoryTimelinePanel } from "./components/StoryTimelinePanel";
 import { ConsistencyPanel, SearchPanel } from "./components/AuthoringToolsPanel";
 import { DataManagementDialog } from "./components/DataManagementDialog";
+import { WorkflowDialog } from "./components/WorkflowDialog";
 import { storeAccessToken } from "./access-token";
 
 type Page = "home" | "directions" | "production" | "manuscript";
@@ -48,6 +50,8 @@ export function App() {
   const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>([]);
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
   const [providerOpen, setProviderOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [workflowInput, setWorkflowInput] = useState<ModelWorkflowConfig | DesktopModelWorkflowSelection | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -71,13 +75,14 @@ export function App() {
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
   }, [providerSettings, providers]);
   const providerInput = useMemo<AutoNovelProviderInput | null>(() => {
+    if (workflowInput) return workflowInput;
     if (apiClient.platform === "desktop") {
       return providerSettings?.providerId
         ? { providerId: providerSettings.providerId }
         : null;
     }
     return providerConfig;
-  }, [providerConfig, providerSettings]);
+  }, [providerConfig, providerSettings, workflowInput]);
   const runState = useProductionRun(autoApi, runId);
 
   const loadLibrary = useCallback(async () => {
@@ -90,14 +95,16 @@ export function App() {
           return;
         }
       }
-      const [nextBooks, nextProviders, nextSettings] = await Promise.all([
+      const [nextBooks, nextProviders, nextSettings, nextWorkflow] = await Promise.all([
         autoApi.listBooks(),
         apiClient.getProviders(),
         apiClient.getProviderSettings(),
+        apiClient.getWorkflowSettings(),
       ]);
       setBooks(nextBooks);
       setProviders(nextProviders);
       setProviderSettings(nextSettings);
+      setWorkflowInput(nextWorkflow);
       setError(null);
 
       // Rehydrate the most recently touched production run before showing the
@@ -124,13 +131,13 @@ export function App() {
         setMemoryContextConfig(recovered.run.memoryContextConfig);
         setPage("production");
 
-        const recoveredProvider = apiClient.platform === "desktop"
+        const recoveredProvider = nextWorkflow ?? (apiClient.platform === "desktop"
           ? nextSettings?.providerId
             ? { providerId: nextSettings.providerId }
             : null
           : nextSettings?.platform === "web"
             ? resolveProviderSettings(nextSettings, nextProviders)?.config ?? null
-            : null;
+            : null);
         // Running/queued runs are normally interrupted by a restart; resume
         // those automatically. An explicitly paused or failed run remains
         // visible so the author can choose when and with which provider to retry.
@@ -369,6 +376,7 @@ export function App() {
   const handleProviderSave = async (input: SaveProviderSettingsInput) => {
     const next = await apiClient.saveProviderSettings(input);
     setProviderSettings(next);
+    setWorkflowInput(null);
     setProviderOpen(false);
     setError(null);
   };
@@ -376,6 +384,7 @@ export function App() {
   const handleProviderClearKey = async (providerId: SaveProviderSettingsInput["providerId"]) => {
     const next = await apiClient.clearProviderKey(providerId, { preserveSettings: true });
     setProviderSettings(next);
+    setWorkflowInput(null);
   };
 
   const handleImported = async () => {
@@ -490,18 +499,19 @@ export function App() {
       </main>
     );
   }
+  const workflowDialog = () => <WorkflowDialog open={workflowOpen} platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} />;
   const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
   if (page === "home") {
-    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(input, autoStart) => void createIdea(input, autoStart)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
+    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(input, autoStart) => void createIdea(input, autoStart)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}</>;
   }
   if (!bookDetails) return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
   if (page === "directions") {
-    return <><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onAutoSelect={() => void autoSelectDirection()} onBack={() => setPage("home")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
+    return <><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onAutoSelect={() => void autoSelectDirection()} onBack={() => setPage("home")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}</>;
   }
   if (page === "manuscript") {
-    return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
+    return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{consistencyOpen ? <ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} /> : null}{searchOpen ? <SearchPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setSearchOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{consistencyOpen ? <ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} /> : null}{searchOpen ? <SearchPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setSearchOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}</>;
 }
 
 function providerDialog(
@@ -524,9 +534,3 @@ function makeId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
-
-
-
-
-
-

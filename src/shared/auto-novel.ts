@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { ChapterSchema, MAX_CHAPTER_CONTENT_CHARACTERS } from "./contracts";
+import {
+  ChapterSchema,
+  MAX_CHAPTER_CONTENT_CHARACTERS,
+  ProviderConfigSchema,
+  ProviderIdSchema,
+  type ProviderConfig,
+} from "./contracts";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   MemoryContextConfigSchema,
@@ -11,6 +17,11 @@ import {
 const UuidSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
 const HashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+/** User-configurable story direction count (default 3, up to 12). */
+export const MIN_DIRECTION_COUNT = 1;
+export const MAX_DIRECTION_COUNT = 12;
+export const DEFAULT_DIRECTION_COUNT = 3;
 
 export const BookStatusSchema = z.enum([
   "directions-generating",
@@ -63,10 +74,101 @@ export const CreateBookInputSchema = z
     genre: z.string().trim().min(1).max(80).optional(),
     targetChapters: z.number().int().min(1).max(500).optional(),
     targetChapterCharacters: z.number().int().min(200).max(100_000).optional(),
+    directionCount: z.number().int().min(MIN_DIRECTION_COUNT).max(MAX_DIRECTION_COUNT).optional(),
     style: z.string().trim().max(2_000).optional(),
   })
   .strict();
 export type CreateBookInput = z.infer<typeof CreateBookInputSchema>;
+
+export const ModelRoleSchema = z.enum(["director", "writer", "reviewer", "repairer"]);
+export type ModelRole = z.infer<typeof ModelRoleSchema>;
+
+export const MODEL_ROLES: readonly ModelRole[] = [
+  "director",
+  "writer",
+  "reviewer",
+  "repairer",
+];
+
+export const ModelAssignmentSchema = z.object({
+  role: ModelRoleSchema,
+  provider: ProviderConfigSchema,
+}).strict();
+export type ModelAssignment = z.infer<typeof ModelAssignmentSchema>;
+
+const UniqueModelAssignments = <T extends z.ZodTypeAny>(schema: T) =>
+  schema.superRefine((value: unknown, context) => {
+    if (!Array.isArray(value)) return;
+    const roles = value.map((item) => (item as { role?: unknown }).role);
+    if (new Set(roles).size !== roles.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "模型协作角色不能重复。",
+      });
+    }
+  });
+
+export const ModelWorkflowConfigSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("single"),
+    provider: ProviderConfigSchema,
+  }).strict(),
+  z.object({
+    mode: z.literal("collaborative"),
+    assignments: UniqueModelAssignments(
+      z.array(ModelAssignmentSchema).min(2).max(4),
+    ),
+  }).strict(),
+]);
+export type ModelWorkflowConfig = z.infer<typeof ModelWorkflowConfigSchema>;
+
+/** Renderer-safe desktop selection. Main resolves credentials from ProviderVault. */
+export const DesktopModelAssignmentSchema = z.object({
+  role: ModelRoleSchema,
+  providerId: ProviderIdSchema,
+  model: z.string().trim().min(1).max(200).optional(),
+}).strict();
+
+export const DesktopModelWorkflowSelectionSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("single"),
+    providerId: ProviderIdSchema,
+    model: z.string().trim().min(1).max(200).optional(),
+  }).strict(),
+  z.object({
+    mode: z.literal("collaborative"),
+    assignments: UniqueModelAssignments(
+      z.array(DesktopModelAssignmentSchema).min(2).max(4),
+    ),
+  }).strict(),
+]);
+export type DesktopModelWorkflowSelection = z.infer<
+  typeof DesktopModelWorkflowSelectionSchema
+>;
+
+export type ModelWorkflowInput =
+  | ModelWorkflowConfig
+  | DesktopModelWorkflowSelection;
+
+/**
+ * Resolve the provider assigned to a role in a workflow.  The single mode
+ * serves every stage with one provider; collaborative mode falls back to the
+ * writer assignment (then any assignment) when the requested role is absent.
+ */
+export function resolveModelWorkflowProvider(
+  workflow: ModelWorkflowConfig,
+  role: ModelRole,
+): ProviderConfig {
+  if (workflow.mode === "single") return workflow.provider;
+  const byRole = new Map(
+    workflow.assignments.map((assignment) => [assignment.role, assignment.provider]),
+  );
+  return (
+    byRole.get(role) ??
+    byRole.get("writer") ??
+    workflow.assignments[0]!.provider
+  );
+}
 
 export const BookSchema = z
   .object({
@@ -76,6 +178,7 @@ export const BookSchema = z
     genre: z.string().max(80),
     targetChapters: z.number().int().min(1).max(500),
     targetChapterCharacters: z.number().int().min(200).max(100_000),
+    directionCount: z.number().int().min(MIN_DIRECTION_COUNT).max(MAX_DIRECTION_COUNT),
     style: z.string().max(2_000).default(""),
     status: BookStatusSchema,
     revision: z.number().int().nonnegative(),
@@ -97,7 +200,7 @@ export const StoryDirectionSchema = z
     centralConflict: z.string().min(1).max(2_000),
     endingDirection: z.string().min(1).max(2_000),
     outlinePreview: z.array(z.string().min(1).max(500)).min(1).max(30),
-    rank: z.number().int().min(1).max(3),
+    rank: z.number().int().min(MIN_DIRECTION_COUNT).max(MAX_DIRECTION_COUNT),
     selected: z.boolean(),
     createdAt: TimestampSchema,
   })

@@ -234,6 +234,27 @@ describe("desktop provider vault", () => {
     );
   });
 
+  it("clears the saved workflow selection together with its provider key", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-clear-workflow",
+    });
+    await vault.saveWorkflowSettings({
+      mode: "single",
+      providerId: "deepseek",
+      model: "deepseek-writer",
+    });
+
+    await vault.clearKey("deepseek");
+
+    await expect(vault.getWorkflowSettings()).resolves.toEqual({
+      mode: "single",
+      providerId: "deepseek",
+    });
+  });
+
   it("reopens an encrypted vault without returning the stored key", async () => {
     const temporaryDirectory = createTemporaryDirectory();
     const paths = getDesktopPaths(temporaryDirectory);
@@ -703,6 +724,85 @@ describe("desktop provider vault", () => {
       }),
     ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
   });
+
+  it("resolves a single-mode workflow from the primary saved provider", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-desktop-secret",
+    });
+
+    const workflow = await vault.resolveWorkflow({
+      mode: "single",
+      providerId: "deepseek",
+      model: "deepseek-writer",
+    });
+
+    expect(workflow.mode).toBe("single");
+    expect(workflow.mode === "single" ? workflow.provider : null).toMatchObject({
+      kind: "openai-compatible",
+      model: "deepseek-writer",
+      apiKey: "sk-desktop-secret",
+      baseUrl: "https://api.deepseek.com",
+    });
+  });
+
+  it("resolves collaborative workflow roles without persisting any key", async () => {
+    const { vault, paths } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-desktop-secret",
+    });
+    await vault.saveWorkflowSettings({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "deepseek", model: "deepseek-review" },
+      ],
+    });
+
+    await expect(vault.getWorkflowSettings()).resolves.toEqual({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "deepseek", model: "deepseek-review" },
+      ],
+    });
+
+    const workflow = await vault.resolveWorkflow({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "deepseek", model: "deepseek-review" },
+      ],
+    });
+
+    expect(workflow.mode).toBe("collaborative");
+    expect(workflow.mode === "collaborative" ? workflow.assignments : []).toHaveLength(2);
+    expect(readFileSync(paths.settingsPath, "utf8")).not.toContain("sk-desktop-secret");
+    expect(readFileSync(paths.vaultPath)).not.toContain(
+      Buffer.from("sk-desktop-secret"),
+    );
+  });
+
+  it("rejects a collaborative desktop workflow that would reuse a key across providers", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-desktop-secret",
+    });
+
+    await expect(vault.saveWorkflowSettings({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "openai", model: "gpt-test" },
+      ],
+    })).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
+  });
 });
 
 function createVault(): {
@@ -723,4 +823,3 @@ function createTemporaryDirectory(): string {
   temporaryDirectories.push(directory);
   return directory;
 }
-

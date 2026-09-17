@@ -15,6 +15,7 @@ import type {
   UpdateCandidateMemoryReviewInput,
   RewriteChapterInput,
   UpdateChapterPlanInput,
+  DesktopModelWorkflowSelection,
 } from "../shared/auto-novel";
 import type { ChapterPlanPreviewEnvelope, ConsistencyReport, ReorderChapterPlansInput, SearchQuery, SearchResponse, UpdateChapterPlansInput } from "../shared/authoring";
 import type { UsageSummary } from "../shared/authoring";
@@ -34,12 +35,18 @@ export interface AutoNovelProviderSelection {
   readonly providerId: ProviderId;
 }
 
+/** Renderer-safe model selection. Main resolves provider credentials. */
+export type AutoNovelDesktopProviderSelection =
+  | AutoNovelProviderSelection
+  | { readonly workflow: DesktopModelWorkflowSelection };
+
 export interface AutoNovelDesktopApiV2 {
   readonly books: {
     list(): Promise<DesktopResult<readonly Book[]>>;
     create(input: {
       input: CreateBookInput;
-      providerId: ProviderId;
+      providerId?: ProviderId;
+      workflow?: DesktopModelWorkflowSelection;
       idempotencyKey: string;
     }): Promise<DesktopResult<{ book: Book; directions: readonly StoryDirection[] }>>;
     get(bookId: string): Promise<DesktopResult<BookDetails>>;
@@ -62,20 +69,22 @@ export interface AutoNovelDesktopApiV2 {
       bookId: string;
       directionId: string;
       expectedBookRevision: number;
-      providerId: ProviderId;
+      providerId?: ProviderId;
+      workflow?: DesktopModelWorkflowSelection;
     }): Promise<DesktopResult<BookDetails>>;
   };
   readonly production: {
     start(input: {
       bookId: string;
-      providerId: ProviderId;
+      providerId?: ProviderId;
+      workflow?: DesktopModelWorkflowSelection;
       idempotencyKey: string;
       memoryContextConfig?: MemoryContextConfig;
     }): Promise<DesktopResult<ProductionRun>>;
     get(runId: string): Promise<DesktopResult<AutoNovelRunDetails>>;
     pause(runId: string): Promise<DesktopResult<ProductionRun>>;
-    resume(input: { runId: string; providerId: ProviderId }): Promise<DesktopResult<ProductionRun>>;
-    rewrite(input: { runId: string; providerId: ProviderId } & RewriteChapterInput): Promise<DesktopResult<ChapterCandidate>>;
+    resume(input: { runId: string; providerId?: ProviderId; workflow?: DesktopModelWorkflowSelection }): Promise<DesktopResult<ProductionRun>>;
+    rewrite(input: { runId: string; providerId?: ProviderId; workflow?: DesktopModelWorkflowSelection } & RewriteChapterInput): Promise<DesktopResult<ChapterCandidate>>;
     cancel(runId: string): Promise<DesktopResult<ProductionRun>>;
   };
   readonly candidates: {

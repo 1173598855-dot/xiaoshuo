@@ -13,6 +13,7 @@ import {
 import {
   BookSchema,
   ChapterCandidateSchema,
+  ModelRoleSchema,
   ProductionCheckpointSchema,
   ProductionRunSchema,
   type Book,
@@ -21,6 +22,7 @@ import {
   type ProductionRun,
   type ProductionStage,
   type UpdateCandidateTextInput,
+  type ModelWorkflowConfig,
 } from "../../shared/auto-novel";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
@@ -56,6 +58,28 @@ export type PersistedProviderDescriptor = z.infer<
   typeof PersistedProviderDescriptorSchema
 >;
 
+/**
+ * Key-free projected model workflow that is safe to persist with a run.
+ * The single mode matches the legacy provider descriptor envelope; the
+ * collaborative mode stores a role-to-descriptor map.  Credentials are never
+ * part of this shape and are resolved by the worker at execution time.
+ */
+export const PersistedWorkflowDescriptorSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("single"), provider: PersistedProviderDescriptorSchema }).strict(),
+  z.object({
+    mode: z.literal("collaborative"),
+    assignments: z
+      .array(
+        z.object({ role: ModelRoleSchema, provider: PersistedProviderDescriptorSchema }).strict(),
+      )
+      .min(2)
+      .max(4),
+  }).strict(),
+]);
+export type PersistedWorkflowDescriptor = z.infer<
+  typeof PersistedWorkflowDescriptorSchema
+>;
+
 export interface ProductionRunLease {
   readonly runId: string;
   readonly owner: string;
@@ -66,7 +90,7 @@ export interface ProductionRunLease {
 
 export interface ProductionRunQueueState {
   readonly runId: string;
-  readonly providerDescriptor: PersistedProviderDescriptor | null;
+  readonly providerDescriptor: PersistedWorkflowDescriptor | null;
   readonly retryCount: number;
   readonly maxRetries: number;
   readonly nextAttemptAt: string | null;
@@ -371,6 +395,19 @@ export class ProductionRepository {
     lease?: ProductionRunLease,
   ): ProductionRun {
     const descriptor = toPersistedProviderDescriptor(input);
+    return this.setWorkflowDescriptor(runId, {
+      mode: "single",
+      provider: descriptor,
+    }, lease);
+  }
+
+  /** Persist a key-free workflow envelope (single or collaborative). */
+  setWorkflowDescriptor(
+    runId: string,
+    input: PersistedWorkflowDescriptor,
+    lease?: ProductionRunLease,
+  ): ProductionRun {
+    const descriptor = PersistedWorkflowDescriptorSchema.parse(input);
     const current = this.getRun(runId);
     const leaseClause = lease
       ? " AND status = 'running' AND lease_owner = ? AND lease_token = ? AND lease_expires_at > ?"
@@ -412,8 +449,14 @@ export class ProductionRepository {
   }
 
   getProviderDescriptor(runId: string): PersistedProviderDescriptor | null {
+    const descriptor = this.getWorkflowDescriptor(runId);
+    return descriptor?.mode === "single" ? descriptor.provider : null;
+  }
+
+  /** Read the persisted key-free workflow envelope for a run. */
+  getWorkflowDescriptor(runId: string): PersistedWorkflowDescriptor | null {
     const row = this.getQueueRunRow(runId);
-    return parsePersistedProviderDescriptor(row.provider_descriptor_json);
+    return parsePersistedWorkflowDescriptor(row.provider_descriptor_json);
   }
 
   getQueueState(runId: string): ProductionRunQueueState {
@@ -1611,7 +1654,7 @@ function toRun(row: RunRow): ProductionRun {
 function toQueueState(row: QueueRunRow): ProductionRunQueueState {
   return {
     runId: row.id,
-    providerDescriptor: parsePersistedProviderDescriptor(row.provider_descriptor_json),
+    providerDescriptor: parsePersistedWorkflowDescriptor(row.provider_descriptor_json),
     retryCount: row.retry_count,
     maxRetries: row.max_retries,
     nextAttemptAt: row.next_attempt_at,
@@ -1658,13 +1701,69 @@ export function toPersistedProviderDescriptor(
   return PersistedProviderDescriptorSchema.parse(input);
 }
 
+/** Project a full workflow (with credentials) onto its key-free descriptor. */
+export function toPersistedWorkflowDescriptor(
+  input: ModelWorkflowConfig,
+): PersistedWorkflowDescriptor {
+  if (input.mode === "single") {
+    return { mode: "single", provider: toPersistedProviderDescriptor(input.provider) };
+  }
+  return {
+    mode: "collaborative",
+    assignments: input.assignments.map((assignment) => ({
+      role: assignment.role,
+      provider: toPersistedProviderDescriptor(assignment.provider),
+    })),
+  };
+}
+
+/** Resolve a persisted key-free workflow envelope back into a full config. */
+export function resolvePersistedWorkflow(
+  descriptor: PersistedWorkflowDescriptor,
+  resolver: (provider: PersistedProviderDescriptor) => ProviderConfig | Promise<ProviderConfig>,
+): Promise<ModelWorkflowConfig> {
+  if (descriptor.mode === "single") {
+    return Promise.resolve(descriptor.provider).then((provider) =>
+      ProviderConfigSchema.parse(provider),
+    ).then(async (provider) =>
+      Promise.resolve(resolver(provider)).then((resolved) => ({
+        mode: "single" as const,
+        provider: resolved,
+      })),
+    );
+  }
+  return Promise.all(
+    descriptor.assignments.map(async (assignment) => ({
+      role: assignment.role,
+      provider: await resolver(assignment.provider),
+    })),
+  ).then((assignments) => ({ mode: "collaborative" as const, assignments }));
+}
+
 export function parsePersistedProviderDescriptor(
   value: string | null | undefined,
 ): PersistedProviderDescriptor | null {
+  const workflow = parsePersistedWorkflowDescriptor(value);
+  return workflow?.mode === "single" ? workflow.provider : null;
+}
+
+export function parsePersistedWorkflowDescriptor(
+  value: string | null | undefined,
+): PersistedWorkflowDescriptor | null {
   if (!value || value === "null") return null;
   try {
     const parsed: unknown = JSON.parse(value);
-    const result = PersistedProviderDescriptorSchema.safeParse(parsed);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "mode" in parsed &&
+      (parsed as { mode?: unknown }).mode === undefined
+    ) {
+      // Legacy single-provider descriptor stored before workflows existed.
+      const legacy = PersistedProviderDescriptorSchema.safeParse(parsed);
+      return legacy.success ? { mode: "single", provider: legacy.data } : null;
+    }
+    const result = PersistedWorkflowDescriptorSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
     return null;

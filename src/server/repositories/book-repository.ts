@@ -7,6 +7,7 @@ import {
   BookFoundationSchema,
   BookSchema,
   ChapterPlanSchema,
+  DEFAULT_DIRECTION_COUNT,
   StoryDirectionSchema,
   type Book,
   type BookDetails,
@@ -51,6 +52,7 @@ interface BookRow {
   genre: string;
   target_chapters: number;
   target_chapter_characters: number;
+  direction_count: number;
   style: string;
   status: Book["status"];
   revision: number;
@@ -193,7 +195,7 @@ export class BookRepository {
     return this.withTransaction(() => {
       if (idempotencyKey) {
         const existing = this.database
-          .prepare("SELECT id, project_id, owner_user_id, title, idea, genre, target_chapters, target_chapter_characters, style, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
+          .prepare("SELECT id, project_id, owner_user_id, title, idea, genre, target_chapters, target_chapter_characters, direction_count, style, status, revision, selected_direction_id, created_at, updated_at FROM books WHERE director_idempotency_key = ?")
           .get(idempotencyKey) as unknown as (BookRow & { owner_user_id: string | null }) | undefined;
         if (existing) {
           if (ownerUserId && existing.owner_user_id !== ownerUserId) throw new AccountAccessDeniedError();
@@ -207,6 +209,7 @@ export class BookRepository {
       const genre = input.genre ?? "未定题材";
       const targetChapters = input.targetChapters ?? 12;
       const targetChapterCharacters = input.targetChapterCharacters ?? 2_500;
+      const directionCount = input.directionCount ?? DEFAULT_DIRECTION_COUNT;
       const style = input.style ?? "";
 
       this.database
@@ -220,9 +223,9 @@ export class BookRepository {
           `INSERT INTO books (
              id, project_id, owner_user_id, title, idea, director_idempotency_key, genre,
              target_chapters,
-             target_chapter_characters, style, status, revision,
+             target_chapter_characters, direction_count, style, status, revision,
              selected_direction_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'directions-generating', 0, NULL, ?, ?)`,
         )
         .run(
           id,
@@ -234,6 +237,7 @@ export class BookRepository {
           genre,
           targetChapters,
            targetChapterCharacters,
+           directionCount,
            style,
           timestamp,
           timestamp,
@@ -248,7 +252,7 @@ export class BookRepository {
     const rows = this.database
       .prepare(
         `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
-                target_chapter_characters, style, status, revision,
+                target_chapter_characters, direction_count, style, status, revision,
                 selected_direction_id, created_at, updated_at
           FROM books${ownerClause}
          ORDER BY updated_at DESC, id`,
@@ -312,7 +316,12 @@ export class BookRepository {
       const existing = this.getDirections(bookId);
       if (existing.length > 0) return existing;
       if (drafts.length !== 3) {
-        throw new Error("Exactly three story directions are required");
+        const book = this.requireBookRow(bookId);
+        if (drafts.length !== book.direction_count) {
+          throw new Error(
+            `Exactly ${book.direction_count} story directions are required`,
+          );
+        }
       }
 
       const timestamp = this.now();
@@ -647,7 +656,7 @@ export class BookRepository {
     const row = this.database
       .prepare(
         `SELECT id, project_id, title, director_idempotency_key, idea, genre, target_chapters,
-                target_chapter_characters, style, status, revision,
+                target_chapter_characters, direction_count, style, status, revision,
                 selected_direction_id, created_at, updated_at
          FROM books WHERE id = ?`,
       )
@@ -677,6 +686,7 @@ function toBook(row: BookRow): Book {
     genre: row.genre,
     targetChapters: row.target_chapters,
     targetChapterCharacters: row.target_chapter_characters,
+    directionCount: row.direction_count,
     style: row.style,
     status: row.status,
     revision: row.revision,

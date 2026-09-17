@@ -2,7 +2,15 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { ProviderConfigSchema, type ProviderConfig, type ReasoningLevel } from "../../shared/contracts";
-import type { ChapterCandidate, ChapterPlan, ProductionRun } from "../../shared/auto-novel";
+import {
+  type ChapterCandidate,
+  type ChapterPlan,
+  type ModelRole,
+  type ModelWorkflowConfig,
+  type ProductionRun,
+  resolveModelWorkflowProvider,
+  ModelWorkflowConfigSchema,
+} from "../../shared/auto-novel";
 import {
   filterMemoryDelta,
   type MemoryContext,
@@ -11,9 +19,11 @@ import {
 import { NormalizedProviderError } from "../providers/types";
 import type {
   PersistedProviderDescriptor,
+  PersistedWorkflowDescriptor,
   ProductionRepository,
   ProductionRunLease,
 } from "../repositories/production-repository";
+import { toPersistedWorkflowDescriptor } from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProviderResolver } from "../providers/resolver";
@@ -63,6 +73,8 @@ export interface ProductionServiceDependencies {
   readonly logger?: StructuredLogger;
   /** Resolve a key-free descriptor from a server-side secret store. */
   readonly resolvePersistedProvider?: PersistedProviderResolver;
+  /** Resolve a key-free workflow envelope from a server-side secret store. */
+  readonly resolvePersistedWorkflow?: PersistedWorkflowResolver;
 }
 
 interface ActiveRun {
@@ -73,7 +85,7 @@ interface ActiveRun {
 
 interface PendingRun {
   readonly runId: string;
-  readonly providerConfig?: ProviderConfig;
+  readonly workflow?: ModelWorkflowConfig;
   readonly lease?: ProductionRunLease;
   readonly controller: AbortController;
   readonly unlinkAbort: () => void;
@@ -85,6 +97,11 @@ interface PendingRun {
 export type PersistedProviderResolver = (
   descriptor: PersistedProviderDescriptor,
 ) => ProviderConfig | Promise<ProviderConfig>;
+
+/** Resolve a persisted key-free workflow envelope back into a full config. */
+export type PersistedWorkflowResolver = (
+  descriptor: PersistedWorkflowDescriptor,
+) => ModelWorkflowConfig | Promise<ModelWorkflowConfig>;
 
 /** Raised when a restarted worker cannot obtain a secret-backed provider. */
 export class PersistedProviderUnavailableError extends Error {
@@ -123,7 +140,7 @@ export class ProductionService {
 
   async rewriteCurrentChapter(
     runId: string,
-    providerConfig: ProviderConfig,
+    workflow: ModelWorkflowConfig | ProviderConfig,
     instruction = "",
     signal?: AbortSignal,
   ): Promise<ChapterCandidate> {
@@ -137,6 +154,9 @@ export class ProductionService {
     if (this.activeRuns.has(runId)) {
       throw new NormalizedProviderError("REQUEST_INVALID", "生产任务正在运行，请等待当前阶段完成。" );
     }
+    const normalizedWorkflow = normalizeWorkflow(workflow);
+    const writerConfig = resolveModelWorkflowProvider(normalizedWorkflow, "writer");
+    const reviewerConfig = resolveModelWorkflowProvider(normalizedWorkflow, "reviewer");
     const details = this.dependencies.productionRepository.getRunDetails(runId);
     const sourceCandidate = details.candidate;
     const sourceChapter = sourceCandidate
@@ -169,8 +189,8 @@ export class ProductionService {
       : emptyMemoryContext();
     const book = this.dependencies.bookRepository.getBook(run.bookId);
     const candidateText = await generateDraft(
-      this.dependencies.providerResolver.resolve(providerConfig),
-      providerConfig.model,
+      this.dependencies.providerResolver.resolve(writerConfig),
+      writerConfig.model,
       book.book.idea,
       plan,
       chapter.content,
@@ -179,7 +199,7 @@ export class ProductionService {
       instruction,
       book.book.style,
       book.book.targetChapterCharacters,
-      providerConfig.reasoningLevel,
+      writerConfig.reasoningLevel,
     );
     const candidate = this.dependencies.productionRepository.createCandidate({
       runId,
@@ -200,8 +220,8 @@ export class ProductionService {
       outputId: candidate.id,
     });
     const review = await reviewDraft(
-      this.dependencies.providerResolver.resolve(providerConfig),
-      providerConfig.model,
+      this.dependencies.providerResolver.resolve(reviewerConfig),
+      reviewerConfig.model,
       book.book.idea,
       plan,
       candidateText,
@@ -209,7 +229,7 @@ export class ProductionService {
       signal,
       book.book.style,
       book.book.targetChapterCharacters,
-      providerConfig.reasoningLevel,
+      reviewerConfig.reasoningLevel,
     );
     const { memoryDelta, ...reviewResult } = review;
     this.dependencies.productionRepository.updateCandidateReview(candidate.id, reviewResult);
@@ -225,19 +245,22 @@ export class ProductionService {
 
   start(
     runId: string,
-    providerConfig?: ProviderConfig,
+    workflow?: ModelWorkflowConfig | ProviderConfig,
     signal?: AbortSignal,
     lease?: ProductionRunLease,
   ): Promise<ProductionRun> {
     const existing = this.activeRuns.get(runId);
     if (existing) return existing.promise;
 
-    // Persist only the descriptor.  The full config remains in this process
-    // for the duration of the run and is never written to SQLite.
-    if (providerConfig) {
-      this.dependencies.productionRepository.setProviderDescriptor(
+    // Persist only the key-free descriptor.  The full config remains in this
+    // process for the duration of the run and is never written to SQLite.
+    const normalizedWorkflow = workflow !== undefined
+      ? normalizeWorkflow(workflow)
+      : undefined;
+    if (normalizedWorkflow) {
+      this.dependencies.productionRepository.setWorkflowDescriptor(
         runId,
-        providerConfig,
+        toPersistedWorkflowDescriptor(normalizedWorkflow),
         lease,
       );
     }
@@ -252,7 +275,7 @@ export class ProductionService {
     });
     const pending: PendingRun = {
       runId,
-      providerConfig,
+      workflow: normalizedWorkflow,
       lease,
       controller,
       unlinkAbort,
@@ -286,7 +309,7 @@ export class ProductionService {
 
   private async run(
     runId: string,
-    providerConfig: ProviderConfig | undefined,
+    workflowInput: ModelWorkflowConfig | ProviderConfig | undefined,
     signal: AbortSignal,
     lease?: ProductionRunLease,
   ): Promise<ProductionRun> {
@@ -299,18 +322,24 @@ export class ProductionService {
       );
     }
 
-    let resolvedProviderConfig: ProviderConfig;
-    let provider: ReturnType<ProviderResolver["resolve"]>;
+    let workflow: ModelWorkflowConfig;
     try {
-      resolvedProviderConfig = await this.resolveProviderConfig(
-        runId,
-        providerConfig,
-      );
+      workflow = await this.resolveWorkflowConfig(runId, workflowInput);
       this.dependencies.productionRepository.updateRun(runId, {
         status: "running",
       }, lease);
       this.recordAudit("production.started", runId, "success");
-      provider = this.dependencies.providerResolver.resolve(resolvedProviderConfig);
+      const resolvedProviders = new Map<ModelRole, ReturnType<ProviderResolver["resolve"]>>();
+      const providerForRole = (role: ModelRole) => {
+        const cached = resolvedProviders.get(role);
+        if (cached) return cached;
+        const config = resolveModelWorkflowProvider(workflow, role);
+        const provider = this.dependencies.providerResolver.resolve(config);
+        resolvedProviders.set(role, provider);
+        return provider;
+      };
+      const providerForStage = (role: ModelRole) => providerForRole(role);
+      void providerForStage;
       while (true) {
         const stopped = this.getStoppedRun(runId, signal, lease);
         if (stopped) return stopped;
@@ -365,9 +394,10 @@ export class ProductionService {
           );
 
         if (!candidate) {
+          const writerConfig = resolveModelWorkflowProvider(workflow, "writer");
           const candidateText = await generateDraft(
-            provider,
-            resolvedProviderConfig.model,
+            providerForRole("writer"),
+            writerConfig.model,
             bookDetails.book.idea,
             plan,
             chapter.content,
@@ -376,7 +406,7 @@ export class ProductionService {
             "",
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
-            resolvedProviderConfig.reasoningLevel,
+            writerConfig.reasoningLevel,
           );
           const stoppedAfterDraft = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterDraft) return stoppedAfterDraft;
@@ -419,16 +449,17 @@ export class ProductionService {
               stage: "repair",
               currentChapterNumber: plan.chapterNumber,
             }, lease);
+            const repairerConfig = resolveModelWorkflowProvider(workflow, "repairer");
             const repaired = await repairDraft(
-              provider,
-              resolvedProviderConfig.model,
+              providerForRole("repairer"),
+              repairerConfig.model,
               candidate.candidateText,
               candidate.review.findings,
               memoryContext,
               signal,
               bookDetails.book.style,
               bookDetails.book.targetChapterCharacters,
-              resolvedProviderConfig.reasoningLevel,
+              repairerConfig.reasoningLevel,
             );
             const stoppedAfterRepair = this.getStoppedRun(runId, signal, lease);
             if (stoppedAfterRepair) return stoppedAfterRepair;
@@ -452,9 +483,10 @@ export class ProductionService {
             stage: "review",
             currentChapterNumber: plan.chapterNumber,
           }, lease);
+          const reviewerConfig = resolveModelWorkflowProvider(workflow, "reviewer");
           const review = await reviewDraft(
-            provider,
-            resolvedProviderConfig.model,
+            providerForRole("reviewer"),
+            reviewerConfig.model,
             bookDetails.book.idea,
             plan,
             candidate.candidateText,
@@ -462,7 +494,7 @@ export class ProductionService {
             signal,
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
-            resolvedProviderConfig.reasoningLevel,
+            reviewerConfig.reasoningLevel,
           );
           const stoppedAfterReview = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterReview) return stoppedAfterReview;
@@ -571,10 +603,10 @@ export class ProductionService {
 
   resume(
     runId: string,
-    providerConfig?: ProviderConfig,
+    workflow?: ModelWorkflowConfig | ProviderConfig,
     signal?: AbortSignal,
   ): Promise<ProductionRun> {
-    return this.start(runId, providerConfig, signal);
+    return this.start(runId, workflow, signal);
   }
 
   cancel(runId: string): ProductionRun {
@@ -629,16 +661,23 @@ export class ProductionService {
     return this.dependencies.productionRepository.getRunDetails(runId);
   }
 
-  private async resolveProviderConfig(
+  private async resolveWorkflowConfig(
     runId: string,
-    providerConfig: ProviderConfig | undefined,
-  ): Promise<ProviderConfig> {
-    if (providerConfig) return ProviderConfigSchema.parse(providerConfig);
-    const descriptor = this.dependencies.productionRepository.getProviderDescriptor(runId);
-    const resolver = this.dependencies.resolvePersistedProvider;
-    if (!descriptor || !resolver) throw new PersistedProviderUnavailableError();
+    workflowInput: ModelWorkflowConfig | ProviderConfig | undefined,
+  ): Promise<ModelWorkflowConfig> {
+    if (workflowInput !== undefined) return normalizeWorkflow(workflowInput);
+    const descriptor = this.dependencies.productionRepository.getWorkflowDescriptor(runId);
+    if (!descriptor) throw new PersistedProviderUnavailableError();
+    const singleResolver = this.dependencies.resolvePersistedProvider;
+    const workflowResolver = this.dependencies.resolvePersistedWorkflow;
     try {
-      return ProviderConfigSchema.parse(await resolver(descriptor));
+      if (workflowResolver) return await workflowResolver(descriptor);
+      // Fall back to the single-provider resolver for the legacy single mode.
+      if (descriptor.mode === "single" && singleResolver) {
+        const provider = await singleResolver(descriptor.provider);
+        return { mode: "single", provider };
+      }
+      throw new PersistedProviderUnavailableError();
     } catch {
       // Never expose a secret-store error or a provider key through the run
       // error path.  The worker records a stable public code instead.
@@ -681,7 +720,7 @@ export class ProductionService {
         promise: pending.promise,
         queued: false,
       });
-      void this.run(pending.runId, pending.providerConfig, pending.controller.signal, pending.lease).then(
+      void this.run(pending.runId, pending.workflow, pending.controller.signal, pending.lease).then(
         (result) => {
           this.finishQueuedRun(pending);
           pending.resolve(result);
@@ -951,4 +990,14 @@ function errorCodeOf(error: unknown): string {
 
 function hasMemoryChanges(delta: MemoryDelta): boolean {
   return delta.add.length > 0 || delta.update.length > 0 || delta.resolve.length > 0;
+}
+
+/** Normalize a provider or workflow into a canonical ModelWorkflowConfig. */
+function normalizeWorkflow(
+  workflow: ModelWorkflowConfig | ProviderConfig,
+): ModelWorkflowConfig {
+  if ("mode" in workflow && workflow.mode !== undefined) {
+    return ModelWorkflowConfigSchema.parse(workflow);
+  }
+  return { mode: "single", provider: ProviderConfigSchema.parse(workflow) };
 }

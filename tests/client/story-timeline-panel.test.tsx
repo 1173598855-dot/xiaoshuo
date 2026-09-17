@@ -18,6 +18,7 @@ const details = {
     genre: "都市悬疑",
     targetChapters: 3,
     targetChapterCharacters: 2500,
+    directionCount: 3,
     style: "克制",
     status: "ready-to-draft" as const,
     revision: 4,

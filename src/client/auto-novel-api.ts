@@ -64,10 +64,15 @@ import {
   type ProviderConfig,
   type ProviderId,
 } from "../shared/contracts";
+import type { ModelWorkflowConfig, DesktopModelWorkflowSelection } from "../shared/auto-novel";
 import { ApiRequestError } from "./api/transport";
 import { loadAccessToken } from "./access-token";
 
-export type AutoNovelProviderInput = ProviderConfig | { providerId: ProviderId };
+export type AutoNovelProviderInput =
+  | ProviderConfig
+  | { providerId: ProviderId }
+  | ModelWorkflowConfig
+  | DesktopModelWorkflowSelection;
 
 export const RunDetailsSchema = z
   .object({
@@ -150,12 +155,11 @@ export function createAutoNovelApi(
     },
     async createBook(input, provider, idempotencyKey) {
       const parsedInput = CreateBookInputSchema.parse(input);
-      const parsedProvider = providerForHttp(provider);
       const body = await requestJson(fetchImpl, "/api/books", {
         method: "POST",
         body: JSON.stringify({
           ...parsedInput,
-          provider: parsedProvider,
+          ...providerBody(provider),
           idempotencyKey: StartProductionInputSchema.shape.idempotencyKey.parse(idempotencyKey),
         }),
       });
@@ -191,7 +195,8 @@ export function createAutoNovelApi(
       return ConsistencyReportSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/consistency`));
     },
     async previewChapterPlans(bookId, provider) {
-      return ChapterPlanPreviewEnvelopeSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/timeline/preview`, { method: "POST", body: JSON.stringify({ provider: providerForHttp(provider) }) }));
+      const body = previewProviderBody(provider);
+      return ChapterPlanPreviewEnvelopeSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/timeline/preview`, { method: "POST", body: JSON.stringify(body) }));
     },
     async getUsageSummary() {
       return UsageSummarySchema.parse(await requestJson(fetchImpl, "/api/usage"));
@@ -212,16 +217,15 @@ export function createAutoNovelApi(
       );
     },
     async selectDirection(bookId, directionId, expectedBookRevision, provider) {
-      const body = SelectDirectionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({ expectedBookRevision, provider: providerForHttp(provider) });
-      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/directions/${directionId}/select`, { method: "POST", body: JSON.stringify(body) }));
+      const parsed = SelectDirectionInputSchema.parse({ expectedBookRevision });
+      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/directions/${directionId}/select`, { method: "POST", body: JSON.stringify({ ...parsed, ...providerBody(provider) }) }));
     },
     async startProduction(bookId, provider, idempotencyKey, memoryContextConfig) {
-      const body = StartProductionInputSchema.extend({ provider: ProviderConfigSchema }).strict().parse({
+      const parsed = StartProductionInputSchema.parse({
         idempotencyKey,
-        provider: providerForHttp(provider),
         ...(memoryContextConfig ? { memoryContextConfig } : {}),
       });
-      return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/production`, { method: "POST", body: JSON.stringify(body) }));
+      return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/production`, { method: "POST", body: JSON.stringify({ ...parsed, ...providerBody(provider) }) }));
     },
     async getRun(runId, signal) {
       return RunDetailsSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}`, { signal }));
@@ -230,7 +234,7 @@ export function createAutoNovelApi(
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/pause`, { method: "POST", body: JSON.stringify({ action: "pause" }) }));
     },
     async resumeRun(runId, provider) {
-      return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/resume`, { method: "POST", body: JSON.stringify({ action: "resume", provider: providerForHttp(provider), }) }));
+      return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/resume`, { method: "POST", body: JSON.stringify({ action: "resume", ...providerBody(provider) }) }));
     },
     async cancelRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/cancel`, { method: "POST", body: JSON.stringify({ action: "cancel" }) }));
@@ -242,7 +246,7 @@ export function createAutoNovelApi(
           method: "POST",
           body: JSON.stringify({
             ...parsed,
-            provider: providerForHttp(provider),
+            ...providerBody(provider),
           }),
         }),
       );
@@ -331,8 +335,45 @@ export function createAutoNovelApi(
   };
 }
 
-function providerForHttp(provider: AutoNovelProviderInput): ProviderConfig {
+function providerForHttp(provider: AutoNovelProviderInput): ProviderConfig | ModelWorkflowConfig {
+  if ("mode" in provider) {
+    if (provider.mode === "single" && "provider" in provider) return provider;
+    if (provider.mode === "collaborative" && provider.assignments.every((assignment) => "provider" in assignment)) {
+      return provider as ModelWorkflowConfig;
+    }
+    throw new ApiRequestError(400, "PROVIDER_CONFIG_INVALID", "浏览器端需要完整的模型配置。" );
+  }
   return ProviderConfigSchema.parse(provider);
+}
+
+/** Build the provider-or-workflow portion of an HTTP request body. */
+function providerBody(
+  provider: AutoNovelProviderInput,
+): { workflow: ModelWorkflowConfig } | { provider: ProviderConfig } {
+  const value = providerForHttp(provider);
+  if ("mode" in value && value.mode !== undefined) {
+    return { workflow: value };
+  }
+  return { provider: value };
+}
+
+/** Preview always uses a single provider (the director/writer role). */
+function previewProviderBody(
+  provider: AutoNovelProviderInput,
+): { provider: ProviderConfig } {
+  const value = providerForHttp(provider);
+  if ("mode" in value && value.mode !== undefined) {
+    const providerConfig =
+      value.mode === "single"
+        ? value.provider
+        : (
+            value.assignments.find(({ role }) => role === "director") ??
+            value.assignments[0]
+          )?.provider;
+    if (!providerConfig) throw new Error("Workflow has no provider for preview");
+    return { provider: providerConfig };
+  }
+  return { provider: value };
 }
 
 async function requestJson(fetchImpl: typeof fetch, path: string, init: RequestInit = {}): Promise<unknown> {
@@ -349,4 +390,3 @@ async function requestJson(fetchImpl: typeof fetch, path: string, init: RequestI
   }
   return body;
 }
-

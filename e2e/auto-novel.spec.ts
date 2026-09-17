@@ -70,6 +70,18 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
 });
 
+test("accepts a custom direction count and collaborative workflow", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "工作流" }).click();
+  await expect(page.getByRole("dialog", { name: "模型工作流" })).toBeVisible();
+  await page.getByLabel("模型工作流模式").selectOption("collaborative");
+  await page.getByRole("button", { name: "应用工作流" }).click();
+  await page.getByRole("textbox", { name: "故事想法" }).fill("一个会在凌晨移动的城市");
+  await page.getByLabel("方向数量").fill("5");
+  await page.getByRole("button", { name: "开始开书" }).click();
+  await expect(page.getByText("自动方向 5")).toBeVisible();
+});
+
 for (const viewport of [
   { name: "desktop", width: 1440, height: 960 },
   { name: "tablet", width: 1024, height: 768 },

@@ -8,6 +8,7 @@ import {
   CreateBookInputSchema,
   AcceptCandidateInputSchema,
   ExportBookInputSchema,
+  ModelWorkflowConfigSchema,
   ProductionCommandInputSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
@@ -15,6 +16,8 @@ import {
   UpdateCandidateMemoryReviewInputSchema,
   RewriteChapterInputSchema,
   UpdateChapterPlanInputSchema,
+  resolveModelWorkflowProvider,
+  type ModelWorkflowConfig,
 } from "../shared/auto-novel";
 import {
   ReorderChapterPlansInputSchema,
@@ -86,22 +89,87 @@ import {
   type RateLimitDecision,
 } from "./enterprise/http-security";
 
-const CreateBookRequestSchema = CreateBookInputSchema.extend({
-  provider: ProviderConfigSchema,
-  idempotencyKey: StartProductionInputSchema.shape.idempotencyKey,
-}).strict();
+/** Accept either a single provider or a full model workflow. */
+const CreateBookRequestSchema = z.union([
+  z
+    .object({
+      ...CreateBookInputSchema.shape,
+      idempotencyKey: StartProductionInputSchema.shape.idempotencyKey,
+      provider: ProviderConfigSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...CreateBookInputSchema.shape,
+      idempotencyKey: StartProductionInputSchema.shape.idempotencyKey,
+      workflow: ModelWorkflowConfigSchema,
+    })
+    .strict(),
+]);
+
+/** Normalize a workflow-or-provider request into a workflow. */
+function toWorkflow(input: unknown): ModelWorkflowConfig {
+  const value = input as {
+    workflow?: ModelWorkflowConfig;
+    provider?: ProviderConfig;
+  };
+  if (value.workflow !== undefined) {
+    return ModelWorkflowConfigSchema.parse(value.workflow);
+  }
+  return { mode: "single", provider: ProviderConfigSchema.parse(value.provider) };
+}
 
 const ProviderRequestSchema = z
   .object({ provider: ProviderConfigSchema })
   .strict();
 
-const SelectDirectionRequestSchema = SelectDirectionInputSchema.extend({
-  provider: ProviderConfigSchema,
-}).strict();
+const SelectDirectionRequestSchema = z.union([
+  z
+    .object({
+      ...SelectDirectionInputSchema.shape,
+      provider: ProviderConfigSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...SelectDirectionInputSchema.shape,
+      workflow: ModelWorkflowConfigSchema,
+    })
+    .strict(),
+]);
 
-const ResumeRequestSchema = z
-  .object({ action: z.literal("resume"), provider: ProviderConfigSchema })
-  .strict();
+const ResumeRequestSchema = z.union([
+  z
+    .object({ action: z.literal("resume"), provider: ProviderConfigSchema })
+    .strict(),
+  z
+    .object({ action: z.literal("resume"), workflow: ModelWorkflowConfigSchema })
+    .strict(),
+]);
+
+const RewriteRequestSchema = z.union([
+  z
+    .object({ ...RewriteChapterInputSchema.shape, provider: ProviderConfigSchema })
+    .strict(),
+  z
+    .object({ ...RewriteChapterInputSchema.shape, workflow: ModelWorkflowConfigSchema })
+    .strict(),
+]);
+
+const ProductionStartRequestSchema = z.union([
+  z
+    .object({
+      ...StartProductionInputSchema.shape,
+      provider: ProviderConfigSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...StartProductionInputSchema.shape,
+      workflow: ModelWorkflowConfigSchema,
+    })
+    .strict(),
+]);
 
 const MemoryQuerySchema = z
   .object({
@@ -113,9 +181,6 @@ const MemoryQuerySchema = z
       .optional(),
   })
   .strict();
-const RewriteRequestSchema = RewriteChapterInputSchema.extend({
-  provider: ProviderConfigSchema,
-}).strict();
 
 const MemoryPathIdSchema = z.string().uuid();
 
@@ -521,11 +586,24 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const parsed = await parseJson(context.req.raw, CreateBookRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
 
-    const book = dependencies.bookRepository.createBook(parsed.data, parsed.data.idempotencyKey, currentRequestContext()?.userId);
+    const idempotencyKey = parsed.data.idempotencyKey;
+    const workflow = toWorkflow(
+      "workflow" in parsed.data ? { workflow: parsed.data.workflow as ModelWorkflowConfig } : { provider: parsed.data.provider as ProviderConfig },
+    );
+    const bookInput = {
+      idea: parsed.data.idea,
+      ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+      ...(parsed.data.genre !== undefined ? { genre: parsed.data.genre } : {}),
+      ...(parsed.data.targetChapters !== undefined ? { targetChapters: parsed.data.targetChapters } : {}),
+      ...(parsed.data.targetChapterCharacters !== undefined ? { targetChapterCharacters: parsed.data.targetChapterCharacters } : {}),
+      ...(parsed.data.directionCount !== undefined ? { directionCount: parsed.data.directionCount } : {}),
+      ...(parsed.data.style !== undefined ? { style: parsed.data.style } : {}),
+    };
+    const book = dependencies.bookRepository.createBook(bookInput, idempotencyKey, currentRequestContext()?.userId);
     const run = dependencies.productionRepository.createRun(
       book.id,
       "director",
-      parsed.data.idempotencyKey,
+      idempotencyKey,
     );
     if (run.status === "completed") {
       const details = dependencies.bookRepository.getBook(book.id);
@@ -535,10 +613,10 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       );
     }
     try {
-      const directions = await dependencies.directorService.generateDirections(
+      const directions = await dependencies.directorService.generateDirectionsWithWorkflow(
         book.id,
-        parsed.data.provider,
-        parsed.data.idempotencyKey,
+        workflow,
+        idempotencyKey,
         context.req.raw.signal,
       );
       dependencies.productionRepository.appendCheckpoint({
@@ -763,9 +841,10 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     );
     if (run.status === "completed") return context.json(dependencies.bookRepository.getBook(book.id));
     try {
+      const workflow = toWorkflow(parsed.data);
       await dependencies.foundationService.generate(
         book.id,
-        parsed.data.provider,
+        resolveModelWorkflowProvider(workflow, "director"),
         context.req.raw.signal,
       );
       const inputHash = hashStageInput(book.id + ":" + context.req.param("directionId"));
@@ -797,20 +876,25 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
   app.post("/api/books/:bookId/production", async (context) => {
     const parsed = await parseJson(
       context.req.raw,
-      StartProductionInputSchema.and(ProviderRequestSchema),
+      ProductionStartRequestSchema,
     );
     if (!parsed.success) return context.json(parsed.error, 400);
     assertBookAccess(dependencies, context.req.param("bookId"));
+    const workflow = toWorkflow(parsed.data);
     const run = dependencies.productionRepository.createProductionRun(
       context.req.param("bookId"),
       parsed.data.idempotencyKey,
       parsed.data.memoryContextConfig,
     );
     if (dependencies.productionWorker) {
-      dependencies.productionWorker.enqueue(run.id, parsed.data.provider);
+      dependencies.productionWorker.enqueue(
+        run.id,
+        resolveModelWorkflowProvider(workflow, "writer"),
+      );
+      dependencies.productionWorker.setWorkflow?.(run.id, workflow);
     } else {
       void dependencies.productionService
-        .start(run.id, parsed.data.provider)
+        .start(run.id, workflow)
         .catch(() => undefined);
     }
     return context.json(run, 202);
@@ -836,14 +920,19 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const parsed = await parseJson(context.req.raw, ResumeRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     assertRunAccess(dependencies, context.req.param("runId"));
+    const workflow = toWorkflow(parsed.data);
     const run = dependencies.productionRepository.getRun(context.req.param("runId"));
     if (dependencies.productionWorker) {
-      dependencies.productionWorker.enqueue(run.id, parsed.data.provider);
+      dependencies.productionWorker.enqueue(
+        run.id,
+        resolveModelWorkflowProvider(workflow, "writer"),
+      );
+      dependencies.productionWorker.setWorkflow?.(run.id, workflow);
     } else {
       void Promise.resolve()
         .then(() => dependencies.productionService.resume(
           run.id,
-          parsed.data.provider,
+          workflow,
           context.req.raw.signal,
         ))
         .catch(() => undefined);
@@ -857,7 +946,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     assertRunAccess(dependencies, context.req.param("runId"));
     const candidate = await dependencies.productionService.rewriteCurrentChapter(
       context.req.param("runId"),
-      parsed.data.provider,
+      toWorkflow(parsed.data),
       parsed.data.instruction,
       context.req.raw.signal,
     );

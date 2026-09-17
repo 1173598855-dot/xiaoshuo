@@ -28,6 +28,14 @@ import {
   type SaveProviderSettingsInput,
   type ReasoningLevel,
 } from "../shared/contracts";
+import {
+  DesktopModelWorkflowSelectionSchema,
+  ModelRoleSchema,
+  ModelWorkflowConfigSchema,
+  type DesktopModelWorkflowSelection,
+  type ModelRole,
+  type ModelWorkflowConfig,
+} from "../shared/auto-novel";
 import { getProviderCatalog } from "../server/providers/catalog";
 import {
   resolveOpenAICompatibleModelListConfig,
@@ -42,11 +50,22 @@ const CredentialIdSchema = z.string().uuid();
 interface PersistedSettings {
   providerId: ProviderId;
   model: string;
+  workflowModel?: string;
   reasoningLevel?: ReasoningLevel;
   baseUrl?: string;
   credentialId?: string;
   revokedCredentialIds?: readonly string[];
   revokedProviderIds?: readonly ProviderId[];
+  /** Optional collaborative-model workflow persisted key-free alongside the primary settings. */
+  workflowAssignments?: readonly PersistedWorkflowAssignment[];
+}
+
+interface PersistedWorkflowAssignment {
+  readonly role: ModelRole;
+  readonly providerId: ProviderId;
+  readonly model: string;
+  readonly baseUrl?: string;
+  readonly credentialId?: string;
 }
 
 interface PersistedVaultV1 {
@@ -98,6 +117,31 @@ export class ProviderVault {
   async getSettings(): Promise<ProviderSettings | null> {
     const settings = this.readSettings();
     return settings ? this.toPublicSettings(settings) : null;
+  }
+
+  /** Return only the renderer-safe workflow selection persisted for this account. */
+  async getWorkflowSettings(): Promise<DesktopModelWorkflowSelection | null> {
+    const settings = this.readSettings();
+    if (!settings) return null;
+    const assignments = settings.workflowAssignments ?? [];
+    if (assignments.length === 0) {
+      return {
+        mode: "single",
+        providerId: settings.providerId,
+        ...(settings.workflowModel ? { model: settings.workflowModel } : {}),
+      };
+    }
+    const parsed = DesktopModelWorkflowSelectionSchema.safeParse({
+      mode: "collaborative",
+      assignments: assignments.map(({ role, providerId, model }) => ({
+        role,
+        providerId,
+        ...(model ? { model } : {}),
+      })),
+    });
+    return parsed.success && parsed.data.mode === "collaborative" && new Set(parsed.data.assignments.map(({ providerId }) => providerId)).size === 1
+      ? parsed.data
+      : { mode: "single", providerId: settings.providerId };
   }
 
   async resolveModelListing(
@@ -238,6 +282,8 @@ export class ProviderVault {
         ]);
     const nextSettings: PersistedSettings = {
       ...settings,
+      workflowModel: undefined,
+      workflowAssignments: undefined,
       ...(settings.credentialId ? {} : { credentialId: undefined }),
       ...(revokedCredentialIds.length ? { revokedCredentialIds } : {}),
       ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
@@ -302,6 +348,180 @@ export class ProviderVault {
     }
 
     return generation.data;
+  }
+
+  /**
+   * Persist an optional collaborative workflow (each role -> provider).  The
+   * primary single-provider settings stay authoritative for legacy callers;
+   * workflow assignments are key-free descriptors resolved by Main only.
+   */
+  async saveWorkflowSettings(
+    input: DesktopModelWorkflowSelection,
+  ): Promise<DesktopModelWorkflowSelection> {
+    const parsed = DesktopModelWorkflowSelectionSchema.safeParse(input);
+    if (!parsed.success) throw new ProviderConfigMismatchError();
+    const previous = this.readSettings();
+    if (!previous) throw new ProviderConfigMismatchError();
+    let assignments: PersistedWorkflowAssignment[];
+    if (parsed.data.mode === "single") {
+      if (parsed.data.providerId !== previous.providerId) {
+        throw new ProviderConfigMismatchError();
+      }
+      assignments = [];
+    } else {
+      const providerIds = new Set(parsed.data.assignments.map(({ providerId }) => providerId));
+      if (providerIds.size !== 1) {
+        throw new ProviderConfigMismatchError();
+      }
+      if (!providerIds.has(previous.providerId)) {
+        throw new ProviderConfigMismatchError();
+      }
+      assignments = parsed.data.assignments.map((assignment) => {
+        const entry = getProviderCatalog().find(
+          ({ id }) => id === assignment.providerId,
+        );
+        if (!entry) throw new ProviderConfigMismatchError();
+        return {
+          role: assignment.role,
+          providerId: assignment.providerId,
+          model: assignment.model ?? entry.defaultModel,
+        };
+      });
+    }
+    const nextSettings: PersistedSettings = {
+      ...previous,
+      ...(parsed.data.mode === "single"
+        ? { workflowModel: parsed.data.model ?? previous.workflowModel ?? previous.model }
+        : { workflowModel: undefined }),
+      workflowAssignments:
+        assignments.length > 0 ? assignments : undefined,
+    };
+    this.writeSettings(nextSettings);
+    return parsed.data;
+  }
+
+  /**
+   * Resolve a renderer-safe workflow selection into a full config with
+   * credentials for every assigned role.  The single mode reuses the primary
+   * settings; collaborative mode resolves each role through the catalog and
+   * the persisted workflow assignments.
+   */
+  async resolveWorkflow(
+    input: DesktopModelWorkflowSelection,
+  ): Promise<ModelWorkflowConfig> {
+    const parsed = DesktopModelWorkflowSelectionSchema.safeParse(input);
+    if (!parsed.success) throw new ProviderConfigMismatchError();
+    if (parsed.data.mode === "single") {
+      const settings = this.readSettings();
+      const config = await this.resolvePrimaryConfig(
+        parsed.data.providerId,
+        parsed.data.model ?? settings?.workflowModel,
+      );
+      return ModelWorkflowConfigSchema.parse({
+        mode: "single",
+        provider: config,
+      });
+    }
+    const settings = this.readSettings();
+    const savedAssignments = settings?.workflowAssignments ?? [];
+    const byRole = new Map(
+      savedAssignments.map((assignment) => [assignment.role, assignment]),
+    );
+    const assignments = await Promise.all(
+      parsed.data.assignments.map(async (selection) => {
+        const saved = byRole.get(selection.role);
+        const model = selection.model?.trim() || saved?.model;
+        if (!model) throw new ProviderConfigMismatchError();
+        const provider = await this.resolveAssignmentConfig({
+          providerId: selection.providerId,
+          model,
+          ...(saved?.baseUrl ? { baseUrl: saved.baseUrl } : {}),
+          ...(saved?.credentialId ? { credentialId: saved.credentialId } : {}),
+        });
+        return { role: selection.role, provider };
+      }),
+    );
+    return ModelWorkflowConfigSchema.parse({
+      mode: "collaborative",
+      assignments,
+    });
+  }
+
+  private async resolvePrimaryConfig(
+    providerId: ProviderId,
+    modelOverride?: string,
+  ): Promise<ProviderConfig> {
+    const settings = this.readSettings();
+    if (!settings || settings.providerId !== providerId) {
+      throw new ProviderConfigMismatchError();
+    }
+    const entry = getProviderCatalog().find(({ id }) => id === providerId);
+    if (!entry) throw new ProviderConfigMismatchError();
+    const apiKey = this.getKey(settings) ?? "";
+    if (entry.requiresApiKey && !apiKey) {
+      throw new ProviderConfigMismatchError();
+    }
+    const provider = ProviderConfigSchema.safeParse({
+      kind: entry.kind,
+      model: modelOverride?.trim() || settings.model,
+      apiKey,
+      ...(settings.reasoningLevel && settings.reasoningLevel !== "off" ? { reasoningLevel: settings.reasoningLevel } : {}),
+      ...(entry.kind === "openai-compatible"
+        ? {
+            baseUrl: entry.baseUrlEditable
+              ? settings.baseUrl
+              : entry.baseUrl,
+          }
+        : {}),
+    });
+    if (!provider.success) throw new ProviderConfigMismatchError();
+    return provider.data;
+  }
+
+  private async resolveAssignmentConfig(
+    assignment: {
+      providerId: ProviderId;
+      model: string;
+      baseUrl?: string;
+      credentialId?: string;
+    },
+  ): Promise<ProviderConfig> {
+    const entry = getProviderCatalog().find(
+      ({ id }) => id === assignment.providerId,
+    );
+    if (!entry) throw new ProviderConfigMismatchError();
+    const primary = this.readSettings();
+    // Desktop stores one credential set. Never reuse it for a different
+    // provider or endpoint selected by a renderer workflow request.
+    if (!primary || primary.providerId !== assignment.providerId) {
+      throw new ProviderConfigMismatchError();
+    }
+    if (
+      entry.kind === "openai-compatible" &&
+      entry.baseUrlEditable &&
+      assignment.baseUrl !== undefined &&
+      assignment.baseUrl !== primary.baseUrl
+    ) {
+      throw new ProviderConfigMismatchError();
+    }
+    const apiKey = this.getKey(primary) ?? "";
+    if (entry.requiresApiKey && !apiKey) {
+      throw new ProviderConfigMismatchError();
+    }
+    const provider = ProviderConfigSchema.safeParse({
+      kind: entry.kind,
+      model: assignment.model,
+      apiKey,
+      ...(entry.kind === "openai-compatible"
+        ? {
+        baseUrl: entry.baseUrlEditable
+              ? primary.baseUrl
+              : entry.baseUrl,
+          }
+        : {}),
+    });
+    if (!provider.success) throw new ProviderConfigMismatchError();
+    return provider.data;
   }
 
   private toPersistedSettings(
@@ -400,6 +620,13 @@ export class ProviderVault {
         entry,
       );
       if (
+        values.workflowModel !== undefined &&
+        (typeof values.workflowModel !== "string" ||
+          !z.string().trim().min(1).max(200).safeParse(values.workflowModel).success)
+      ) {
+        return null;
+      }
+      if (
         values.credentialId !== undefined &&
         !CredentialIdSchema.safeParse(values.credentialId).success
       ) {
@@ -415,11 +642,17 @@ export class ProviderVault {
       }
       return {
         ...settings,
+        ...(typeof values.workflowModel === "string"
+          ? { workflowModel: values.workflowModel }
+          : {}),
         ...(typeof values.credentialId === "string"
           ? { credentialId: values.credentialId }
           : {}),
         ...(revokedCredentialIds ? { revokedCredentialIds } : {}),
         ...(revokedProviderIds ? { revokedProviderIds } : {}),
+        ...(Array.isArray(values.workflowAssignments)
+          ? { workflowAssignments: parseWorkflowAssignments(values.workflowAssignments) }
+          : {}),
       };
     } catch {
       return null;
@@ -626,6 +859,42 @@ function uniqueProviderIds(values: readonly ProviderId[]): ProviderId[] {
   return [...new Set(values)];
 }
 
+function parseWorkflowAssignments(
+  values: unknown,
+): readonly PersistedWorkflowAssignment[] {
+  if (!Array.isArray(values)) return [];
+  const parsed: PersistedWorkflowAssignment[] = [];
+  for (const item of values) {
+    if (typeof item !== "object" || item === null) continue;
+    const value = item as Record<string, unknown>;
+    const role = ModelRoleSchema.safeParse(value.role);
+    const providerId = ProviderIdSchema.safeParse(value.providerId);
+    if (!role.success || !providerId.success || typeof value.model !== "string") {
+      continue;
+    }
+    const entry = getProviderCatalog().find(({ id }) => id === providerId.data);
+    if (!entry) continue;
+    if (
+      value.baseUrl !== undefined &&
+      !CompatibleBaseUrlSchema.safeParse(value.baseUrl).success
+    ) {
+      continue;
+    }
+    const assignment: PersistedWorkflowAssignment = {
+      role: role.data,
+      providerId: providerId.data,
+      model: value.model,
+      ...(typeof value.baseUrl === "string" ? { baseUrl: value.baseUrl } : {}),
+      ...(typeof value.credentialId === "string" &&
+      CredentialIdSchema.safeParse(value.credentialId).success
+        ? { credentialId: value.credentialId }
+        : {}),
+    };
+    parsed.push(assignment);
+  }
+  return parsed;
+}
+
 function isFileNotFoundError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -634,4 +903,3 @@ function isFileNotFoundError(error: unknown): boolean {
     error.code === "ENOENT"
   );
 }
-

@@ -9,7 +9,7 @@ import { BackupService } from "./enterprise/backup-service";
 import { StructuredLogger, MetricsRegistry } from "./enterprise/observability";
 import { createAlertWebhookSink } from "./enterprise/alert-webhook";
 import { RetentionService } from "./enterprise/retention-service";
-import { resolveServerProvider } from "./enterprise/server-provider-config";
+import { resolveServerProvider, resolveServerWorkflow } from "./enterprise/server-provider-config";
 
 const enterpriseConfig = loadEnterpriseConfig();
 const logger = new StructuredLogger();
@@ -36,6 +36,11 @@ const runtime = createAutoNovelRuntime({
     const provider = resolveServerProvider(descriptor, enterpriseConfig.serverProviders);
     if (!provider) throw new Error("No server Provider matches the persisted descriptor");
     return provider;
+  },
+  resolvePersistedWorkflow: (descriptor) => {
+    const workflow = resolveServerWorkflow(descriptor, enterpriseConfig.serverProviders);
+    if (!workflow) throw new Error("No server Provider matches the persisted workflow");
+    return workflow;
   },
   workerOptions: { concurrency: enterpriseConfig.maxConcurrentRuns },
 });

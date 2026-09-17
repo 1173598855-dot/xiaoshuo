@@ -8,9 +8,10 @@ export class AutoNovelDeterministicProviderResolver implements ProviderResolver 
       kind: config.kind,
       async generate(input) {
         if (input.systemPrompt.includes("自动导演")) {
+          const requestedCount = Number(input.systemPrompt.match(/(?:恰好|给出)\s*(\d+)\s*(?:套|种)/)?.[1] ?? 3);
           return {
             text: JSON.stringify({
-              directions: [1, 2, 3].map((rank) => ({
+              directions: Array.from({ length: requestedCount }, (_, index) => index + 1).map((rank) => ({
                 title: `自动方向 ${rank}`,
                 logline: `围绕想法展开的主线 ${rank}`,
                 genre: "都市悬疑",
@@ -81,4 +82,3 @@ export class AutoNovelDeterministicProviderResolver implements ProviderResolver 
     };
   }
 }
-

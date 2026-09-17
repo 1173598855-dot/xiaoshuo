@@ -15,7 +15,10 @@ import {
   ProductionWorker,
   type ProductionWorkerOptions,
 } from "./services/production-worker";
-import type { PersistedProviderResolver } from "./services/production-service";
+import type {
+  PersistedProviderResolver,
+  PersistedWorkflowResolver,
+} from "./services/production-service";
 import { MemoryService } from "./services/memory-service";
 import { AuthoringService } from "./services/authoring-service";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
@@ -40,6 +43,8 @@ export interface AutoNovelRuntimeOptions {
   metrics?: MetricsRegistry;
   /** Resolve key-free persisted provider descriptors for server workers. */
   resolvePersistedProvider?: PersistedProviderResolver;
+  /** Resolve key-free persisted workflow envelopes for server workers. */
+  resolvePersistedWorkflow?: PersistedWorkflowResolver;
   /** Worker remains opt-in so existing desktop/unit-test runtimes stay deterministic. */
   workerOptions?: ProductionWorkerOptions;
 }
@@ -103,6 +108,7 @@ export function createAutoNovelRuntime(
       auditRepository,
       logger,
       resolvePersistedProvider: options.resolvePersistedProvider,
+      resolvePersistedWorkflow: options.resolvePersistedWorkflow,
     };
     const productionService = new ProductionService(shared);
     const productionWorker = new ProductionWorker(
@@ -110,6 +116,7 @@ export function createAutoNovelRuntime(
         productionRepository,
         productionService,
         resolvePersistedProvider: options.resolvePersistedProvider,
+        resolvePersistedWorkflow: options.resolvePersistedWorkflow,
         logger,
       },
       options.workerOptions,

@@ -1,4 +1,8 @@
 import type { ProviderConfig } from "../../shared/contracts";
+import {
+  type ModelWorkflowConfig,
+  resolveModelWorkflowProvider,
+} from "../../shared/auto-novel";
 import type {
   BookRepository} from "../repositories/book-repository";
 import {
@@ -47,7 +51,7 @@ export class DirectorService {
     try {
       output = parseStructuredProviderResult(
         result.text,
-        DirectorModelOutputSchema,
+        DirectorModelOutputSchema(book.directionCount),
       );
     } catch {
       throw new NormalizedProviderError(
@@ -57,7 +61,7 @@ export class DirectorService {
     }
 
     const ranks = new Set(output.directions.map(({ rank }) => rank));
-    if (ranks.size !== 3) {
+    if (ranks.size !== book.directionCount) {
       throw new NormalizedProviderError(
         "REQUEST_INVALID",
         "模型返回的方向编号必须互不重复。",
@@ -72,12 +76,27 @@ export class DirectorService {
       centralConflict: direction.centralConflict,
       endingDirection: direction.endingDirection,
       outlinePreview: direction.outlinePreview,
-      rank: direction.rank as 1 | 2 | 3,
+      rank: direction.rank as DirectionDraft["rank"],
     }));
     return this.dependencies.bookRepository.saveDirections(
       bookId,
       drafts,
       idempotencyKey,
+    );
+  }
+
+  /** Run direction generation with the director provider of a workflow. */
+  async generateDirectionsWithWorkflow(
+    bookId: string,
+    workflow: ModelWorkflowConfig,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<readonly StoryDirection[]> {
+    return this.generateDirections(
+      bookId,
+      resolveModelWorkflowProvider(workflow, "director"),
+      idempotencyKey,
+      signal,
     );
   }
 
@@ -89,4 +108,3 @@ export class DirectorService {
     );
   }
 }
-

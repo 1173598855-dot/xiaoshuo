@@ -2573,6 +2573,44 @@ body {
   padding: 20px;
 }
 
+.workflow-assignment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-assignment {
+  display: grid;
+  grid-template-columns: minmax(92px, .8fr) minmax(130px, 1fr) minmax(150px, 1.4fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-assignment strong {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.workflow-assignment input,
+.workflow-assignment select {
+  min-height: 38px;
+  min-width: 0;
+  padding: 7px 9px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+}
+
+@media (max-width: 620px) {
+  .workflow-assignment {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workflow-assignment strong {
+    grid-column: 1 / -1;
+  }
+}
+
 .form-field {
   display: grid;
   gap: 8px;

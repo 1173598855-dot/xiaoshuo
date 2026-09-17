@@ -10,6 +10,7 @@ interface CreativeHomeProps {
   onCreateIdea: (input: CreateBookInput, autoStart?: boolean) => void;
   onOpenBook: (book: Book) => void;
   onConfigureProvider: () => void;
+  onConfigureWorkflow: () => void;
 }
 
 export function CreativeHome({
@@ -19,6 +20,7 @@ export function CreativeHome({
   onCreateIdea,
   onOpenBook,
   onConfigureProvider,
+  onConfigureWorkflow,
 }: CreativeHomeProps) {
   return (
     <main className="creative-home">
@@ -36,6 +38,7 @@ export function CreativeHome({
             <Settings2 size={16} />
             模型设置
           </button>
+          <button className="ghost-button" type="button" onClick={onConfigureWorkflow}>工作流</button>
         </div>
       </header>
 
@@ -44,7 +47,7 @@ export function CreativeHome({
           <div className="stage-topline"><span>01</span><i /><span>IDEA → NOVEL</span></div>
           <span className="stage-label"><Sparkles size={14} /> 自动导演</span>
           <h2 id="idea-title">你只需要<br /><span>一个想法。</span></h2>
-          <p>AI 会替你完成开书、规划、分章、写作和审核。先给你三条完全不同的路，再让你挑一条走下去。</p>
+          <p>AI 会替你完成开书、规划、分章、写作和审核。先给你几条完全不同的路，再让你挑一条走下去。</p>
           <div className="stage-notes"><span>NO CARDS</span><span>NO BUSYWORK</span><span>JUST START</span></div>
         </div>
         <div className="idea-column">
@@ -98,9 +101,10 @@ function IdeaForm({
     { label: "东方幻想", idea: "落魄的纸扎匠发现，给死人烧的每一封信都会在第二天收到回信。", genre: "东方幻想", targetChapters: 16, targetChapterCharacters: 2_800, style: "克制、诡丽，用民俗细节推动人物选择。" },
   ];
   const [idea, setIdea] = useState("");
+  const [directionCount, setDirectionCount] = useState(3);
   const [selectedPreset, setSelectedPreset] = useState<(typeof presets)[number] | null>(null);
   return (
-    <form className="idea-form" onSubmit={(event) => { event.preventDefault(); if (idea.trim()) onSubmit({ idea: idea.trim(), ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, false); }}>
+    <form className="idea-form" onSubmit={(event) => { event.preventDefault(); if (idea.trim()) onSubmit({ idea: idea.trim(), directionCount, ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, false); }}>
       <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>START WITH A SENTENCE</span></div>
       <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
       <div className="idea-presets" aria-label="创作预设">
@@ -109,12 +113,15 @@ function IdeaForm({
           <button className={`preset-chip${selectedPreset?.label === preset.label ? " active" : ""}`} type="button" key={preset.label} disabled={busy} onClick={() => { setIdea(preset.idea); setSelectedPreset(preset); }}>{preset.label}</button>
         ))}
       </div>
+      <label className="direction-count-control" htmlFor="direction-count">方向数量
+        <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1)))} />
+      </label>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="idea-form-footer">
         <span><i className="status-dot" /> 一句话就够，细节交给导演</span>
         <div className="idea-form-actions">
           <button className="secondary-button" type="submit" disabled={busy || !idea.trim()}>{busy ? "处理中…" : "开始开书"}</button>
-          <button className="primary-button" type="button" disabled={busy || !idea.trim()} onClick={() => onSubmit({ idea: idea.trim(), ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, true)}><Plus size={17} />{busy ? "导演正在思考…" : "一键开写"}</button>
+          <button className="primary-button" type="button" disabled={busy || !idea.trim()} onClick={() => onSubmit({ idea: idea.trim(), directionCount, ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, true)}><Plus size={17} />{busy ? "导演正在思考…" : "一键开写"}</button>
         </div>
       </div>
     </form>

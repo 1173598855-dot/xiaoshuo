@@ -2,14 +2,18 @@ import { z } from "zod";
 
 import {
   CreateBookInputSchema,
+  DesktopModelWorkflowSelectionSchema,
   SelectDirectionInputSchema,
   ExportBookInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
   RewriteChapterInputSchema,
   UpdateChapterPlanInputSchema,
+  resolveModelWorkflowProvider,
+  type DesktopModelWorkflowSelection,
+  type ModelWorkflowConfig,
 } from "../../shared/auto-novel";
-import { ProviderIdSchema, type ApiError, type DesktopResult } from "../../shared/contracts";
+import { ProviderIdSchema, type ProviderId, type ApiError, type DesktopResult } from "../../shared/contracts";
 import { ReorderChapterPlansInputSchema, SearchQuerySchema, UpdateChapterPlansInputSchema } from "../../shared/authoring";
 import {
   MemoryFilterSchema,
@@ -26,34 +30,56 @@ import { AUTO_NOVEL_CHANNELS, type AutoNovelDesktopChannel } from "./auto-novel-
 import type { DesktopIpcMain } from "./handlers";
 
 const IdempotencyKeySchema = z.string().trim().min(1).max(200);
-const BookCreateRequestSchema = z
-  .object({
-    input: CreateBookInputSchema,
-    providerId: ProviderIdSchema,
-    idempotencyKey: IdempotencyKeySchema,
-  })
-  .strict();
-const SelectRequestSchema = SelectDirectionInputSchema.extend({
+
+/** Renderer sends either a single provider id or a collaborative workflow. */
+function withProviderOrWorkflow<
+  T extends z.ZodRawShape,
+>(shape: T) {
+  return z.union([
+    z.object({ ...shape, providerId: ProviderIdSchema }).strict(),
+    z
+      .object({ ...shape, workflow: DesktopModelWorkflowSelectionSchema })
+      .strict(),
+  ]);
+}
+type ProviderOrWorkflow = {
+  providerId: ProviderId;
+  workflow?: never;
+} | {
+  providerId?: never;
+  workflow: DesktopModelWorkflowSelection;
+};
+
+function toWorkflowSelection(
+  input: ProviderOrWorkflow,
+): DesktopModelWorkflowSelection {
+  return input.providerId !== undefined
+    ? { mode: "single", providerId: input.providerId }
+    : input.workflow;
+}
+
+const BookCreateRequestSchema = withProviderOrWorkflow({
+  input: CreateBookInputSchema,
+  idempotencyKey: IdempotencyKeySchema,
+});
+const SelectRequestSchema = withProviderOrWorkflow({
+  ...SelectDirectionInputSchema.shape,
   bookId: z.string().uuid(),
   directionId: z.string().uuid(),
-  providerId: ProviderIdSchema,
-}).strict();
-const ProductionStartRequestSchema = z
-  .object({
-    bookId: z.string().uuid(),
-    providerId: ProviderIdSchema,
-    idempotencyKey: IdempotencyKeySchema,
-    memoryContextConfig: MemoryContextConfigSchema.optional(),
-  })
-  .strict();
+});
+const ProductionStartRequestSchema = withProviderOrWorkflow({
+  bookId: z.string().uuid(),
+  idempotencyKey: IdempotencyKeySchema,
+  memoryContextConfig: MemoryContextConfigSchema.optional(),
+});
 const RunRequestSchema = z.object({ runId: z.string().uuid() }).strict();
-const ResumeRequestSchema = z
-  .object({ runId: z.string().uuid(), providerId: ProviderIdSchema })
-  .strict();
-const RewriteRequestSchema = RewriteChapterInputSchema.extend({
+const ResumeRequestSchema = withProviderOrWorkflow({
   runId: z.string().uuid(),
-  providerId: ProviderIdSchema,
-}).strict();
+});
+const RewriteRequestSchema = withProviderOrWorkflow({
+  ...RewriteChapterInputSchema.shape,
+  runId: z.string().uuid(),
+});
 const CandidateAcceptRequestSchema = z
   .object({ candidateId: z.string().uuid(), expectedRevision: z.number().int().nonnegative() })
   .strict();
@@ -75,7 +101,10 @@ const TimelineUpdateRequestSchema = UpdateChapterPlanInputSchema;
 export interface AutoNovelDesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
   readonly getServices: () => AutoNovelServices;
-  readonly providerVault: Pick<ProviderVault, "resolveGeneration">;
+  readonly providerVault: Pick<
+    ProviderVault,
+    "resolveGeneration" | "resolveWorkflow"
+  >;
   readonly authService?: DesktopAuthService;
   readonly isTrustedSender: (event: unknown) => boolean;
 }
@@ -89,11 +118,11 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.booksList, z.undefined(), () =>
     dependencies.getServices().bookRepository.listBooks(dependencies.authService?.currentUserId()),
   );
-  register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, providerId, idempotencyKey }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
     const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());
-    const provider = await resolveProvider(dependencies.providerVault, providerId);
-    const directions = await services.directorService.generateDirections(book.id, provider, idempotencyKey);
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    const directions = await services.directorService.generateDirectionsWithWorkflow(book.id, workflow, idempotencyKey);
     return { book: services.bookRepository.getBook(book.id).book, directions };
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
@@ -135,7 +164,8 @@ export function registerAutoNovelIpcHandlers(
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.timelinePreview, z.object({ bookId: z.string().uuid(), providerId: ProviderIdSchema }).strict(), async ({ bookId, providerId }) => {
     dependencies.authService?.assertBookAccess(bookId);
-    return dependencies.getServices().foundationService.previewOutline(bookId, await resolveProvider(dependencies.providerVault, providerId));
+    const workflow = await resolveWorkflow(dependencies.providerVault, { mode: "single", providerId });
+    return dependencies.getServices().foundationService.previewOutline(bookId, resolveModelWorkflowProvider(workflow, "director"));
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringSearch, z.object({ bookId: z.string().uuid(), query: SearchQuerySchema }).strict(), ({ bookId, query }) => {
     dependencies.authService?.assertBookAccess(bookId);
@@ -155,7 +185,7 @@ export function registerAutoNovelIpcHandlers(
       return dependencies.getServices().bookRepository.listDirections(bookId);
     },
   );
-  register(dependencies, AUTO_NOVEL_CHANNELS.directionsSelect, SelectRequestSchema, async ({ bookId, directionId, expectedBookRevision, providerId }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.directionsSelect, SelectRequestSchema, async ({ bookId, directionId, expectedBookRevision, ...rest }) => {
     dependencies.authService?.assertBookAccess(bookId);
     const services = dependencies.getServices();
     const currentDetails = services.bookRepository.getBook(bookId);
@@ -167,14 +197,16 @@ export function registerAutoNovelIpcHandlers(
       ["foundation-generating", "outline-generating"].includes(current.status)
       ? current
       : services.directorService.selectDirection(bookId, directionId, expectedBookRevision);
-    await services.foundationService.generate(book.id, await resolveProvider(dependencies.providerVault, providerId));
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    await services.foundationService.generate(book.id, resolveModelWorkflowProvider(workflow, "director"));
     return services.bookRepository.getBook(book.id);
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, providerId, idempotencyKey, memoryContextConfig }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionStart, ProductionStartRequestSchema, async ({ bookId, idempotencyKey, memoryContextConfig, ...rest }) => {
     dependencies.authService?.assertBookAccess(bookId);
     const services = dependencies.getServices();
     const run = services.productionRepository.createProductionRun(bookId, idempotencyKey, memoryContextConfig);
-    void services.productionService.start(run.id, await resolveProvider(dependencies.providerVault, providerId)).catch(() => undefined);
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    void services.productionService.start(run.id, workflow).catch(() => undefined);
     return run;
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionGet, RunRequestSchema, ({ runId }) => {
@@ -185,24 +217,26 @@ export function registerAutoNovelIpcHandlers(
     dependencies.authService?.assertRunAccess(runId);
     return dependencies.getServices().productionService.pause(runId);
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionResume, ResumeRequestSchema, async ({ runId, providerId }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionResume, ResumeRequestSchema, async ({ runId, ...rest }) => {
     dependencies.authService?.assertRunAccess(runId);
     const services = dependencies.getServices();
     const run = services.productionRepository.getRun(runId);
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
     void Promise.resolve()
       .then(async () => services.productionService.resume(
         runId,
-        await resolveProvider(dependencies.providerVault, providerId),
+        workflow,
       ))
       .catch(() => undefined);
     return run;
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.productionRewrite, RewriteRequestSchema, async ({ runId, providerId, instruction }) => {
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionRewrite, RewriteRequestSchema, async ({ runId, instruction, ...rest }) => {
     dependencies.authService?.assertRunAccess(runId);
     const services = dependencies.getServices();
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
     return services.productionService.rewriteCurrentChapter(
       runId,
-      await resolveProvider(dependencies.providerVault, providerId),
+      workflow,
       instruction,
     );
   });
@@ -278,18 +312,11 @@ export function registerAutoNovelIpcHandlers(
   };
 }
 
-async function resolveProvider(
-  vault: Pick<ProviderVault, "resolveGeneration">,
-  providerId: z.infer<typeof ProviderIdSchema>,
-) {
-  const result = await vault.resolveGeneration({
-    chapterId: "00000000-0000-4000-8000-000000000001",
-    expectedRevision: 0,
-    operation: "continue",
-    instruction: "auto-novel-production",
-    providerId,
-  });
-  return result.provider;
+async function resolveWorkflow(
+  vault: Pick<ProviderVault, "resolveGeneration" | "resolveWorkflow">,
+  selection: DesktopModelWorkflowSelection,
+): Promise<ModelWorkflowConfig> {
+  return vault.resolveWorkflow(selection);
 }
 
 function register<T extends z.ZodType>(

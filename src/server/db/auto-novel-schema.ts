@@ -11,6 +11,7 @@ const AUTO_NOVEL_SCHEMA = `
     genre TEXT NOT NULL DEFAULT '',
     target_chapters INTEGER NOT NULL DEFAULT 12 CHECK (target_chapters BETWEEN 1 AND 500),
     target_chapter_characters INTEGER NOT NULL DEFAULT 2500 CHECK (target_chapter_characters BETWEEN 200 AND 100000),
+    direction_count INTEGER NOT NULL DEFAULT 3 CHECK (direction_count BETWEEN 1 AND 12),
     style TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'directions-generating',
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
@@ -30,7 +31,7 @@ const AUTO_NOVEL_SCHEMA = `
     central_conflict TEXT NOT NULL,
     ending_direction TEXT NOT NULL,
     outline_preview_json TEXT NOT NULL,
-    rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 3),
+    rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 12),
     selected INTEGER NOT NULL DEFAULT 0 CHECK (selected IN (0, 1)),
     created_at TEXT NOT NULL,
     UNIQUE (book_id, rank)
@@ -194,6 +195,49 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   }
   if (!columns.some(({ name }) => name === "style")) {
     database.exec("ALTER TABLE books ADD COLUMN style TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columns.some(({ name }) => name === "direction_count")) {
+    database.exec("ALTER TABLE books ADD COLUMN direction_count INTEGER NOT NULL DEFAULT 3 CHECK (direction_count BETWEEN 1 AND 12)");
+  }
+  const directionColumns = database.prepare("PRAGMA table_xinfo(story_directions)").all() as Array<{ name: string }>;
+  const directionCheck = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'story_directions'")
+    .get() as { sql: string } | undefined;
+  if (
+    directionColumns.some(({ name }) => name === "rank") &&
+    directionCheck &&
+    /rank BETWEEN 1 AND 3/.test(directionCheck.sql)
+  ) {
+    // SQLite cannot alter an existing CHECK constraint; rebuild the table to
+    // allow ranks up to the configurable direction count (1..12).
+    database.exec(`
+      ALTER TABLE story_directions RENAME TO story_directions_legacy;
+      CREATE TABLE story_directions (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        logline TEXT NOT NULL,
+        genre TEXT NOT NULL,
+        promise TEXT NOT NULL,
+        central_conflict TEXT NOT NULL,
+        ending_direction TEXT NOT NULL,
+        outline_preview_json TEXT NOT NULL,
+        rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 12),
+        selected INTEGER NOT NULL DEFAULT 0 CHECK (selected IN (0, 1)),
+        created_at TEXT NOT NULL,
+        UNIQUE (book_id, rank)
+      ) STRICT;
+      INSERT INTO story_directions (
+        id, book_id, title, logline, genre, promise, central_conflict,
+        ending_direction, outline_preview_json, rank, selected, created_at
+      )
+      SELECT id, book_id, title, logline, genre, promise, central_conflict,
+             ending_direction, outline_preview_json, rank, selected, created_at
+      FROM story_directions_legacy;
+      DROP TABLE story_directions_legacy;
+      CREATE INDEX IF NOT EXISTS story_directions_book_idx
+        ON story_directions(book_id, rank);
+    `);
   }
   const foundationColumns = database.prepare("PRAGMA table_xinfo(book_foundations)").all() as Array<{ name: string }>;
   if (!foundationColumns.some(({ name }) => name === "locations_json")) {

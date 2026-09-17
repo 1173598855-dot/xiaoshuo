@@ -15,6 +15,9 @@ import {
 } from "../../shared/contracts";
 import type { DesktopDatabaseManager, DesktopRuntimeReader } from "../database-manager";
 import type { ProviderVault } from "../provider-vault";
+import {
+  DesktopModelWorkflowSelectionSchema,
+} from "../../shared/auto-novel";
 import type { DesktopAuthService } from "../desktop-auth";
 import { toPublicError } from "../../server/public-error";
 import { getProviderCatalog } from "../../server/providers/catalog";
@@ -40,7 +43,7 @@ export interface DesktopDialogAdapter {
 export interface DesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
   readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase" | "exportEncryptedDatabase">;
-  readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest">>;
+  readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest" | "getWorkflowSettings" | "saveWorkflowSettings">>;
   readonly authService: DesktopAuthService;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
   readonly dialogs: DesktopDialogAdapter;
@@ -76,6 +79,14 @@ export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies)
   });
   registerHandler(dependencies, DESKTOP_CHANNELS.providerGetSettings, EmptyInputSchema, () => dependencies.providerVault.getSettings());
   registerHandler(dependencies, DESKTOP_CHANNELS.providerSaveSettings, SaveProviderSettingsInputSchema.strict(), (input) => dependencies.providerVault.saveSettings(input));
+  registerHandler(dependencies, DESKTOP_CHANNELS.providerGetWorkflowSettings, EmptyInputSchema, async () => {
+    if (!dependencies.providerVault.getWorkflowSettings) throw new Error("模型工作流暂不可用。");
+    return dependencies.providerVault.getWorkflowSettings();
+  });
+  registerHandler(dependencies, DESKTOP_CHANNELS.providerSaveWorkflowSettings, DesktopModelWorkflowSelectionSchema, async (input) => {
+    if (!dependencies.providerVault.saveWorkflowSettings) throw new Error("模型工作流暂不可用。");
+    return dependencies.providerVault.saveWorkflowSettings(input);
+  });
   registerHandler(dependencies, DESKTOP_CHANNELS.providerClearKey, ProviderClearKeyRequestSchema, ({ providerId }) => dependencies.providerVault.clearKey(providerId));
   registerHandler(dependencies, DESKTOP_CHANNELS.databaseStatus, EmptyInputSchema, () => dependencies.databaseManager.initialize());
   registerHandler(dependencies, DESKTOP_CHANNELS.databaseImport, EmptyInputSchema, async () => {

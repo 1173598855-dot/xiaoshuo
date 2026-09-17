@@ -320,5 +320,59 @@ describe("ProductionService", () => {
     expect(paused.status).toBe("paused");
     expect(calls).toBe(1);
   });
-});
 
+  it("routes draft, review, and repair to their collaborative role providers", async () => {
+    const fixture = createFixture();
+    const calls: Array<{ role: string; kind: string; userPrompt?: string }> = [];
+    const writer = {
+      kind: "openai-compatible" as const,
+      async generate(input: { systemPrompt: string; userPrompt?: string }) {
+        calls.push({ role: "writer", kind: "writer", userPrompt: input.userPrompt });
+        return { text: "协作模式写作的正文。", usage: null };
+      },
+    };
+    const reviewer = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        calls.push({ role: "reviewer", kind: "reviewer" });
+        return { text: JSON.stringify({ status: "passed", findings: [] }), usage: null };
+      },
+    };
+    const repairer = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        calls.push({ role: "repairer", kind: "repairer" });
+        return { text: "修复后的正文。", usage: null };
+      },
+    };
+    const service = new ProductionService({
+      ...fixture,
+      providerResolver: {
+        resolve: (config: { model: string }) =>
+          config.model === "writer-model"
+            ? writer
+            : config.model === "reviewer-model"
+              ? reviewer
+              : repairer,
+      },
+    });
+    const workflow = {
+      mode: "collaborative" as const,
+      assignments: [
+        { role: "writer" as const, provider: { kind: "openai-compatible" as const, model: "writer-model", apiKey: "k", baseUrl: "https://models.example.test/v1" } },
+        { role: "reviewer" as const, provider: { kind: "openai-compatible" as const, model: "reviewer-model", apiKey: "k", baseUrl: "https://models.example.test/v1" } },
+        { role: "repairer" as const, provider: { kind: "openai-compatible" as const, model: "repairer-model", apiKey: "k", baseUrl: "https://models.example.test/v1" } },
+      ],
+    };
+
+    const completed = await service.start(fixture.run.id, workflow);
+
+    expect(completed.status).toBe("completed");
+    expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(2);
+    expect(calls.some(({ role }) => role === "writer")).toBe(true);
+    expect(calls.some(({ role }) => role === "reviewer")).toBe(true);
+    // The draft text written by the writer must reach the accepted chapter.
+    const accepted = fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters[0];
+    expect(accepted.content).toBe("协作模式写作的正文。");
+  });
+});

@@ -8,6 +8,8 @@ export const DESKTOP_CHANNELS = {
   providerTestConnection: "provider:test-connection",
   providerGetSettings: "provider:get-settings",
   providerSaveSettings: "provider:save-settings",
+  providerGetWorkflowSettings: "provider:get-workflow-settings",
+  providerSaveWorkflowSettings: "provider:save-workflow-settings",
   providerClearKey: "provider:clear-key",
   authActivationStatus: "auth:activation-status",
   authActivate: "auth:activate",

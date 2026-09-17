@@ -17,9 +17,15 @@ import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema }
 import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
 import { UsageSummarySchema } from "../../shared/authoring";
 import {
+  ModelWorkflowConfigSchema,
+} from "../../shared/auto-novel";
+import {
   clearProviderSettings,
   loadProviderSettings,
   storeProviderSettings,
+  loadWorkflowSettings,
+  storeWorkflowSettings,
+  clearWorkflowSettings,
 } from "../provider-session";
 import { loadAccessToken } from "../access-token";
 import {
@@ -119,17 +125,31 @@ export function createHttpTransport(
         ...(parsed.baseUrl !== undefined ? { baseUrl: parsed.baseUrl } : {}),
       };
       storeProviderSettings(settings);
+      clearWorkflowSettings();
       return toWebSettings(settings);
+    },
+    async getWorkflowSettings() {
+      const workflow = loadWorkflowSettings();
+      if (!workflow) return null;
+      const parsed = ModelWorkflowConfigSchema.safeParse(workflow);
+      return parsed.success ? parsed.data : null;
+    },
+    async saveWorkflowSettings(input) {
+      const workflow = ModelWorkflowConfigSchema.parse(input);
+      storeWorkflowSettings(workflow);
+      return workflow;
     },
     async clearProviderKey(providerId, options) {
       const settings = loadProviderSettings();
       if (!settings || settings.providerId !== providerId) return null;
       if (!options?.preserveSettings) {
         clearProviderSettings();
+        clearWorkflowSettings();
         return null;
       }
       const clearedSettings = { ...settings, apiKey: "" };
       storeProviderSettings(clearedSettings);
+      clearWorkflowSettings();
       return toWebSettings(clearedSettings);
     },
     async getActivationStatus() {
@@ -227,6 +247,3 @@ function toWebSettings(settings: {
     ...(settings.baseUrl !== undefined ? { baseUrl: settings.baseUrl } : {}),
   };
 }
-
-
-

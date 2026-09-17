@@ -50,9 +50,18 @@ describe("desktop production resume", () => {
         }),
       },
     } as unknown as AutoNovelServices;
-    const providerVault: Pick<ProviderVault, "resolveGeneration"> = {
+    const providerVault: Pick<ProviderVault, "resolveGeneration" | "resolveWorkflow"> = {
       resolveGeneration: vi.fn(async (input) => ({
         ...input,
+        provider: {
+          kind: "openai-compatible" as const,
+          model: "test-model",
+          apiKey: "sk-main-only-secret",
+          baseUrl: "https://models.example.test/v1",
+        },
+      })),
+      resolveWorkflow: vi.fn(async () => ({
+        mode: "single" as const,
         provider: {
           kind: "openai-compatible" as const,
           model: "test-model",

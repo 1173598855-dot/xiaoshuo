@@ -20,6 +20,57 @@ const workspace = {
 };
 
 describe("HTTP workbench transport", () => {
+  it("keeps a complete workflow in the browser session without sending it to the server", async () => {
+    const transport = createHttpTransport();
+    const workflow = {
+      mode: "collaborative" as const,
+      assignments: [
+        {
+          role: "writer" as const,
+          provider: {
+            kind: "openai-compatible" as const,
+            model: "writer-model",
+            apiKey: "sk-session-workflow",
+            baseUrl: "https://models.example.test/v1",
+          },
+        },
+        {
+          role: "reviewer" as const,
+          provider: {
+            kind: "openai-compatible" as const,
+            model: "review-model",
+            apiKey: "sk-session-workflow",
+            baseUrl: "https://models.example.test/v1",
+          },
+        },
+      ],
+    };
+
+    await expect(transport.saveWorkflowSettings(workflow)).resolves.toEqual(workflow);
+    await expect(transport.getWorkflowSettings()).resolves.toEqual(workflow);
+    expect(sessionStorage.getItem("xiaoyi.model-workflow.v1")).toContain("sk-session-workflow");
+  });
+
+  it("invalidates the browser workflow when its provider session changes", async () => {
+    const transport = createHttpTransport();
+    await transport.saveWorkflowSettings({
+      mode: "single",
+      provider: {
+        kind: "openai-compatible",
+        model: "writer-model",
+        apiKey: "sk-old",
+        baseUrl: "https://models.example.test/v1",
+      },
+    });
+    await transport.saveProviderSettings({
+      providerId: "custom",
+      model: "new-model",
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "sk-new",
+    });
+    await expect(transport.getWorkflowSettings()).resolves.toBeNull();
+  });
+
   it("keeps the browser transport on the existing HTTP endpoint", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify(workspace), {

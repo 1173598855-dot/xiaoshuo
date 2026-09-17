@@ -17,14 +17,22 @@ import type {
 import type { UsageSummary } from "../../shared/authoring";
 import type { AuthSessionResult, LoginInput, RegisterAccountInput } from "../../shared/auth";
 import type { DesktopActivationStatus } from "../../shared/desktop-invitation";
+import type {
+  DesktopModelWorkflowSelection,
+  ModelWorkflowConfig,
+} from "../../shared/auto-novel";
 
 export type ClientProviderSettings =
   | (ProviderSettings & { platform: "desktop"; apiKey?: never })
   | (Omit<ProviderSettings, "hasApiKey"> & {
       platform: "web";
       hasApiKey: boolean;
-      apiKey: string;
-    });
+    apiKey: string;
+  });
+
+export type ClientWorkflowSettings =
+  | ModelWorkflowConfig
+  | DesktopModelWorkflowSelection;
 
 export class ApiRequestError extends Error {
   constructor(
@@ -60,6 +68,10 @@ export interface WorkbenchTransport {
   saveProviderSettings(
     input: SaveProviderSettingsInput,
   ): Promise<ClientProviderSettings>;
+  getWorkflowSettings(): Promise<ClientWorkflowSettings | null>;
+  saveWorkflowSettings(
+    input: ClientWorkflowSettings,
+  ): Promise<ClientWorkflowSettings>;
   clearProviderKey(
     providerId: ProviderId,
     options?: ClearProviderKeyOptions,
@@ -77,4 +89,3 @@ export interface WorkbenchTransport {
   onDesktopCommand(listener: (command: DesktopCommand) => void): () => void;
   resolveClose(result: { requestId: string; canClose: boolean }): Promise<void>;
 }
-

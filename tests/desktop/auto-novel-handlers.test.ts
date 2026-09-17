@@ -36,7 +36,7 @@ function createFixture(isTrustedSender = true) {
       updateChapterPlan: vi.fn(),
       listDirections: vi.fn(() => []),
     },
-    directorService: { generateDirections: vi.fn(async () => []) },
+    directorService: { generateDirectionsWithWorkflow: vi.fn(async () => []), generateDirections: vi.fn(async () => []) },
     foundationService: { generate: vi.fn(async () => undefined) },
     productionRepository: {
       getCandidate: vi.fn(() => ({ id: "candidate" })),
@@ -57,6 +57,15 @@ function createFixture(isTrustedSender = true) {
   const providerVault = {
     resolveGeneration: vi.fn(async (input) => ({
       ...input,
+      provider: {
+        kind: "openai-compatible" as const,
+        model: "test-model",
+        apiKey: "sk-main-only-secret",
+        baseUrl: "https://models.example.test/v1",
+      },
+    })),
+    resolveWorkflow: vi.fn(async () => ({
+      mode: "single" as const,
       provider: {
         kind: "openai-compatible" as const,
         model: "test-model",
@@ -87,11 +96,11 @@ describe("auto novel desktop IPC", () => {
     );
 
     expect(result).toMatchObject({ ok: true, data: { book } });
-    expect(providerVault.resolveGeneration).toHaveBeenCalledWith(
-      expect.objectContaining({ providerId: "custom" }),
+    expect(providerVault.resolveWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "single", providerId: "custom" }),
     );
     expect(JSON.stringify(result)).not.toContain("sk-main-only-secret");
-    expect(services.directorService.generateDirections).toHaveBeenCalledOnce();
+    expect(services.directorService.generateDirectionsWithWorkflow).toHaveBeenCalledOnce();
   });
 
   it("rejects an untrusted sender before invoking services", async () => {

@@ -18,9 +18,9 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
         <span className="stage-progress"><span className="stage-progress-active" /> 01 / 03 · 自动导演</span>
       </header>
       <section className="direction-intro">
-        <span className="stage-label"><Compass size={14} /> 三条路，选一条</span>
+        <span className="stage-label"><Compass size={14} /> {directions.length} 条路，选一条</span>
         <h1>你的故事可以这样开始</h1>
-        <p>这些不是角色卡。它们是三种整本书的命运：选定以后，AI 会自动把它写下去。</p>
+        <p>这些不是角色卡。它们是 {directions.length} 种整本书的命运：选定以后，AI 会自动把它写下去。</p>
         {onAutoSelect ? <button className="primary-button direction-auto-button" type="button" disabled={busy || directions.length === 0} onClick={onAutoSelect}><Play size={15} /> 自动选第一方向并开写</button> : null}
       </section>
       <section className="direction-grid" aria-label="故事方向">

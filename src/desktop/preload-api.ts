@@ -26,6 +26,9 @@ import {
 } from "../shared/auth";
 import { type DesktopActivationStatus } from "../shared/desktop-invitation";
 import type { AutoNovelDesktopApiV2 } from "./auto-novel-preload-api-v2";
+import type {
+  DesktopModelWorkflowSelection,
+} from "../shared/auto-novel";
 
 export interface DesktopIpcRenderer {
   invoke(channel: string, input?: unknown): Promise<unknown>;
@@ -48,6 +51,8 @@ export interface DesktopApi {
     testConnection(input: TestProviderConnectionInput): Promise<DesktopResult<ProviderConnectionResult>>;
     getSettings(): Promise<DesktopResult<ProviderSettings | null>>;
     saveSettings(input: SaveProviderSettingsInput): Promise<DesktopResult<ProviderSettings>>;
+    getWorkflowSettings(): Promise<DesktopResult<DesktopModelWorkflowSelection | null>>;
+    saveWorkflowSettings(input: DesktopModelWorkflowSelection): Promise<DesktopResult<DesktopModelWorkflowSelection>>;
     clearKey(providerId: ProviderId): Promise<DesktopResult<ProviderSettings | null>>;
   };
   readonly auth: {
@@ -84,6 +89,8 @@ export function createPreloadApi(ipcRenderer: DesktopIpcRenderer): DesktopApi {
       testConnection: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerTestConnection, input),
       getSettings: () => invoke(ipcRenderer, DESKTOP_CHANNELS.providerGetSettings),
       saveSettings: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerSaveSettings, input),
+      getWorkflowSettings: () => invoke(ipcRenderer, DESKTOP_CHANNELS.providerGetWorkflowSettings),
+      saveWorkflowSettings: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerSaveWorkflowSettings, input),
       clearKey: (providerId) => invoke(ipcRenderer, DESKTOP_CHANNELS.providerClearKey, { providerId }),
     },
     auth: {

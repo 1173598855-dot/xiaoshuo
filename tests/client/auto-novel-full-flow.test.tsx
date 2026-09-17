@@ -12,6 +12,7 @@ const baseBook = {
   genre: "都市悬疑",
   targetChapters: 1,
   targetChapterCharacters: 2500,
+  directionCount: 3,
   status: "directions-generating" as const,
   revision: 0,
   selectedDirectionId: null,

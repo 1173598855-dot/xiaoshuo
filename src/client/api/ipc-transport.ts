@@ -11,6 +11,7 @@ import {
   WorkspaceSchema,
   type ProviderId,
 } from "../../shared/contracts";
+import { DesktopModelWorkflowSelectionSchema } from "../../shared/auto-novel";
 import type { DesktopApi } from "../../desktop/preload-api";
 import { AuthSessionResultSchema, LoginInputSchema, RegisterAccountInputSchema } from "../../shared/auth";
 import { DesktopActivationStatusSchema } from "../../shared/desktop-invitation";
@@ -73,6 +74,19 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
         ProviderSettingsSchema,
       );
       return { ...settings, platform: "desktop" as const };
+    },
+    async getWorkflowSettings() {
+      return parseResult(
+        await api.provider.getWorkflowSettings(),
+        DesktopModelWorkflowSelectionSchema.nullable(),
+      );
+    },
+    async saveWorkflowSettings(input) {
+      const selection = DesktopModelWorkflowSelectionSchema.parse(input);
+      return parseResult(
+        await api.provider.saveWorkflowSettings(selection),
+        DesktopModelWorkflowSelectionSchema,
+      );
     },
     async clearProviderKey(providerId: ProviderId) {
       const settings = parseResult(
@@ -179,4 +193,3 @@ function statusForCode(code: string): number {
   if (code === "REQUEST_INVALID") return 400;
   return 500;
 }
-

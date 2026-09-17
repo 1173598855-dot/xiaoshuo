@@ -9,8 +9,15 @@ import {
   type ProviderCatalogEntry,
   type ProviderConfig,
 } from "../shared/contracts";
+import {
+  ModelWorkflowConfigSchema,
+  DesktopModelWorkflowSelectionSchema,
+  type ModelWorkflowConfig,
+  type DesktopModelWorkflowSelection,
+} from "../shared/auto-novel";
 
 export const PROVIDER_SESSION_KEY = "xiaoyi.provider-config.v1";
+export const WORKFLOW_SESSION_KEY = "xiaoyi.model-workflow.v1";
 
 const SessionProviderSettingsSchema = z.object({
   providerId: ProviderIdSchema,
@@ -23,6 +30,34 @@ const SessionProviderSettingsSchema = z.object({
 export type SessionProviderSettings = z.infer<
   typeof SessionProviderSettingsSchema
 >;
+
+const SessionWorkflowSchema = z.union([
+  ModelWorkflowConfigSchema,
+  DesktopModelWorkflowSelectionSchema,
+]);
+export type SessionWorkflowSettings =
+  | ModelWorkflowConfig
+  | DesktopModelWorkflowSelection;
+
+export function loadWorkflowSettings(): SessionWorkflowSettings | null {
+  try {
+    const value = sessionStorage.getItem(WORKFLOW_SESSION_KEY);
+    if (!value) return null;
+    return SessionWorkflowSchema.parse(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export function storeWorkflowSettings(
+  settings: SessionWorkflowSettings,
+): void {
+  sessionStorage.setItem(WORKFLOW_SESSION_KEY, JSON.stringify(settings));
+}
+
+export function clearWorkflowSettings(): void {
+  sessionStorage.removeItem(WORKFLOW_SESSION_KEY);
+}
 
 export interface ResolvedProviderSettings {
   entry: ProviderCatalogEntry;
