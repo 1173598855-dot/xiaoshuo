@@ -514,6 +514,24 @@ describe("auto-novel HTTP app", () => {
     expect(JSON.stringify(body)).not.toContain("sk-test-only");
   });
 
+  it("returns only resumable book ids for startup recovery", async () => {
+    const { app } = fixture();
+    const response = await app.request("/api/books/recoverable");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+  });
+
+  it("returns recoverable details in one startup recovery response", async () => {
+    const { app, bookRepository, productionRepository } = fixture();
+    const book = bookRepository.createBook({ idea: "需要启动恢复的故事" });
+    productionRepository.createRun(book.id, "production", "recoverable-details");
+    const response = await app.request("/api/books/recoverable/details");
+    expect(response.status).toBe(200);
+    const body = await response.json() as Array<{ book: { id: string }; run: { status: string } | null }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ book: { id: book.id }, run: { status: "queued" } });
+  });
+
   it("accepts a collaborative model workflow when creating a book", async () => {
     const { app, provider } = fixture();
     const directorProvider = {

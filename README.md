@@ -12,7 +12,7 @@
 - 每一章先保存为候选，审核通过后才通过原子 accept 事务进入正式正文；
 - 生产任务会保存检查点，关闭应用后可以继续；
 - 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；方向数量可在 1–12 之间调整；
-- “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 解析凭据。桌面端协作角色必须使用同一已保存 Provider，可分别选择不同模型；
+- “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；
 - 生产室支持暂停、继续、停止、失败阶段重试和重新选择当前模型；应用启动时会自动恢复排队中/运行中的任务；
 - 生产室支持对当前章节发起 AI 重写，重写结果仍然是隔离候选，必须审核并采纳后才会进入正文；
 - Provider 设置支持关闭/低/中/高思考等级；OpenAI、Anthropic、Google 和 OpenAI-compatible 会按各自原生参数映射，不支持时安全降级为关闭。
@@ -83,6 +83,8 @@ npm run dev
 | `POST` | `/api/providers/models` | 拉取兼容端点模型列表 |
 | `POST` | `/api/providers/test` | 用最小生成请求测试 Provider 连接 |
 | `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并按 `directionCount` 生成 1–12 个方向；请求可携带 `provider` 或 `workflow` |
+| `GET` | `/api/books/recoverable` | 返回启动恢复所需的可恢复作品 ID（不返回密钥或正文） |
+| `GET` | `/api/books/recoverable/details` | 一次返回启动恢复需要的作品详情（不返回密钥） |
 | `GET` | `/api/books/:bookId` | 读取作品、基础设定、章纲和任务摘要 |
 | `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |
 | `POST` | `/api/books/:bookId/directions/:directionId/select` | 选择方向并生成基础设定与章纲 |
@@ -123,7 +125,7 @@ npm run desktop:dist
 npm run desktop:package:test
 ```
 
-安装包输出到 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。桌面版 Renderer 只通过白名单 IPC 访问 Main；API Key 由 Main 的 Electron `safeStorage`/Windows DPAPI Vault 管理，Renderer 永远不会收到已保存密钥。桌面工作流设置同样通过白名单 IPC 持久化为无密钥选择；协作角色必须使用当前已保存 Provider。
+安装包输出到 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。桌面版 Renderer 只通过白名单 IPC 访问 Main；API Key 由 Main 的 Electron `safeStorage`/Windows DPAPI Vault 管理，Renderer 永远不会收到已保存密钥。桌面工作流设置同样通过白名单 IPC 持久化为无密钥选择；跨 Provider 的角色使用各自已保存的 credentialId，Renderer 不接收密钥。
 
 桌面数据库位于 Electron 用户数据目录：
 

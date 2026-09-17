@@ -1717,29 +1717,6 @@ export function toPersistedWorkflowDescriptor(
   };
 }
 
-/** Resolve a persisted key-free workflow envelope back into a full config. */
-export function resolvePersistedWorkflow(
-  descriptor: PersistedWorkflowDescriptor,
-  resolver: (provider: PersistedProviderDescriptor) => ProviderConfig | Promise<ProviderConfig>,
-): Promise<ModelWorkflowConfig> {
-  if (descriptor.mode === "single") {
-    return Promise.resolve(descriptor.provider).then((provider) =>
-      ProviderConfigSchema.parse(provider),
-    ).then(async (provider) =>
-      Promise.resolve(resolver(provider)).then((resolved) => ({
-        mode: "single" as const,
-        provider: resolved,
-      })),
-    );
-  }
-  return Promise.all(
-    descriptor.assignments.map(async (assignment) => ({
-      role: assignment.role,
-      provider: await resolver(assignment.provider),
-    })),
-  ).then((assignments) => ({ mode: "collaborative" as const, assignments }));
-}
-
 export function parsePersistedProviderDescriptor(
   value: string | null | undefined,
 ): PersistedProviderDescriptor | null {

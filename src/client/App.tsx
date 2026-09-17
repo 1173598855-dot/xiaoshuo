@@ -110,17 +110,25 @@ export function App() {
       // Rehydrate the most recently touched production run before showing the
       // home screen. The run is persisted, so a renderer refresh or app restart
       // must not make an in-progress book look lost.
-      const candidates = await Promise.all(
-        nextBooks
-          .filter((book) => book.selectedDirectionId !== null)
-          .map(async (book) => {
+      let candidates: Array<BookDetails | null>;
+      if (autoApi.listRecoverableBookDetails) {
+        candidates = [...await autoApi.listRecoverableBookDetails()];
+      } else {
+        const recoverableIds = autoApi.listRecoverableBookIds
+          ? await autoApi.listRecoverableBookIds()
+          : nextBooks
+              .filter((book) => book.selectedDirectionId !== null)
+              .map((book) => book.id);
+        candidates = await Promise.all(
+          recoverableIds.map(async (bookId) => {
             try {
-              return await autoApi.getBook(book.id);
+              return await autoApi.getBook(bookId);
             } catch {
               return null;
             }
           }),
-      );
+        );
+      }
       const recoverable = candidates
         .filter((details): details is BookDetails => details !== null && details.run !== null)
         .filter(({ run }) => run !== null && ["queued", "running", "paused", "failed"].includes(run.status));

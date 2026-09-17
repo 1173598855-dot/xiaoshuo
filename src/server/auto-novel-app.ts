@@ -582,6 +582,18 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     context.json(dependencies.bookRepository.listBooks(currentRequestContext()?.userId)),
   );
 
+  app.get("/api/books/recoverable", (context) =>
+    context.json(
+      dependencies.bookRepository.listRecoverableBookIds(currentRequestContext()?.userId),
+    ),
+  );
+
+  app.get("/api/books/recoverable/details", (context) =>
+    context.json(
+      dependencies.bookRepository.listRecoverableBookDetails(currentRequestContext()?.userId),
+    ),
+  );
+
   app.post("/api/books", async (context) => {
     const parsed = await parseJson(context.req.raw, CreateBookRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
@@ -887,11 +899,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       parsed.data.memoryContextConfig,
     );
     if (dependencies.productionWorker) {
-      dependencies.productionWorker.enqueue(
-        run.id,
-        resolveModelWorkflowProvider(workflow, "writer"),
-      );
-      dependencies.productionWorker.setWorkflow?.(run.id, workflow);
+      dependencies.productionWorker.enqueueWorkflow(run.id, workflow);
     } else {
       void dependencies.productionService
         .start(run.id, workflow)
@@ -923,11 +931,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const workflow = toWorkflow(parsed.data);
     const run = dependencies.productionRepository.getRun(context.req.param("runId"));
     if (dependencies.productionWorker) {
-      dependencies.productionWorker.enqueue(
-        run.id,
-        resolveModelWorkflowProvider(workflow, "writer"),
-      );
-      dependencies.productionWorker.setWorkflow?.(run.id, workflow);
+      dependencies.productionWorker.enqueueWorkflow(run.id, workflow);
     } else {
       void Promise.resolve()
         .then(() => dependencies.productionService.resume(

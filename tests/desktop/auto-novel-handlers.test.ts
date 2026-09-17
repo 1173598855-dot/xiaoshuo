@@ -32,6 +32,8 @@ function createFixture(isTrustedSender = true) {
     bookRepository: {
       createBook: vi.fn(() => book),
       listBooks: vi.fn(() => [book]),
+      listRecoverableBookIds: vi.fn(() => [book.id]),
+      listRecoverableBookDetails: vi.fn(() => [{ book, directions: [], foundation: null, chapterPlans: [], run: null }]),
       getBook: vi.fn(() => ({ book, directions: [], foundation: null, chapterPlans: [], run: null })),
       updateChapterPlan: vi.fn(),
       listDirections: vi.fn(() => []),
@@ -109,6 +111,20 @@ describe("auto novel desktop IPC", () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: "INTERNAL_ERROR" } });
     expect(services.bookRepository.listBooks).not.toHaveBeenCalled();
+  });
+
+  it("exposes a validated recoverable-id channel for startup recovery", async () => {
+    const { handlers, services } = createFixture();
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksRecoverableList)?.({}, undefined);
+    expect(result).toMatchObject({ ok: true, data: ["9ac0d75d-1dc2-42b5-bebe-4671f58ed79c"] });
+    expect(services.bookRepository.listRecoverableBookIds).toHaveBeenCalledOnce();
+  });
+
+  it("exposes recoverable details through one validated channel", async () => {
+    const { handlers, services } = createFixture();
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksRecoverableDetails)?.({}, undefined);
+    expect(result).toMatchObject({ ok: true, data: [{ book: { id: "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c" } }] });
+    expect(services.bookRepository.listRecoverableBookDetails).toHaveBeenCalledOnce();
   });
 
   it("exposes memory only through fixed validated channels", async () => {

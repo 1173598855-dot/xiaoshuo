@@ -54,6 +54,18 @@ describe("BookRepository", () => {
     expect(repository.listBooks()).toHaveLength(1);
   });
 
+  it("lists only books with resumable production runs", () => {
+    const { repository, database } = createRepository();
+    const book = repository.createBook({ idea: "需要恢复的故事" });
+    const production = new ProductionRepository(database);
+    const run = production.createRun(book.id, "production", "recoverable-run");
+
+    expect(repository.listRecoverableBookIds()).toEqual([book.id]);
+    expect(repository.listRecoverableBookDetails().map(({ book: detailsBook }) => detailsBook.id)).toEqual([book.id]);
+    production.updateRun(run.id, { status: "completed", stage: "accept" });
+    expect(repository.listRecoverableBookIds()).toEqual([]);
+  });
+
   it("saves exactly three directions and returns them on an idempotent retry", () => {
     const { repository } = createRepository();
     const book = repository.createBook({ idea: "一座会在凌晨移动的城市" });

@@ -1,5 +1,7 @@
 export const AUTO_NOVEL_CHANNELS = {
   booksList: "auto-novel:books-list",
+  booksRecoverableList: "auto-novel:books-recoverable-list",
+  booksRecoverableDetails: "auto-novel:books-recoverable-details",
   booksCreate: "auto-novel:books-create",
   booksGet: "auto-novel:books-get",
   timelineUpdate: "auto-novel:timeline-update",

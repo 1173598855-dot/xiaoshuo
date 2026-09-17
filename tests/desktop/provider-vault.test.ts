@@ -803,6 +803,107 @@ describe("desktop provider vault", () => {
       ],
     })).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INVALID" });
   });
+
+  it("resolves independently configured credentials for cross-provider roles", async () => {
+    const { vault, paths } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-deepseek-role",
+    });
+    await vault.saveSettings({
+      providerId: "openai",
+      model: "gpt-role",
+      apiKey: "sk-openai-role",
+    });
+
+    await vault.saveWorkflowSettings({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "openai", model: "gpt-role" },
+      ],
+    });
+    const workflow = await vault.resolveWorkflow({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "openai", model: "gpt-role" },
+      ],
+    });
+
+    expect(workflow.mode).toBe("collaborative");
+    if (workflow.mode === "collaborative") {
+      expect(workflow.assignments.find(({ role }) => role === "writer")?.provider).toMatchObject({ apiKey: "sk-deepseek-role" });
+      expect(workflow.assignments.find(({ role }) => role === "reviewer")?.provider).toMatchObject({ apiKey: "sk-openai-role" });
+    }
+    expect(readFileSync(paths.settingsPath, "utf8")).not.toContain("sk-deepseek-role");
+    expect(readFileSync(paths.settingsPath, "utf8")).not.toContain("sk-openai-role");
+    expect(readFileSync(paths.vaultPath)).not.toContain(Buffer.from("sk-deepseek-role"));
+    expect(readFileSync(paths.vaultPath)).not.toContain(Buffer.from("sk-openai-role"));
+
+    const restarted = new ProviderVault(paths, fakeSafeStorage);
+    const restored = await restarted.resolveWorkflow({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "openai", model: "gpt-role" },
+      ],
+    });
+    expect(restored.mode === "collaborative" ? restored.assignments.map(({ provider }) => provider.apiKey).sort() : []).toEqual([
+      "sk-deepseek-role",
+      "sk-openai-role",
+    ]);
+  });
+
+  it("allows a fixed no-key provider beside a configured keyed provider", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "sk-deepseek-role",
+    });
+    await vault.saveWorkflowSettings({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "ollama", model: "qwen3:8b" },
+      ],
+    });
+
+    const workflow = await vault.resolveWorkflow({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "ollama", model: "qwen3:8b" },
+      ],
+    });
+    expect(workflow.mode === "collaborative" ? workflow.assignments.find(({ role }) => role === "reviewer")?.provider : null).toMatchObject({
+      kind: "openai-compatible",
+      apiKey: "",
+      baseUrl: "http://127.0.0.1:11434/v1",
+    });
+  });
+
+  it("clears a workflow that references a revoked secondary provider credential", async () => {
+    const { vault } = createVault();
+    await vault.saveSettings({ providerId: "deepseek", model: "deepseek-chat", apiKey: "sk-deepseek-role" });
+    await vault.saveSettings({ providerId: "openai", model: "gpt-role", apiKey: "sk-openai-role" });
+    await vault.saveWorkflowSettings({
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", providerId: "deepseek", model: "deepseek-chat" },
+        { role: "reviewer", providerId: "openai", model: "gpt-role" },
+      ],
+    });
+
+    await vault.clearKey("deepseek");
+
+    await expect(vault.getWorkflowSettings()).resolves.toEqual({
+      mode: "single",
+      providerId: "openai",
+    });
+  });
 });
 
 function createVault(): {

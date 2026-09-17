@@ -43,6 +43,8 @@ export type AutoNovelDesktopProviderSelection =
 export interface AutoNovelDesktopApiV2 {
   readonly books: {
     list(): Promise<DesktopResult<readonly Book[]>>;
+    listRecoverableIds(): Promise<DesktopResult<readonly string[]>>;
+    listRecoverableDetails(): Promise<DesktopResult<readonly BookDetails[]>>;
     create(input: {
       input: CreateBookInput;
       providerId?: ProviderId;
@@ -110,6 +112,8 @@ export function createAutoNovelPreloadApiV2(
   return {
     books: {
       list: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksList),
+      listRecoverableIds: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableList),
+      listRecoverableDetails: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableDetails),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
       updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),

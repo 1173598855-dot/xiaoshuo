@@ -261,6 +261,26 @@ export class BookRepository {
     return rows.map(toBook);
   }
 
+  /** Return only book ids whose production run can be resumed after startup. */
+  listRecoverableBookIds(ownerUserId?: string): readonly string[] {
+    const ownerClause = ownerUserId ? " AND b.owner_user_id = ?" : "";
+    const rows = this.database
+      .prepare(
+        `SELECT DISTINCT b.id
+           FROM books b
+           JOIN production_runs r ON r.book_id = b.id AND r.kind = 'production'
+          WHERE r.status IN ('queued', 'running', 'paused', 'failed')
+            ${ownerClause}
+          ORDER BY r.updated_at DESC, b.updated_at DESC, b.id`,
+      )
+      .all(...(ownerUserId ? [ownerUserId] : [])) as Array<{ id: string }>;
+    return rows.map(({ id }) => id);
+  }
+
+  listRecoverableBookDetails(ownerUserId?: string): readonly BookDetails[] {
+    return this.listRecoverableBookIds(ownerUserId).map((id) => this.getBook(id));
+  }
+
   getBook(bookId: string): BookDetails {
     const book = this.getBookSummary(bookId);
     const directions = this.getDirections(bookId);
@@ -768,6 +788,3 @@ function toRun(row: RunRow) {
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
-
-
-

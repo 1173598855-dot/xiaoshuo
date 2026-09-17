@@ -89,6 +89,8 @@ export type AutoNovelRunDetails = z.infer<typeof RunDetailsSchema>;
 
 export interface AutoNovelApi {
   listBooks(): Promise<readonly Book[]>;
+  listRecoverableBookIds?(): Promise<readonly string[]>;
+  listRecoverableBookDetails?(): Promise<readonly BookDetails[]>;
   createBook(
     input: CreateBookInput,
     provider: AutoNovelProviderInput,
@@ -152,6 +154,16 @@ export function createAutoNovelApi(
   return {
     async listBooks() {
       return z.array(BookSchema).parse(await requestJson(fetchImpl, "/api/books"));
+    },
+    async listRecoverableBookIds() {
+      return z.array(z.string().uuid()).parse(
+        await requestJson(fetchImpl, "/api/books/recoverable"),
+      );
+    },
+    async listRecoverableBookDetails() {
+      return z.array(BookDetailsSchema).parse(
+        await requestJson(fetchImpl, "/api/books/recoverable/details"),
+      );
     },
     async createBook(input, provider, idempotencyKey) {
       const parsedInput = CreateBookInputSchema.parse(input);

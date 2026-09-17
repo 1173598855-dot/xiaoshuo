@@ -118,6 +118,12 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.booksList, z.undefined(), () =>
     dependencies.getServices().bookRepository.listBooks(dependencies.authService?.currentUserId()),
   );
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRecoverableList, z.undefined(), () =>
+    dependencies.getServices().bookRepository.listRecoverableBookIds(dependencies.authService?.currentUserId()),
+  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRecoverableDetails, z.undefined(), () =>
+    dependencies.getServices().bookRepository.listRecoverableBookDetails(dependencies.authService?.currentUserId()),
+  );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
     const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());

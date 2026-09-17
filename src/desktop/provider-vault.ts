@@ -56,8 +56,18 @@ interface PersistedSettings {
   credentialId?: string;
   revokedCredentialIds?: readonly string[];
   revokedProviderIds?: readonly ProviderId[];
+  /** Key-free settings for providers previously configured in this account. */
+  providerProfiles?: Partial<Record<ProviderId, PersistedProviderProfile>>;
   /** Optional collaborative-model workflow persisted key-free alongside the primary settings. */
   workflowAssignments?: readonly PersistedWorkflowAssignment[];
+}
+
+interface PersistedProviderProfile {
+  readonly providerId: ProviderId;
+  readonly model: string;
+  readonly reasoningLevel?: ReasoningLevel;
+  readonly baseUrl?: string;
+  readonly credentialId?: string;
 }
 
 interface PersistedWorkflowAssignment {
@@ -139,7 +149,7 @@ export class ProviderVault {
         ...(model ? { model } : {}),
       })),
     });
-    return parsed.success && parsed.data.mode === "collaborative" && new Set(parsed.data.assignments.map(({ providerId }) => providerId)).size === 1
+    return parsed.success
       ? parsed.data
       : { mode: "single", providerId: settings.providerId };
   }
@@ -158,17 +168,18 @@ export class ProviderVault {
     const settings = this.readSettings();
     let fallbackApiKey: string | undefined;
     if (entry?.kind === "openai-compatible" && settings) {
+      const profile = this.getProviderProfiles(settings)[parsed.data.providerId];
       const requestedBaseUrl = entry.baseUrlEditable
         ? parsed.data.baseUrl
         : entry.baseUrl;
       const savedBaseUrl = entry.baseUrlEditable
-        ? settings.baseUrl
+        ? profile?.baseUrl
         : entry.baseUrl;
       if (
-        settings.providerId === parsed.data.providerId &&
+        profile &&
         requestedBaseUrl === savedBaseUrl
       ) {
-        fallbackApiKey = this.getKey(settings);
+        fallbackApiKey = this.getProfileKey(settings, profile);
       }
     }
 
@@ -184,13 +195,18 @@ export class ProviderVault {
     const entry = getProviderCatalog().find(({ id }) => id === parsed.data.providerId);
     if (!entry) throw new ProviderConfigMismatchError();
     const saved = this.readSettings();
+    const savedProfile = saved
+      ? this.getProviderProfiles(saved)[parsed.data.providerId]
+      : undefined;
     const sameEndpoint =
-      saved?.providerId === parsed.data.providerId &&
+      savedProfile !== undefined &&
       (entry.kind !== "openai-compatible" ||
         (entry.baseUrlEditable
-          ? saved.baseUrl === parsed.data.baseUrl
+          ? savedProfile.baseUrl === parsed.data.baseUrl
           : parsed.data.baseUrl === undefined));
-    const fallbackApiKey = sameEndpoint && saved ? this.getKey(saved) : undefined;
+    const fallbackApiKey = sameEndpoint && saved && savedProfile
+      ? this.getProfileKey(saved, savedProfile)
+      : undefined;
     return resolveProviderConnectionConfig(parsed.data, fallbackApiKey);
   }
 
@@ -212,17 +228,22 @@ export class ProviderVault {
     const previousSettings = this.readSettings();
     const vaultSnapshot = this.captureVaultSnapshot();
     const baseSettings = this.toPersistedSettings(parsedInput.data, catalogEntry);
+    const previousProfiles = previousSettings
+      ? this.getProviderProfiles(previousSettings)
+      : {};
     const preparedCredential = this.prepareCredential(
       parsedInput.data,
       baseSettings,
       previousSettings,
     );
     const credentialId = preparedCredential.credentialId;
+    const sameProvider = previousSettings?.providerId === baseSettings.providerId;
+    const previousProviderCredentialId = previousProfiles[baseSettings.providerId]?.credentialId;
     const revokedCredentialIds = uniqueStrings([
       ...(previousSettings?.revokedCredentialIds ?? []),
-      ...(previousSettings?.credentialId &&
-      previousSettings.credentialId !== credentialId
-        ? [previousSettings.credentialId]
+      ...(sameProvider && previousProviderCredentialId &&
+      previousProviderCredentialId !== credentialId
+        ? [previousProviderCredentialId]
         : []),
     ]);
     const revokedProviderIds = uniqueProviderIds([
@@ -234,11 +255,19 @@ export class ProviderVault {
         : []),
       ...(credentialId ? [] : [baseSettings.providerId]),
     ]);
+    const currentProfile: PersistedProviderProfile = {
+      ...baseSettings,
+      ...(credentialId ? { credentialId } : {}),
+    };
     const nextSettings: PersistedSettings = {
       ...baseSettings,
       ...(credentialId ? { credentialId } : {}),
       ...(revokedCredentialIds.length ? { revokedCredentialIds } : {}),
       ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
+      providerProfiles: {
+        ...previousProfiles,
+        [baseSettings.providerId]: currentProfile,
+      },
     };
 
     try {
@@ -266,32 +295,47 @@ export class ProviderVault {
 
   async clearKey(providerId: ProviderId): Promise<ProviderSettings | null> {
     const settings = this.readSettings();
-    if (!settings || settings.providerId !== providerId) {
+    if (!settings) {
       return null;
     }
-
+    const profiles = this.getProviderProfiles(settings);
+    const profile = profiles[providerId];
+    if (!profile) return null;
     const revokedCredentialIds = uniqueStrings([
       ...(settings.revokedCredentialIds ?? []),
-      ...(settings.credentialId ? [settings.credentialId] : []),
+      ...(profile.credentialId ? [profile.credentialId] : []),
     ]);
-    const revokedProviderIds = settings.credentialId
+    const revokedProviderIds = profile.credentialId
       ? settings.revokedProviderIds ?? []
-      : uniqueProviderIds([
-          ...(settings.revokedProviderIds ?? []),
-          providerId,
-        ]);
+      : uniqueProviderIds([...(settings.revokedProviderIds ?? []), providerId]);
+    const clearedProfile: PersistedProviderProfile = {
+      providerId: profile.providerId,
+      model: profile.model,
+      ...(profile.reasoningLevel ? { reasoningLevel: profile.reasoningLevel } : {}),
+      ...(profile.baseUrl ? { baseUrl: profile.baseUrl } : {}),
+    };
+    const workflowUsesClearedProvider = settings.workflowAssignments?.some(
+      (assignment) => assignment.providerId === providerId,
+    ) ?? false;
     const nextSettings: PersistedSettings = {
       ...settings,
-      workflowModel: undefined,
-      workflowAssignments: undefined,
-      ...(settings.credentialId ? {} : { credentialId: undefined }),
+      ...(settings.providerId === providerId || workflowUsesClearedProvider
+        ? {
+            workflowModel: undefined,
+            workflowAssignments: undefined,
+            credentialId: undefined,
+          }
+        : {}),
       ...(revokedCredentialIds.length ? { revokedCredentialIds } : {}),
       ...(revokedProviderIds.length ? { revokedProviderIds } : {}),
+      providerProfiles: {
+        ...profiles,
+        [providerId]: clearedProfile,
+      },
     };
-    delete nextSettings.credentialId;
     this.writeSettings(nextSettings);
-    if (settings.credentialId) {
-      this.sessionKeys.delete(settings.credentialId);
+    if (profile.credentialId) {
+      this.sessionKeys.delete(profile.credentialId);
     }
     this.pruneCredentialsBestEffort(nextSettings);
     return this.toPublicSettings(nextSettings);
@@ -369,24 +413,32 @@ export class ProviderVault {
       }
       assignments = [];
     } else {
-      const providerIds = new Set(parsed.data.assignments.map(({ providerId }) => providerId));
-      if (providerIds.size !== 1) {
-        throw new ProviderConfigMismatchError();
-      }
-      if (!providerIds.has(previous.providerId)) {
-        throw new ProviderConfigMismatchError();
-      }
+      const profiles = this.getProviderProfiles(previous);
       assignments = parsed.data.assignments.map((assignment) => {
         const entry = getProviderCatalog().find(
           ({ id }) => id === assignment.providerId,
         );
         if (!entry) throw new ProviderConfigMismatchError();
+        const profile = profiles[assignment.providerId];
+        if (
+          !profile &&
+          (entry.requiresApiKey || entry.baseUrlEditable || !entry.baseUrl)
+        ) {
+          throw new ProviderConfigMismatchError();
+        }
         return {
           role: assignment.role,
           providerId: assignment.providerId,
           model: assignment.model ?? entry.defaultModel,
+          ...(profile?.baseUrl ? { baseUrl: profile.baseUrl } : {}),
+          ...(profile?.credentialId ? { credentialId: profile.credentialId } : {}),
         };
       });
+      await Promise.all(
+        assignments.map((assignment) =>
+          this.resolveAssignmentConfig(assignment),
+        ),
+      );
     }
     const nextSettings: PersistedSettings = {
       ...previous,
@@ -452,24 +504,27 @@ export class ProviderVault {
     modelOverride?: string,
   ): Promise<ProviderConfig> {
     const settings = this.readSettings();
-    if (!settings || settings.providerId !== providerId) {
+    const profile = settings
+      ? this.getProviderProfiles(settings)[providerId]
+      : undefined;
+    if (!settings || !profile) {
       throw new ProviderConfigMismatchError();
     }
     const entry = getProviderCatalog().find(({ id }) => id === providerId);
     if (!entry) throw new ProviderConfigMismatchError();
-    const apiKey = this.getKey(settings) ?? "";
+    const apiKey = this.getProfileKey(settings, profile) ?? "";
     if (entry.requiresApiKey && !apiKey) {
       throw new ProviderConfigMismatchError();
     }
     const provider = ProviderConfigSchema.safeParse({
       kind: entry.kind,
-      model: modelOverride?.trim() || settings.model,
+      model: modelOverride?.trim() || profile.model,
       apiKey,
-      ...(settings.reasoningLevel && settings.reasoningLevel !== "off" ? { reasoningLevel: settings.reasoningLevel } : {}),
+      ...(profile.reasoningLevel && profile.reasoningLevel !== "off" ? { reasoningLevel: profile.reasoningLevel } : {}),
       ...(entry.kind === "openai-compatible"
         ? {
             baseUrl: entry.baseUrlEditable
-              ? settings.baseUrl
+              ? profile.baseUrl
               : entry.baseUrl,
           }
         : {}),
@@ -490,21 +545,27 @@ export class ProviderVault {
       ({ id }) => id === assignment.providerId,
     );
     if (!entry) throw new ProviderConfigMismatchError();
-    const primary = this.readSettings();
-    // Desktop stores one credential set. Never reuse it for a different
-    // provider or endpoint selected by a renderer workflow request.
-    if (!primary || primary.providerId !== assignment.providerId) {
+    const settings = this.readSettings();
+    if (!settings) {
+      throw new ProviderConfigMismatchError();
+    }
+    const profile = this.getProviderProfiles(settings)[assignment.providerId];
+    if (!profile && (entry.requiresApiKey || entry.baseUrlEditable || !entry.baseUrl)) {
+      throw new ProviderConfigMismatchError();
+    }
+    if (!profile && entry.kind !== "openai-compatible") {
       throw new ProviderConfigMismatchError();
     }
     if (
+      profile &&
       entry.kind === "openai-compatible" &&
       entry.baseUrlEditable &&
       assignment.baseUrl !== undefined &&
-      assignment.baseUrl !== primary.baseUrl
+      assignment.baseUrl !== profile.baseUrl
     ) {
       throw new ProviderConfigMismatchError();
     }
-    const apiKey = this.getKey(primary) ?? "";
+    const apiKey = profile ? this.getProfileKey(settings, profile) ?? "" : "";
     if (entry.requiresApiKey && !apiKey) {
       throw new ProviderConfigMismatchError();
     }
@@ -514,8 +575,8 @@ export class ProviderVault {
       apiKey,
       ...(entry.kind === "openai-compatible"
         ? {
-        baseUrl: entry.baseUrlEditable
-              ? primary.baseUrl
+            baseUrl: entry.baseUrlEditable
+              ? profile?.baseUrl
               : entry.baseUrl,
           }
         : {}),
@@ -556,25 +617,28 @@ export class ProviderVault {
     nextSettings: PersistedSettings,
     previousSettings: PersistedSettings | null,
   ): { credentialId?: string; wroteCredential: boolean } {
-    const sameProvider = previousSettings?.providerId === nextSettings.providerId;
-    const sameEndpoint =
-      nextSettings.providerId !== "custom" ||
-      previousSettings?.baseUrl === nextSettings.baseUrl;
+    const profiles = previousSettings
+      ? this.getProviderProfiles(previousSettings)
+      : {};
+    const existingProfile = profiles[nextSettings.providerId];
+    const sameEndpoint = existingProfile
+      ? this.profileEndpointMatches(nextSettings, existingProfile)
+      : false;
     if (input.apiKey !== undefined) {
       const credentialId = randomUUID();
       this.saveCredential(credentialId, input.apiKey);
       return { credentialId, wroteCredential: true };
     }
-    if (!previousSettings || !sameProvider || !sameEndpoint) {
+    if (!existingProfile || !sameEndpoint) {
       return { wroteCredential: false };
     }
-    if (previousSettings.credentialId) {
+    if (existingProfile.credentialId) {
       return {
-        credentialId: previousSettings.credentialId,
+        credentialId: existingProfile.credentialId,
         wroteCredential: false,
       };
     }
-    const legacyKey = this.getKey(previousSettings);
+    const legacyKey = this.getProfileKey(previousSettings!, existingProfile);
     if (!legacyKey) {
       return { wroteCredential: false };
     }
@@ -640,6 +704,10 @@ export class ProviderVault {
       ) {
         return null;
       }
+      const providerProfiles = parseProviderProfiles(values.providerProfiles);
+      if (values.providerProfiles !== undefined && !providerProfiles) {
+        return null;
+      }
       return {
         ...settings,
         ...(typeof values.workflowModel === "string"
@@ -650,6 +718,7 @@ export class ProviderVault {
           : {}),
         ...(revokedCredentialIds ? { revokedCredentialIds } : {}),
         ...(revokedProviderIds ? { revokedProviderIds } : {}),
+        ...(providerProfiles ? { providerProfiles } : {}),
         ...(Array.isArray(values.workflowAssignments)
           ? { workflowAssignments: parseWorkflowAssignments(values.workflowAssignments) }
           : {}),
@@ -673,27 +742,60 @@ export class ProviderVault {
     this.writeAtomically(this.settingsPath(), JSON.stringify(settings));
   }
 
-  private getKey(settings: PersistedSettings): string | undefined {
-    if (!this.safeStorage.isEncryptionAvailable()) {
-      return settings.credentialId &&
-        !settings.revokedCredentialIds?.includes(settings.credentialId)
-        ? this.sessionKeys.get(settings.credentialId)
-        : undefined;
+  private getProviderProfiles(
+    settings: PersistedSettings,
+  ): Partial<Record<ProviderId, PersistedProviderProfile>> {
+    const profiles = { ...(settings.providerProfiles ?? {}) };
+    profiles[settings.providerId] = {
+      providerId: settings.providerId,
+      model: settings.model,
+      ...(settings.reasoningLevel ? { reasoningLevel: settings.reasoningLevel } : {}),
+      ...(settings.baseUrl ? { baseUrl: settings.baseUrl } : {}),
+      ...(settings.credentialId ? { credentialId: settings.credentialId } : {}),
+    };
+    return profiles;
+  }
+
+  private profileEndpointMatches(
+    settings: PersistedSettings,
+    profile: PersistedProviderProfile,
+  ): boolean {
+    const entry = getProviderCatalog().find(({ id }) => id === profile.providerId);
+    if (!entry) return false;
+    if (entry.kind !== "openai-compatible" || !entry.baseUrlEditable) {
+      return true;
     }
-    if (settings.credentialId) {
-      if (settings.revokedCredentialIds?.includes(settings.credentialId)) {
+    return profile.baseUrl === settings.baseUrl;
+  }
+
+  private getProfileKey(
+    settings: PersistedSettings,
+    profile: PersistedProviderProfile,
+  ): string | undefined {
+    if (profile.credentialId) {
+      if (settings.revokedCredentialIds?.includes(profile.credentialId)) {
         return undefined;
+      }
+      if (!this.safeStorage.isEncryptionAvailable()) {
+        return this.sessionKeys.get(profile.credentialId);
       }
       const vault = this.readEncryptedVault();
       return vault.version === 2
-        ? vault.credentials[settings.credentialId]
+        ? vault.credentials[profile.credentialId]
         : undefined;
     }
-    if (settings.revokedProviderIds?.includes(settings.providerId)) {
+    // Legacy v1 provider-key entries are only valid for the active profile;
+    // never use a stale provider-id key for a different workflow role.
+    if (profile.providerId !== settings.providerId || settings.revokedProviderIds?.includes(profile.providerId)) {
       return undefined;
     }
     const vault = this.readEncryptedVault();
-    return vault.version === 1 ? vault.keys[settings.providerId] : undefined;
+    return vault.version === 1 ? vault.keys[profile.providerId] : undefined;
+  }
+
+  private getKey(settings: PersistedSettings): string | undefined {
+    const profile = this.getProviderProfiles(settings)[settings.providerId];
+    return profile ? this.getProfileKey(settings, profile) : undefined;
   }
 
   private saveCredential(credentialId: string, apiKey: string): void {
@@ -718,9 +820,15 @@ export class ProviderVault {
       if (vault.version !== 2) {
         return;
       }
+      const activeCredentialIds = new Set(
+        Object.values(this.getProviderProfiles(settings))
+          .map((profile) => profile?.credentialId)
+          .filter((id): id is string => id !== undefined)
+          .filter((id) => !settings.revokedCredentialIds?.includes(id)),
+      );
       const credentials = Object.fromEntries(
-        Object.entries(vault.credentials).filter(
-          ([credentialId]) => credentialId === settings.credentialId,
+        Object.entries(vault.credentials).filter(([credentialId]) =>
+          activeCredentialIds.has(credentialId),
         ),
       );
       this.writeEncryptedVault({ version: 2, credentials });
@@ -849,6 +957,58 @@ function parseProviderIds(value: unknown): ProviderId[] | undefined {
   return parsed.every((item) => item.success)
     ? uniqueProviderIds(parsed.map((item) => item.data))
     : undefined;
+}
+
+function parseProviderProfiles(
+  value: unknown,
+): Partial<Record<ProviderId, PersistedProviderProfile>> | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  if (Object.keys(value).length > getProviderCatalog().length) return null;
+  const profiles: Partial<Record<ProviderId, PersistedProviderProfile>> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const providerId = ProviderIdSchema.safeParse(key);
+    if (!providerId.success || typeof raw !== "object" || raw === null) {
+      return null;
+    }
+    const profile = raw as Record<string, unknown>;
+    if (
+      profile.providerId !== providerId.data ||
+      typeof profile.model !== "string" ||
+      !z.string().trim().min(1).max(200).safeParse(profile.model).success
+    ) {
+      return null;
+    }
+    const entry = getProviderCatalog().find(({ id }) => id === providerId.data);
+    if (!entry) return null;
+    if (profile.baseUrl !== undefined && !CompatibleBaseUrlSchema.safeParse(profile.baseUrl).success) {
+      return null;
+    }
+    if (profile.credentialId !== undefined && !CredentialIdSchema.safeParse(profile.credentialId).success) {
+      return null;
+    }
+    if (profile.reasoningLevel !== undefined && !ReasoningLevelSchema.safeParse(profile.reasoningLevel).success) {
+      return null;
+    }
+    const parsedBase = {
+      providerId: providerId.data,
+      model: profile.model,
+      ...(profile.reasoningLevel ? { reasoningLevel: profile.reasoningLevel as ReasoningLevel } : {}),
+      ...(typeof profile.baseUrl === "string" ? { baseUrl: profile.baseUrl } : {}),
+      ...(typeof profile.credentialId === "string" ? { credentialId: profile.credentialId } : {}),
+    } satisfies PersistedProviderProfile;
+    if (
+      (entry.kind === "openai-compatible" && entry.baseUrlEditable && !parsedBase.baseUrl) ||
+      (entry.kind === "openai-compatible" && !entry.baseUrlEditable && parsedBase.baseUrl !== undefined) ||
+      (entry.kind !== "openai-compatible" && parsedBase.baseUrl !== undefined)
+    ) {
+      return null;
+    }
+    profiles[providerId.data] = parsedBase;
+  }
+  return profiles;
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

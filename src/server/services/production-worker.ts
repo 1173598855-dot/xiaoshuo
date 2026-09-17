@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { ProviderConfig } from "../../shared/contracts";
-import type { ModelWorkflowConfig } from "../../shared/auto-novel";
+import {
+  resolveModelWorkflowProvider,
+  type ModelWorkflowConfig,
+} from "../../shared/auto-novel";
 import {
   PersistedProviderUnavailableError,
   type PersistedProviderResolver,
@@ -208,17 +211,28 @@ export class ProductionWorker {
     return this.dependencies.productionRepository.getRun(runId);
   }
 
-  /**
-   * Attach a full model workflow to an enqueued run.  Only the key-free
-   * workflow descriptor is persisted; credentials stay in the worker memory
-   * and are injected at execution time.
-   */
-  setWorkflow(runId: string, workflow: ModelWorkflowConfig): void {
+  /** Bind a complete workflow before waking the worker, so it cannot start on
+   * the writer fallback between separate enqueue/setWorkflow calls. */
+  enqueueWorkflow(
+    runId: string,
+    workflow: ModelWorkflowConfig,
+  ): ReturnType<ProductionRepository["getRun"]> {
+    const run = this.dependencies.productionRepository.getRun(runId);
+    if (run.kind !== "production") {
+      throw new Error("Only production runs can be enqueued by ProductionWorker");
+    }
     this.workflows.set(runId, workflow);
     this.dependencies.productionRepository.setWorkflowDescriptor(
       runId,
       toPersistedWorkflowDescriptor(workflow),
     );
+    this.dependencies.productionRepository.setMaxRetries(runId, this.maxRetries);
+    this.providerConfigs.set(runId, resolveModelWorkflowProvider(workflow, "writer"));
+    if (["paused", "failed"].includes(run.status)) {
+      this.dependencies.productionRepository.queueRun(runId);
+    }
+    this.wake();
+    return this.dependencies.productionRepository.getRun(runId);
   }
 
   /** Queue a paused/failed run for an explicit retry and optionally update its provider. */

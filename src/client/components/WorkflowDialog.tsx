@@ -96,9 +96,11 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
         const draft = assignments[role];
         const entry = providers.find((item) => item.id === draft.providerId);
         if (!entry || !draft.model.trim()) throw new Error(`${roleLabels[role]}需要选择服务商和模型。`);
-        if (entry.id !== settings?.providerId) throw new Error("浏览器协作模式目前要求所有角色使用同一 Provider，以避免复用错误凭据。");
+        if (entry.id !== settings?.providerId && (entry.requiresApiKey || entry.baseUrlEditable || !entry.baseUrl)) {
+          throw new Error("需要 API Key 或自定义地址的 Provider 必须先在模型设置中单独配置；可直接跨选无密钥固定地址 Provider。");
+        }
         const config: ProviderConfig = entry.kind === "openai-compatible"
-          ? { kind: entry.kind, model: draft.model.trim(), apiKey: primary.apiKey, baseUrl: primary.kind === "openai-compatible" ? primary.baseUrl : entry.baseUrl ?? "" }
+          ? { kind: entry.kind, model: draft.model.trim(), apiKey: entry.id === settings?.providerId ? primary.apiKey : "", baseUrl: entry.id === settings?.providerId && primary.kind === "openai-compatible" ? primary.baseUrl : entry.baseUrl ?? "" }
           : { kind: entry.kind, model: draft.model.trim(), apiKey: primary.apiKey };
         return { role, provider: config };
       });
@@ -125,7 +127,7 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
           ) : (
             <div className="workflow-assignment-list">
               {MODEL_ROLES.map((role) => <div className="workflow-assignment" key={role}><strong>{roleLabels[role]}</strong><select aria-label={`${roleLabels[role]}服务商`} value={assignments[role].providerId} onChange={(event) => updateAssignment(role, "providerId", event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select><input aria-label={`${roleLabels[role]}模型 ID`} value={assignments[role].model} onChange={(event) => updateAssignment(role, "model", event.target.value)} placeholder="模型 ID" /></div>)}
-              <small className="muted-label">至少配置两个角色；桌面端凭据由 Main 进程安全解析。</small>
+              <small className="muted-label">至少配置两个角色；需密钥的跨 Provider 角色先在模型设置中分别保存凭据。</small>
             </div>
           )}
           {error ? <p className="form-error" role="alert">{error}</p> : null}

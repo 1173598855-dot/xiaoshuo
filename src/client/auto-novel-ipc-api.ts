@@ -48,6 +48,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     async listBooks() {
       return parseResult(await api.books.list(), z.array(BookSchema));
     },
+    async listRecoverableBookIds() {
+      return parseResult(await api.books.listRecoverableIds(), z.array(z.string().uuid()));
+    },
+    async listRecoverableBookDetails() {
+      return parseResult(await api.books.listRecoverableDetails(), z.array(BookDetailsSchema));
+    },
     async createBook(input, provider, idempotencyKey) {
       return parseResult(
         await api.books.create({

@@ -11,7 +11,7 @@
 3. 保持既有不可破坏约束：
    - 候选先审后采纳；只有 accept 事务写入正式正文。
    - 作品 / 章节 revision 冲突保护；generation / context 冻结语义不变。
-   - API Key 不进入 SQLite、日志、候选、备份、导出或公开响应；桌面端 Main-only Vault 边界不变，Renderer 只传 providerId、role 和 model，不传密钥；协作角色必须使用同一已保存 Provider，避免跨 Provider 复用凭据。
+   - API Key 不进入 SQLite、日志、候选、备份、导出或公开响应；桌面端 Main-only Vault 边界不变，Renderer 只传 providerId、role 和 model，不传密钥；跨 Provider 的角色通过各自已保存的 credentialId 解析，需密钥或自定义地址的 Provider 必须先单独配置。
    - Web / Electron IPC 白名单边界不被绕过。
 4. 同步更新共享 Zod 契约、HTTP API / Electron IPC、客户端 UI、服务端编排、必要迁移、测试、README 和实施计划。
 5. 完成后以项目质量门禁全体通过为验收证据，提交中文开发说明并推送 main。
@@ -58,3 +58,10 @@ git diff --check
 - [x] README / 实施计划更新。
 - [x] 全量质量门禁 + 桌面发布门禁 + git diff --check。
 - [x] 提交中文开发说明并推送 main。
+
+## 后续审查修复
+
+- [x] ProductionWorker 原子工作流入队，避免唤醒竞态丢失 collaborative 配置。
+- [x] 删除误把无密钥 descriptor 当完整 ProviderConfig 解析的辅助函数。
+- [x] 启动恢复通过 `/api/books/recoverable/details` 与白名单 IPC 一次读取可恢复作品详情，避免客户端逐作品请求。
+- [x] Desktop Vault 按 Provider 保存无密钥 profile 索引与独立 credentialId；跨 Provider 角色解析不复用错误密钥。

@@ -7,6 +7,7 @@ import { ProductionRepository } from "../../src/server/repositories/production-r
 import { ProductionWorker } from "../../src/server/services/production-worker";
 import type { ProductionService } from "../../src/server/services/production-service";
 import type { ProviderConfig } from "../../src/shared/contracts";
+import type { ModelWorkflowConfig } from "../../src/shared/auto-novel";
 
 const databases: ReturnType<typeof createDatabase>[] = [];
 const workers: ProductionWorker[] = [];
@@ -46,6 +47,39 @@ async function waitFor(
 }
 
 describe("ProductionWorker", () => {
+  it("binds a collaborative workflow before waking the worker", async () => {
+    const { production, book, run: initialRun } = fixture();
+    production.updateRun(initialRun.id, { status: "completed", stage: "accept" });
+    const workflow: ModelWorkflowConfig = {
+      mode: "collaborative",
+      assignments: [
+        { role: "writer", provider: providerConfig },
+        { role: "reviewer", provider: { ...providerConfig, model: "review-model" } },
+      ],
+    };
+    let received: ModelWorkflowConfig | ProviderConfig | undefined;
+    const service: Pick<ProductionService, "start"> = {
+      start: async (runId, input) => {
+        received = input;
+        production.updateRun(runId, { status: "completed", stage: "accept" });
+        return production.getRun(runId);
+      },
+    };
+    const worker = new ProductionWorker({
+      productionRepository: production,
+      productionService: service,
+    }, { workerId: "workflow-worker", pollIntervalMs: 5 });
+    workers.push(worker);
+
+    await worker.start();
+    const run = production.createRun(book.id, "production", "workflow-run");
+    worker.enqueueWorkflow(run.id, workflow);
+    await waitFor(() => production.getRun(run.id).status === "completed");
+
+    expect(received).toEqual(workflow);
+    expect(production.getWorkflowDescriptor(run.id)).toMatchObject({ mode: "collaborative" });
+  });
+
   it("persists a key-free provider descriptor and enforces a single lease", () => {
     const { database, production, run } = fixture();
     production.setProviderDescriptor(run.id, providerConfig);
