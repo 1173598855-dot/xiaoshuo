@@ -218,6 +218,8 @@ async function requestJson(
   }
   if (!response.ok) {
     const parsedError = ApiErrorSchema.safeParse(body);
+    const retryAfterHeader = response.headers.get("retry-after");
+    const parsedRetryAfter = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : Number.NaN;
     throw new ApiRequestError(
       response.status,
       parsedError.success ? parsedError.data.error.code : "UNKNOWN_ERROR",
@@ -225,6 +227,7 @@ async function requestJson(
         ? parsedError.data.error.message
         : "本地服务无法完成请求。",
       parsedError.success ? parsedError.data.error.fieldErrors : undefined,
+      Number.isFinite(parsedRetryAfter) ? Math.max(1, parsedRetryAfter) : undefined,
     );
   }
   return body;

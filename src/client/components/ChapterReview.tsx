@@ -29,6 +29,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
   const [draftText, setDraftText] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [rewriteOpen, setRewriteOpen] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!candidate) {
@@ -43,6 +44,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     setDraftText(candidate.candidateText);
     setRewriteInstruction("");
     setRewriteOpen(false);
+    setSavedNotice(null);
     // Review edits are local to a candidate and must survive polling refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate?.id]);
@@ -77,6 +79,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
       });
       setReview(updated.memoryDeltaReview);
       setReviewRevision(updated.memoryReviewRevision);
+      setSavedNotice("记忆审阅已保存");
       if (decisionKey && decision) {
         setDecisions((current) => {
           const next = new Set(current);
@@ -95,6 +98,28 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
   const decide = (key: string, ignored: boolean) => {
     if (!activeReview) return;
     void saveReview(updateIgnored(activeReview, key, ignored), key, ignored ? "ignored" : "accepted");
+  };
+
+  const applyAll = async (ignored: boolean) => {
+    if (!activeReview || changeCount === 0) return;
+    const nextReview = changes.reduce((current, change) => updateIgnored(current, change.key, ignored), activeReview);
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateCandidateMemoryReview({
+        candidateId: candidate.id,
+        expectedReviewRevision: reviewRevision,
+        review: nextReview,
+      });
+      setReview(updated.memoryDeltaReview);
+      setReviewRevision(updated.memoryReviewRevision);
+      setDecisions(ignored ? new Set() : new Set(changes.map(({ key }) => key)));
+      setSavedNotice(ignored ? "已忽略全部记忆变化" : "已采纳全部记忆变化");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "批量保存记忆审阅失败。");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmAndResume = async () => {
@@ -176,7 +201,9 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
             <strong>记忆变更审阅</strong>
             <span>{changeCount} 条待处理</span>
           </div>
+          {savedNotice ? <p className="review-save-notice" role="status">{savedNotice}</p> : null}
           {changeCount === 0 ? <p className="review-memory-empty">本章没有新增、更新或解决记忆。</p> : null}
+          {changeCount > 0 ? <div className="review-memory-toolbar"><button className="text-button" type="button" disabled={busy} onClick={() => void applyAll(false)}>全部采纳</button><button className="text-button" type="button" disabled={busy} onClick={() => void applyAll(true)}>全部忽略</button></div> : null}
           {changes.map((change) => {
             const ignored = isIgnored(activeReview, change.key);
             return (
@@ -212,22 +239,24 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
 
 function CandidateDiff({ originalText, candidateText }: { originalText: string; candidateText: string }) {
   const changed = originalText !== candidateText;
+  const [expanded, setExpanded] = useState(changed);
   const lines = useMemo(() => buildLineDiff(originalText, candidateText), [originalText, candidateText]);
+  useEffect(() => setExpanded(changed), [changed]);
   return (
     <section className="candidate-diff" aria-label="候选正文 Diff">
       <div className="candidate-diff-heading">
         <strong>正文 Diff</strong>
         <span>{changed ? `${lines.filter((line) => line.kind !== "same").length} 处变化` : "与初始候选一致"}</span>
+        <button className="text-button candidate-diff-toggle" type="button" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? "收起 Diff" : "展开 Diff"}</button>
       </div>
-      <div className="candidate-diff-body">
+      {expanded ? <><div className="candidate-diff-body">
         {lines.map((line, index) => (
           <div className={`candidate-diff-line ${line.kind}`} key={`${line.kind}-${index}`}>
             <span className="candidate-diff-marker">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span>
             <code>{line.text || " "}</code>
           </div>
         ))}
-      </div>
-      <div className="candidate-diff-legend"><span><i className="diff-swatch removed" />初始候选删除</span><span><i className="diff-swatch added" />当前候选新增</span></div>
+      </div><div className="candidate-diff-legend"><span><i className="diff-swatch removed" />初始候选删除</span><span><i className="diff-swatch added" />当前候选新增</span></div></> : <p className="candidate-diff-collapsed">Diff 已收起，展开查看逐行变化。</p>}
     </section>
   );
 }

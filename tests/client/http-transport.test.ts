@@ -105,6 +105,19 @@ describe("HTTP workbench transport", () => {
     });
   });
 
+  it("preserves Retry-After for rate-limit recovery UI", async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: "RATE_LIMITED", message: "请求过于频繁，请稍后重试。" } }),
+      { status: 429, headers: { "content-type": "application/json", "retry-after": "17" } },
+    )) as unknown as typeof fetch;
+
+    await expect(createHttpTransport(fetchMock).getWorkspace()).rejects.toMatchObject({
+      status: 429,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 17,
+    });
+  });
+
   it("clears only an optional browser provider key while retaining its session configuration", async () => {
     const transport = createHttpTransport();
     await transport.saveProviderSettings({

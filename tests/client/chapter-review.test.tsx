@@ -74,7 +74,7 @@ describe("ChapterReview memory review", () => {
     render(<ChapterReview details={details} api={api} onResume={onResume} />);
 
     expect(screen.getByText("新事实")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /采纳/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^采纳$/ }));
     await waitFor(() => expect(api.updateCandidateMemoryReview).toHaveBeenCalledWith(expect.objectContaining({
       candidateId,
       expectedReviewRevision: 0,
@@ -83,6 +83,25 @@ describe("ChapterReview memory review", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认记忆并继续生产/ }));
     await waitFor(() => expect(onResume).toHaveBeenCalledOnce());
     expect(api.updateCandidateMemoryReview).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports a single save for batch memory decisions", async () => {
+    const details = createDetails();
+    const api = {
+      updateCandidateMemoryReview: vi.fn(async (input) => ({
+        ...details.candidate!,
+        memoryDeltaReview: input.review,
+        memoryReviewRevision: input.expectedReviewRevision + 1,
+      })),
+    } as unknown as AutoNovelApi;
+    render(<ChapterReview details={details} api={api} onResume={vi.fn(async () => undefined)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "全部采纳" }));
+    await waitFor(() => expect(api.updateCandidateMemoryReview).toHaveBeenCalledWith(expect.objectContaining({
+      review: expect.objectContaining({ ignoredAddIndices: [] }),
+    })));
+    expect(api.updateCandidateMemoryReview).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent("已采纳全部记忆变化");
   });
 
   it("lets the author edit a candidate and shows the changed lines", async () => {
@@ -107,6 +126,10 @@ describe("ChapterReview memory review", () => {
     render(<ChapterReview details={details} api={api} onResume={onResume} />);
 
     expect(screen.getByRole("region", { name: "候选正文 Diff" })).toHaveTextContent("与初始候选一致");
+    fireEvent.click(screen.getByRole("button", { name: "展开 Diff" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起 Diff" }));
+    expect(screen.getByText("Diff 已收起，展开查看逐行变化。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开 Diff" }));
     fireEvent.click(screen.getByRole("button", { name: /编辑候选/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "编辑候选正文" }), { target: { value: "新的一行。" } });
     fireEvent.click(screen.getByRole("button", { name: /保存并重新审核/ }));

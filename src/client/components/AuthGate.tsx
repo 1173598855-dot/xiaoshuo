@@ -13,6 +13,7 @@ interface AuthGateProps {
   password: string;
   invitationCode: string;
   error: string | null;
+  retryAfterSeconds?: number;
   onModeChange: (mode: AuthMode) => void;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -27,6 +28,7 @@ export function AuthGate({
   password,
   invitationCode,
   error,
+  retryAfterSeconds = 0,
   onModeChange,
   onUsernameChange,
   onPasswordChange,
@@ -45,7 +47,7 @@ export function AuthGate({
     { label: "包含符号", valid: /[^\p{L}\p{N}]/u.test(password) },
   ];
   const passwordScore = passwordChecks.filter((check) => check.valid).length;
-  const canSubmit = usernameValid && passwordValid && (!isRegister || invitationValid);
+  const canSubmit = usernameValid && passwordValid && (!isRegister || invitationValid) && retryAfterSeconds <= 0;
 
   useEffect(() => {
     usernameRef.current?.focus();
@@ -167,8 +169,9 @@ export function AuthGate({
             ) : null}
 
             {error ? <p className="auth-form-error" role="alert">{error}</p> : null}
+            {retryAfterSeconds > 0 ? <p className="auth-rate-limit" role="status">请求保护已开启，倒计时结束后可以继续尝试。</p> : null}
             <button className="auth-submit-button" type="submit" disabled={status !== "idle" || !canSubmit}>
-              {status === "submitting" ? <><LoaderCircle className="auth-spinner" size={17} /> 正在验证…</> : status === "success" ? <><Check size={17} /> 验证成功，正在进入</> : <>{isRegister ? "注册并登录" : "进入工作台"}<ArrowRight size={17} /></>}
+              {status === "submitting" ? <><LoaderCircle className="auth-spinner" size={17} /> 正在验证…</> : status === "success" ? <><Check size={17} /> 验证成功，正在进入</> : retryAfterSeconds > 0 ? <>请等待 {retryAfterSeconds} 秒</> : <>{isRegister ? "注册并登录" : "进入工作台"}<ArrowRight size={17} /></>}
             </button>
           </form>
 

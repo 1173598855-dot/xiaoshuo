@@ -7,7 +7,7 @@ import browserE2eConfig from "../../playwright.config";
 describe("Playwright configuration", () => {
   it("keeps both Electron workflows out of the browser test command", () => {
     expect(browserE2eConfig.testIgnore).toEqual(
-      /desktop-workbench\.spec\.ts|packaged-workbench\.spec\.ts/,
+      /desktop-workbench\.spec\.ts|packaged-workbench\.spec\.ts|auth-gate\.spec\.ts/,
     );
   });
 

@@ -40,6 +40,7 @@ export class ApiRequestError extends Error {
     readonly code: string,
     message: string,
     readonly fieldErrors?: Record<string, string[]>,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiRequestError";

@@ -35,6 +35,7 @@ import { DataManagementDialog } from "./components/DataManagementDialog";
 import { WorkflowDialog } from "./components/WorkflowDialog";
 import { CommandPalette, type CommandAction } from "./components/CommandPalette";
 import { AuthGate, type AuthMode, type AuthStatus } from "./components/AuthGate";
+import { ActivationGate } from "./components/ActivationGate";
 import { storeAccessToken } from "./access-token";
 
 type Page = "home" | "directions" | "production" | "manuscript";
@@ -71,10 +72,16 @@ export function App() {
   const [accessTokenPrompt, setAccessTokenPrompt] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");
+  const [authRetryAfter, setAuthRetryAfter] = useState(0);
   const [authUsername, setAuthUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [invitationCodeInput, setInvitationCodeInput] = useState("");
   const [invitationError, setInvitationError] = useState<string | null>(null);
+  useEffect(() => {
+    if (authRetryAfter <= 0) return;
+    const timer = window.setInterval(() => setAuthRetryAfter((current) => Math.max(0, current - 1)), 1_000);
+    return () => window.clearInterval(timer);
+  }, [authRetryAfter]);
   const providerConfig = useMemo<ProviderConfig | null>(() => {
     if (!providerSettings || providerSettings.platform !== "web") return null;
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
@@ -167,8 +174,13 @@ export function App() {
     } catch (loadError) {
       if (loadError instanceof ApiRequestError && loadError.code === "AUTHENTICATION_REQUIRED") {
         setAccessTokenPrompt(true);
+        setAuthMode("login");
+        setAuthStatus("idle");
+        setInvitationError(null);
+        setError("请登录后继续打开你的作品。");
+      } else {
+        setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
       }
-      setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
     } finally {
       setLoading(false);
     }
@@ -437,54 +449,53 @@ export function App() {
       setAuthPassword("");
       setInvitationCodeInput("");
       setAuthStatus("idle");
+      setAuthRetryAfter(0);
       setAccessTokenPrompt(false);
       setLoading(true);
       void loadLibrary();
     } catch (redeemError) {
       setAuthStatus("idle");
-      setInvitationError(redeemError instanceof Error ? redeemError.message : "邀请码兑换失败。" );
+      if (redeemError instanceof ApiRequestError && redeemError.status === 429) {
+        setAuthRetryAfter(redeemError.retryAfterSeconds ?? 30);
+        setInvitationError("请求过于频繁，请等待倒计时结束后再试。" );
+      } else {
+        setInvitationError(redeemError instanceof Error ? redeemError.message : "邀请码兑换失败。" );
+      }
     }
   };
 
   const activateDesktop = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (authStatus !== "idle") return;
     const code = activationCodeInput.trim();
-    if (!code) return;
+    if (!code || authRetryAfter > 0) return;
     setInvitationError(null);
+    setAuthStatus("submitting");
     try {
       await apiClient.activateInvitation(code);
+      setAuthStatus("success");
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
       setActivationCodeInput("");
       setActivationPrompt(false);
       setAccessTokenPrompt(true);
+      setAuthStatus("idle");
     } catch (activationError) {
-      setInvitationError(activationError instanceof Error ? activationError.message : "邀请码激活失败。" );
+      setAuthStatus("idle");
+      if (activationError instanceof ApiRequestError && activationError.status === 429) {
+        setAuthRetryAfter(activationError.retryAfterSeconds ?? 30);
+        setInvitationError("请求过于频繁，请等待倒计时结束后再试。" );
+      } else {
+        setInvitationError(activationError instanceof Error ? activationError.message : "邀请码激活失败。" );
+      }
     }
   };
 
   if (loading) return <div className="app-loading" role="status"><span className="brand-mark">奕</span><span>正在打开故事工作室</span></div>;
   if (activationPrompt) {
-    return (
-      <main className="app-error" role="dialog" aria-labelledby="activation-title">
-        <span className="brand-mark">奕</span>
-        <h1 id="activation-title">激活桌面端</h1>
-        <p>首次使用需要管理员生成的邀请码。激活只绑定当前桌面端，邀请码不会直接登录账号。</p>
-        <form onSubmit={(event) => void activateDesktop(event)}>
-          <input
-            type="text"
-            value={activationCodeInput}
-            onChange={(event) => setActivationCodeInput(event.target.value)}
-            placeholder="输入桌面邀请码"
-            autoComplete="off"
-            autoFocus
-          />
-          <button type="submit" disabled={!activationCodeInput.trim()}>激活</button>
-        </form>
-        {invitationError ? <p role="alert">{invitationError}</p> : null}
-      </main>
-    );
+    return <ActivationGate code={activationCodeInput} status={authStatus} retryAfterSeconds={authRetryAfter} error={invitationError ?? error} onCodeChange={setActivationCodeInput} onSubmit={(event) => void activateDesktop(event)} />;
   }
   if (accessTokenPrompt) {
-    return <AuthGate mode={authMode} status={authStatus} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} />;
+    return <AuthGate mode={authMode} status={authStatus} retryAfterSeconds={authRetryAfter} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); setError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} />;
   }
   const workflowDialog = () => <WorkflowDialog open={workflowOpen} platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} />;
   const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
