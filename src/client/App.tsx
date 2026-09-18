@@ -194,6 +194,18 @@ export function App() {
   }, [loadLibrary]);
 
   useEffect(() => {
+    const openRun = (event: Event) => {
+      const runId = (event as CustomEvent<{ runId?: unknown }>).detail?.runId;
+      if (typeof runId !== "string" || !runId) return;
+      setRunId(runId);
+      setPage("production");
+      setAssetOpen(false);
+    };
+    window.addEventListener("xiaoyi-open-production-run", openRun);
+    return () => window.removeEventListener("xiaoyi-open-production-run", openRun);
+  }, []);
+
+  useEffect(() => {
     return apiClient.onDesktopCommand((command: DesktopCommand) => {
       if (command.type === "provider-settings") setProviderOpen(true);
       if (command.type === "import" || command.type === "export") setDataOpen(true);

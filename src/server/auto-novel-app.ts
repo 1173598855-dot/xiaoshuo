@@ -594,6 +594,29 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     ),
   );
 
+  app.get("/api/books/:bookId/runs", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const query = context.req.query();
+    const allowedStatuses = ["queued", "running", "paused", "failed", "completed", "cancelled"] as const;
+    if (query.status && !(allowedStatuses as readonly string[]).includes(query.status)) {
+      return context.json(apiError("VALIDATION_ERROR", "生产任务状态无效。"), 400);
+    }
+    const limit = query.limit === undefined ? undefined : Number(query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 200)) {
+      return context.json(apiError("VALIDATION_ERROR", "生产任务条数无效。"), 400);
+    }
+    const before = query.before ? parseDateQuery(query.before) : undefined;
+    if (query.before && !before) return context.json(apiError("VALIDATION_ERROR", "生产任务时间游标无效。"), 400);
+    return context.json(dependencies.productionRepository.listRunSummaries({
+      bookId: bookId.data,
+      ...(query.status ? { status: query.status as typeof allowedStatuses[number] } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(before ? { before } : {}),
+    }));
+  });
+
   app.post("/api/books", async (context) => {
     const parsed = await parseJson(context.req.raw, CreateBookRequestSchema);
     if (!parsed.success) return context.json(parsed.error, 400);

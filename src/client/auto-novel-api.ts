@@ -12,6 +12,7 @@ import {
   StoryDirectionSchema,
   ProductionCheckpointSchema,
   ProductionRunQueueStateSchema,
+  ProductionRunSummarySchema,
   ProductionRunSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
@@ -28,6 +29,7 @@ import {
   type ProductionRun,
   type StoryDirection,
   type UpdateChapterPlanInput,
+  type ProductionRunSummary,
 } from "../shared/auto-novel";
 import { ChapterPlanPreviewEnvelopeSchema, type ChapterPlanPreviewEnvelope } from "../shared/authoring";
 import {
@@ -122,6 +124,7 @@ export interface AutoNovelApi {
     memoryContextConfig?: MemoryContextConfig,
   ): Promise<ProductionRun>;
   getRun(runId: string, signal?: AbortSignal): Promise<AutoNovelRunDetails>;
+  listRunSummaries(bookId: string, options?: { status?: string; limit?: number; before?: string }): Promise<readonly ProductionRunSummary[]>;
   pauseRun(runId: string): Promise<ProductionRun>;
   resumeRun(runId: string, provider: AutoNovelProviderInput): Promise<ProductionRun>;
   rewriteCurrentChapter(
@@ -243,6 +246,14 @@ export function createAutoNovelApi(
     },
     async getRun(runId, signal) {
       return RunDetailsSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}`, { signal }));
+    },
+    async listRunSummaries(bookId, options = {}) {
+      const params = new URLSearchParams();
+      if (options.status) params.set("status", options.status);
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.before) params.set("before", options.before);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return z.array(ProductionRunSummarySchema).parse(await requestJson(fetchImpl, `/api/books/${bookId}/runs${suffix}`));
     },
     async pauseRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/pause`, { method: "POST", body: JSON.stringify({ action: "pause" }) }));

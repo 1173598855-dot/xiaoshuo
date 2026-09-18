@@ -326,9 +326,12 @@ export const ProductionRunQueueStateSchema = z.object({
 }).strict();
 export type ProductionRunQueueState = z.infer<typeof ProductionRunQueueStateSchema>;
 
+export const PublicProductionRunQueueStateSchema = ProductionRunQueueStateSchema;
+export type PublicProductionRunQueueState = z.infer<typeof PublicProductionRunQueueStateSchema>;
+
 export const ProductionRunSummarySchema = z.object({
   run: ProductionRunSchema,
-  queue: ProductionRunQueueStateSchema,
+  queue: PublicProductionRunQueueStateSchema,
 }).strict();
 export type ProductionRunSummary = z.infer<typeof ProductionRunSummarySchema>;
 

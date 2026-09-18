@@ -124,6 +124,10 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.booksRecoverableDetails, z.undefined(), () =>
     dependencies.getServices().bookRepository.listRecoverableBookDetails(dependencies.authService?.currentUserId()),
   );
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRuns, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().productionRepository.listRunSummaries({ bookId });
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
     const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());

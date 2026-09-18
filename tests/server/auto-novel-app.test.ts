@@ -532,6 +532,18 @@ describe("auto-novel HTTP app", () => {
     expect(body[0]).toMatchObject({ book: { id: book.id }, run: { status: "queued" } });
   });
 
+  it("returns an author-safe production task history projection", async () => {
+    const { app, bookRepository, productionRepository } = fixture();
+    const book = bookRepository.createBook({ idea: "任务中心故事" });
+    const run = productionRepository.createProductionRun(book.id, "task-history");
+    const response = await app.request(`/api/books/${book.id}/runs`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as Array<{ run: { id: string }; queue: Record<string, unknown> }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ run: { id: run.id }, queue: { runId: run.id, retryCount: 0 } });
+    expect(body[0]?.queue).not.toHaveProperty("leaseToken");
+  });
+
   it("accepts a collaborative model workflow when creating a book", async () => {
     const { app, provider } = fixture();
     const directorProvider = {
