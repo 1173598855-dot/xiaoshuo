@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DesktopDatabaseManager } from "../../src/desktop/database-manager";
+import { createServerRuntime, type ServerRuntimeOptions } from "../../src/server/bootstrap";
 
 const managers: DesktopDatabaseManager[] = [];
 const directories: string[] = [];
@@ -43,6 +44,29 @@ describe("desktop database import preview", () => {
     await writeFile(source, "not a sqlite database");
 
     await expect(manager.previewImportDatabase(source)).rejects.toThrow();
+    expect(manager.getRuntime().workspaceRepository.getWorkspace().project.title).toBe("未命名长篇");
+  });
+
+  it("restores the old runtime when replacement startup fails after import", async () => {
+    const userData = await mkdtemp(join(tmpdir(), "xiaoyi-db-rollback-"));
+    const exportDirectory = await mkdtemp(join(tmpdir(), "xiaoyi-db-rollback-export-"));
+    directories.push(userData, exportDirectory);
+    let runtimeCalls = 0;
+    const manager = new DesktopDatabaseManager(userData, {
+      platform: "win32",
+      runtimeFactory: (options: ServerRuntimeOptions) => {
+        runtimeCalls += 1;
+        if (runtimeCalls === 2) throw new Error("replacement runtime failed");
+        return createServerRuntime(options);
+      },
+    });
+    managers.push(manager);
+    await manager.initialize();
+    const source = join(exportDirectory, "source.db");
+    await manager.exportDatabase(source);
+    await manager.previewImportDatabase(source);
+
+    await expect(manager.confirmPendingImport()).rejects.toThrow("replacement runtime failed");
     expect(manager.getRuntime().workspaceRepository.getWorkspace().project.title).toBe("未命名长篇");
   });
 });

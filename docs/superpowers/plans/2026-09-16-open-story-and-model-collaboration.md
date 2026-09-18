@@ -81,7 +81,7 @@ git diff --check
 - [x] 首页：草稿自动保存/恢复、作品阶段标签、自定义创作预设，全部只使用当前浏览器本地存储，不改变创建书契约。
 - [x] 审阅：记忆变化支持全部采纳/全部忽略单次保存，正文 Diff 支持折叠并提供保存状态反馈。
 - [x] 质量：新增真实邀请码 Web E2E `npm run e2e:auth`，补充认证、首页、批量审阅和 Retry-After 测试；CSS 去除侧条强调线与宽度动画残留。
-- [x] 全量门禁完成：84 个测试文件、362 个测试，Web E2E 5/5 + 邀请制 E2E 1/1，桌面 smoke/E2E/安装包/安装验收全部通过。
+- [x] 全量门禁完成：84 个测试文件、363 个测试，Web E2E 5/5 + 邀请制 E2E 1/1，桌面 smoke/E2E/安装包/安装验收全部通过。
 
 ## 长期闭环推进记录（2026-09-19）
 
@@ -94,6 +94,7 @@ git diff --check
 - [x] 数据管理安全摘要：DatabaseStatus 公开完整性验证、备份计数、最新备份和待恢复事务标记；DataManagementDialog 展示安全摘要，导入校验/迁移/rollback 逻辑保持 Main-only。
 - [x] 更新检查：新增窄 `update:check` IPC；Renderer 只获取是否启用/已发起结果，版本发现、下载、失败和安装仍由 Main/updater/标准 DesktopCommand 负责。
 - [x] 发布专项证据：增加数据库导入预检成功/取消/损坏文件保护测试，以及更新 IPC enabled/disabled 行为测试。
+- [x] 回滚专项证据：注入 replacement runtime 启动失败，验证导入流程恢复旧 runtime 并保留原工作区。
 
 ## 后续审查修复
 
