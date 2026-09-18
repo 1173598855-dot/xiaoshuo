@@ -8,6 +8,7 @@ import {
 import { Database, Download, Upload, X } from "lucide-react";
 
 import { apiClient, ApiRequestError } from "../api/client";
+import type { DatabaseStatus } from "../../shared/contracts";
 
 interface DataManagementDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function DataManagementDialog({
   const [backupPassword, setBackupPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -37,6 +39,7 @@ export function DataManagementDialog({
     setMessage(null);
     setError(null);
     setBackupPassword("");
+    void apiClient.getDatabaseStatus().then(setDatabaseStatus).catch(() => setDatabaseStatus(null));
   }, [open]);
 
   useEffect(() => {
@@ -183,6 +186,7 @@ export function DataManagementDialog({
           <p className="data-dialog-note">
             导入会替换当前工作区，导出会创建一个可备份的 SQLite 文件。
           </p>
+          {databaseStatus ? <div className="data-dialog-status" aria-live="polite"><strong>{databaseStatus.isFirstRun ? "数据库即将初始化" : "数据库已通过完整性校验"}</strong><small>{databaseStatus.isDesktop ? `自动备份 ${databaseStatus.backupCount ?? 0} 份 · ${databaseStatus.pendingRecovery ? "存在待恢复事务" : "没有待恢复事务"}` : "浏览器模式使用当前会话数据"}</small></div> : null}
           <div className="data-actions">
             <button
               ref={importButtonRef}

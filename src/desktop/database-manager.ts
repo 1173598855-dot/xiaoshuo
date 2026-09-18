@@ -241,7 +241,7 @@ export class DesktopDatabaseManager {
           )
         : undefined;
       this.runtime = runtime;
-      this.status = { isDesktop: true, isFirstRun };
+      this.status = this.buildStatus(isFirstRun);
       if (committedRecovery) {
         this.tryCleanupPendingRecovery(committedRecovery);
       }
@@ -403,7 +403,7 @@ getAutoNovelServices(): AutoNovelServices {
         replacementRuntime = undefined;
         this.lastDailyBackup = undefined;
         this.isFirstRun = false;
-        this.status = { isDesktop: true, isFirstRun: false };
+        this.status = this.buildStatus(false);
         this.tryCleanupPendingRecovery(committedRecovery);
         return workspace;
       } catch (error) {
@@ -924,6 +924,18 @@ getAutoNovelServices(): AutoNovelServices {
     this.databaseLineage = undefined;
   }
 
+  private buildStatus(isFirstRun: boolean): DatabaseStatus {
+    const backups = this.listBackups().sort((left, right) => right.timestamp.localeCompare(left.timestamp) || right.sequence - left.sequence);
+    return {
+      isDesktop: true,
+      isFirstRun,
+      backupCount: backups.length,
+      latestBackupName: backups[0]?.name ?? null,
+      pendingRecovery: this.readPendingRecovery() !== undefined,
+      databaseLineage: this.databaseLineage ?? null,
+    };
+  }
+
   private async rollbackImport(options: {
     originalError: unknown;
     pendingRecovery: PendingRecovery | undefined;
@@ -1359,7 +1371,6 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
-
 
 
 

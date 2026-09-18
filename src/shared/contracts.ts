@@ -376,6 +376,10 @@ export type SaveProviderSettingsInput = z.infer<
 export const DatabaseStatusSchema = z.object({
   isDesktop: z.boolean(),
   isFirstRun: z.boolean(),
+  backupCount: z.number().int().nonnegative().optional(),
+  latestBackupName: z.string().nullable().optional(),
+  pendingRecovery: z.boolean().optional(),
+  databaseLineage: z.string().nullable().optional(),
 });
 export type DatabaseStatus = z.infer<typeof DatabaseStatusSchema>;
 

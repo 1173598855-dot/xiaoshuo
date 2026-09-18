@@ -4472,6 +4472,28 @@ select:focus-visible,
 }
 
 @layer studio {
+  .data-dialog-status {
+    display: grid;
+    gap: 4px;
+    margin: 12px 0;
+    padding: 11px 12px;
+    border: 1px solid rgb(24 134 75 / 20%);
+    border-radius: 10px;
+    color: var(--success);
+    background: var(--pine-soft);
+  }
+
+  .data-dialog-status strong {
+    font-size: 12px;
+  }
+
+  .data-dialog-status small {
+    color: var(--ink-soft);
+    font-size: 11px;
+  }
+}
+
+@layer studio {
   .consistency-issue-actions {
     display: flex;
     flex-wrap: wrap;
