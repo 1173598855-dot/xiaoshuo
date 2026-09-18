@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
+import { CursorGrid } from "./CursorGrid";
 
 interface CreativeHomeProps {
   books: readonly Book[];
@@ -30,6 +31,7 @@ export function CreativeHome({
 }: CreativeHomeProps) {
   return (
     <main className="creative-home">
+      <CursorGrid className="creative-cursor-grid" />
       <header className="creative-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">奕</span>
