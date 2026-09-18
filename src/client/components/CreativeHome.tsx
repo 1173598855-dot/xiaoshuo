@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 
@@ -44,8 +44,8 @@ export function CreativeHome({
             <Settings2 size={16} />
             模型设置
           </button>
-          <button className="ghost-button" type="button" onClick={onConfigureWorkflow}>工作流</button>
-          {onOpenAssetLibrary ? <button className="ghost-button" type="button" onClick={onOpenAssetLibrary}><Library size={15} /> 资产库</button> : null}
+          <button className="ghost-button" type="button" aria-label="配置模型工作流" title="配置模型工作流" onClick={onConfigureWorkflow}><Workflow size={15} /> 工作流</button>
+          {onOpenAssetLibrary ? <button className="ghost-button" type="button" aria-label="打开资产库" title="打开资产库" onClick={onOpenAssetLibrary}><Library size={15} /> 资产库</button> : null}
           {onOpenCommandPalette ? <button className="command-trigger" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /><kbd>⌘K</kbd></button> : null}
         </div>
       </header>

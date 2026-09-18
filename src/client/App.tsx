@@ -182,7 +182,7 @@ export function App() {
         setInvitationError(null);
         setError("请登录后继续打开你的作品。");
       } else {
-        setError(loadError instanceof Error ? loadError.message : "无法打开本地作品库。" );
+        setError(errorMessage(loadError, "无法打开本地作品库。"));
       }
     } finally {
       setLoading(false);
@@ -554,9 +554,15 @@ function providerDialog(
   return <ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onTestConnection={(input, signal) => apiClient.testProviderConnection(input, signal)} onClearKey={onClearKey} onClose={() => onClose(false)} />;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback = "操作失败，请稍后重试。"): string {
   if (error instanceof ApiRequestError) return error.message;
-  return error instanceof Error ? error.message : "操作失败，请稍后重试。";
+  if (!(error instanceof Error)) return fallback;
+
+  // Zod's default message is useful in development but too noisy and
+  // implementation-specific for the author-facing surface.
+  const message = error.message.trim();
+  if (!message || (message.startsWith("[") && message.includes('"code"'))) return fallback;
+  return message;
 }
 
 function makeId(): string {
