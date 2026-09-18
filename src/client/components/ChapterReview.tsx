@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CheckCircle2, Edit3, FileText, Save, ShieldCheck, X } from "lucide-react";
+import { Check, CheckCircle2, Edit3, FileText, History, RotateCcw, Save, ShieldCheck, X } from "lucide-react";
 
 import type { ChapterCandidate } from "../../shared/auto-novel";
 import type {
@@ -30,6 +30,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [rewriteOpen, setRewriteOpen] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [historyPreviewId, setHistoryPreviewId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!candidate) {
@@ -45,6 +46,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     setRewriteInstruction("");
     setRewriteOpen(false);
     setSavedNotice(null);
+    setHistoryPreviewId(null);
     // Review edits are local to a candidate and must survive polling refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate?.id]);
@@ -168,6 +170,29 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     }
   };
 
+  const restoreCandidateVersion = async () => {
+    const historyCandidate = historyPreviewId
+      ? details?.candidates.find(({ id }) => id === historyPreviewId)
+      : null;
+    if (!historyCandidate || historyCandidate.id === candidate.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateCandidateText({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: candidate.candidateTextRevision ?? 0,
+        candidateText: historyCandidate.candidateText,
+      });
+      setHistoryPreviewId(null);
+      setSavedNotice("已恢复历史候选，正在重新审核");
+      await onResume();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "历史候选恢复失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="review-panel" aria-label="章节审核">
       <div className="panel-heading"><h2>最新章节审核</h2><span className="review-pass"><ShieldCheck size={15} /> {candidate.review.status === "passed" ? "审核通过" : "审核中"}</span></div>
@@ -193,6 +218,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
         </div>
       ) : <p className="review-copy">{candidate.candidateText}</p>}
       <CandidateDiff originalText={candidate.originalText || candidate.candidateText} candidateText={candidate.candidateText} />
+      {details && details.candidates.length > 1 ? <CandidateHistory candidates={details.candidates} currentId={candidate.id} previewId={historyPreviewId} onPreview={setHistoryPreviewId} onRestore={() => void restoreCandidateVersion()} busy={busy} /> : null}
       <div className="review-meta"><span>修复 {candidate.repairCount} 次</span><span>{candidate.review.status === "pending" ? "等待重新审核" : "审核结果可追溯"}</span></div>
       {onAccept && candidate.status === "completed" && candidate.review.status === "passed" ? <button className="primary-button review-accept-button" type="button" disabled={busy} onClick={() => void onAccept().catch((acceptError) => setError(acceptError instanceof Error ? acceptError.message : "重写候选采纳失败。"))}><CheckCircle2 size={15} /> 采纳当前候选进入正文</button> : null}
       {delta ? (
@@ -233,6 +259,33 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
         </div>
       ) : null}
       {candidate.memoryDelta?.conflicts.length ? <div className="review-memory-meta"><span className="review-conflict">模型报告冲突 {candidate.memoryDelta.conflicts.length} 条，已保留原记忆。</span></div> : null}
+    </section>
+  );
+}
+
+function CandidateHistory({
+  candidates,
+  currentId,
+  previewId,
+  onPreview,
+  onRestore,
+  busy,
+}: {
+  candidates: readonly ChapterCandidate[];
+  currentId: string;
+  previewId: string | null;
+  onPreview: (id: string | null) => void;
+  onRestore: () => void;
+  busy: boolean;
+}) {
+  const preview = previewId ? candidates.find(({ id }) => id === previewId) : null;
+  return (
+    <section className="candidate-history" aria-label="候选版本历史">
+      <div className="candidate-history-heading"><strong><History size={14} /> 候选版本</strong><span>{candidates.length} 个版本</span></div>
+      <div className="candidate-history-list">
+        {candidates.slice().reverse().map((item, index) => <button className={`candidate-history-item${item.id === currentId ? " is-current" : ""}`} type="button" key={item.id} onClick={() => onPreview(item.id)}><span>v{candidates.length - index}</span><span>{item.status === "accepted" ? "已采纳" : item.status === "discarded" ? "已丢弃" : item.id === currentId ? "当前候选" : "历史候选"}</span><small>{new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}</small></button>)}
+      </div>
+      {preview && preview.id !== currentId ? <div className="candidate-history-preview"><div><strong>历史候选只读预览</strong><button className="text-button" type="button" onClick={() => onPreview(null)}>关闭预览</button></div><pre>{preview.candidateText}</pre><button className="secondary-button" type="button" disabled={busy} onClick={onRestore}><RotateCcw size={14} /> 恢复为当前候选并重新审核</button></div> : null}
     </section>
   );
 }

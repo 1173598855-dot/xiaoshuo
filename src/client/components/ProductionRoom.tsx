@@ -87,6 +87,7 @@ export function ProductionRoom({
               {onRetryConnection ? <button className="text-button" type="button" onClick={onRetryConnection}>立即重试</button> : null}
             </div>
           ) : null}
+          {run?.queue ? <QueueHealth run={run} /> : null}
           <div className="progress-track" role="progressbar" aria-label="生产进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ transform: `scaleX(${progress / 100})` }} /></div>
           <div className="stage-list">
             {[
@@ -123,4 +124,45 @@ export function ProductionRoom({
 function StatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = { ready: "待开始", queued: "排队中", running: "生产中", paused: "已暂停", completed: "已完成", failed: "需要处理", cancelled: "已停止" };
   return <span className={`status-badge ${status}`}>{labels[status] ?? status}</span>;
+}
+
+function QueueHealth({ run }: { run: NonNullable<ProductionRoomProps["run"]> }) {
+  const queue = run.queue;
+  if (!queue) return null;
+  const waitingForRetry = run.run.status === "queued" && queue.nextAttemptAt !== null;
+  const exhausted = run.run.status === "failed" && queue.retryCount >= queue.maxRetries;
+  const state = exhausted
+    ? "自动重试已用尽"
+    : waitingForRetry
+      ? `将在 ${formatQueueTime(queue.nextAttemptAt)} 自动重试`
+      : run.run.status === "running"
+        ? "工作节点已接管"
+        : run.run.status === "queued"
+          ? "等待工作节点"
+          : run.run.status === "paused"
+            ? "已暂停，可从检查点继续"
+            : "队列状态已同步";
+  return (
+    <div className={`production-queue-card${exhausted ? " is-error" : ""}`} role="status">
+      <div><strong>{state}</strong><span>自动重试 {queue.retryCount} / {queue.maxRetries}</span></div>
+      {run.run.errorCode ? <small>{errorCodeLabel(run.run.errorCode)} · {run.run.errorCode}</small> : <small>{queue.heartbeatAt ? `最近心跳 ${formatQueueTime(queue.heartbeatAt)}` : "队列已与本地数据库同步"}</small>}
+    </div>
+  );
+}
+
+function formatQueueTime(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
+}
+
+function errorCodeLabel(code: string): string {
+  return {
+    RATE_LIMITED: "上游限流",
+    UPSTREAM_UNAVAILABLE: "上游暂时不可用",
+    QUOTA_EXCEEDED: "模型额度不足",
+    AUTHENTICATION_FAILED: "模型凭据无效",
+    PROVIDER_CONFIG_UNAVAILABLE: "模型配置不可用",
+    WORKER_STUCK: "工作节点超时",
+  }[code] ?? "生产任务遇到问题";
 }

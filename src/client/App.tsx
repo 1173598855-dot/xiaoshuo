@@ -36,6 +36,7 @@ import { WorkflowDialog } from "./components/WorkflowDialog";
 import { CommandPalette, type CommandAction } from "./components/CommandPalette";
 import { AuthGate, type AuthMode, type AuthStatus } from "./components/AuthGate";
 import { ActivationGate } from "./components/ActivationGate";
+import { AssetLibraryPanel, type CreativeAsset } from "./components/AssetLibraryPanel";
 import { storeAccessToken } from "./access-token";
 
 type Page = "home" | "directions" | "production" | "manuscript";
@@ -55,6 +56,8 @@ export function App() {
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
   const [providerOpen, setProviderOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [assetOpen, setAssetOpen] = useState(false);
+  const [assetDraft, setAssetDraft] = useState<{ id: string; text: string } | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [workflowInput, setWorkflowInput] = useState<ModelWorkflowConfig | DesktopModelWorkflowSelection | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
@@ -516,7 +519,7 @@ export function App() {
   ];
   const commandPalette = <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />;
   if (page === "home") {
-    return <><CreativeHome books={books} busy={busy} error={error} onCreateIdea={(input, autoStart) => void createIdea(input, autoStart)} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
+    return <><CreativeHome books={books} busy={busy} error={error} assetDraft={assetDraft} onCreateIdea={(input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); }} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenAssetLibrary={() => setAssetOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} />{assetOpen ? <AssetLibraryPanel onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => { setAssetDraft({ id: asset.id, text: `${asset.name}\n\n${asset.content}` }); setAssetOpen(false); }} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
   }
   if (!bookDetails) return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
   if (page === "directions") {

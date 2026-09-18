@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BookOpen, Command, Plus, Settings2, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles } from "lucide-react";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 
@@ -11,7 +11,9 @@ interface CreativeHomeProps {
   onOpenBook: (book: Book) => void;
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
+  onOpenAssetLibrary?: () => void;
   onOpenCommandPalette?: () => void;
+  assetDraft?: { id: string; text: string } | null;
 }
 
 export function CreativeHome({
@@ -22,7 +24,9 @@ export function CreativeHome({
   onOpenBook,
   onConfigureProvider,
   onConfigureWorkflow,
+  onOpenAssetLibrary,
   onOpenCommandPalette,
+  assetDraft,
 }: CreativeHomeProps) {
   return (
     <main className="creative-home">
@@ -41,6 +45,7 @@ export function CreativeHome({
             模型设置
           </button>
           <button className="ghost-button" type="button" onClick={onConfigureWorkflow}>工作流</button>
+          {onOpenAssetLibrary ? <button className="ghost-button" type="button" onClick={onOpenAssetLibrary}><Library size={15} /> 资产库</button> : null}
           {onOpenCommandPalette ? <button className="command-trigger" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /><kbd>⌘K</kbd></button> : null}
         </div>
       </header>
@@ -54,7 +59,7 @@ export function CreativeHome({
           <div className="stage-notes"><span>NO CARDS</span><span>NO BUSYWORK</span><span>JUST START</span></div>
         </div>
         <div className="idea-column">
-          <IdeaForm busy={busy} error={error} onSubmit={onCreateIdea} />
+          <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onSubmit={onCreateIdea} />
           <div className="idea-caption"><span>01 / 1–12</span><span>输入 → 方向 → 正文</span></div>
         </div>
       </section>
@@ -114,10 +119,12 @@ const CUSTOM_PRESETS_KEY = "xiaoyi.idea-presets.v1";
 function IdeaForm({
   busy,
   error,
+  assetDraft,
   onSubmit,
 }: {
   busy: boolean;
   error: string | null;
+  assetDraft?: { id: string; text: string } | null;
   onSubmit: (input: CreateBookInput, autoStart?: boolean) => void;
 }) {
   const [idea, setIdea] = useState("");
@@ -152,6 +159,13 @@ function IdeaForm({
       setDraftReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!assetDraft?.text) return;
+    setIdea(assetDraft.text);
+    setSelectedPresetId(null);
+    setDraftState("restored");
+  }, [assetDraft?.id, assetDraft?.text]);
 
   useEffect(() => {
     if (!draftReady) return;

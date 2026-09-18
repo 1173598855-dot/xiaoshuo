@@ -11,6 +11,7 @@ import {
   ExportBookInputSchema,
   StoryDirectionSchema,
   ProductionCheckpointSchema,
+  ProductionRunQueueStateSchema,
   ProductionRunSchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
@@ -77,6 +78,7 @@ export type AutoNovelProviderInput =
 export const RunDetailsSchema = z
   .object({
     run: ProductionRunSchema,
+    queue: ProductionRunQueueStateSchema.optional(),
     checkpoints: z.array(ProductionCheckpointSchema),
     candidate: ChapterCandidateSchema.nullable(),
     book: BookSchema,

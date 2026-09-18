@@ -457,6 +457,7 @@ export type BookChapters = z.infer<typeof BookChaptersSchema>;
 export const ProductionRunDetailsSchema = z
   .object({
     run: ProductionRunSchema,
+    queue: ProductionRunQueueStateSchema.optional(),
     checkpoints: z.array(ProductionCheckpointSchema),
     candidate: ChapterCandidateSchema.nullable(),
     book: BookSchema,

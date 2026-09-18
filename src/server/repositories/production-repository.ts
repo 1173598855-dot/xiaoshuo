@@ -206,6 +206,7 @@ export interface CreateCandidateInput {
 
 export interface ProductionRunDetailsSnapshot {
   run: ProductionRun;
+  queue: Omit<ProductionRunQueueState, "leaseToken">;
   checkpoints: readonly ProductionCheckpoint[];
   candidate: ChapterCandidate | null;
   book: Book;
@@ -837,6 +838,7 @@ export class ProductionRepository {
       .all(run.bookId, run.id) as unknown as CandidateRow[];
     return {
       run,
+      queue: withoutLeaseToken(this.getQueueState(runId)),
       checkpoints: checkpointRows.map(toCheckpoint),
       candidate:
         candidateRows.length > 0

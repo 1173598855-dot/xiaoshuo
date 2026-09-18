@@ -141,4 +141,26 @@ describe("ChapterReview memory review", () => {
     }));
     await waitFor(() => expect(onResume).toHaveBeenCalledOnce());
   });
+
+  it("previews and safely restores a historical candidate version", async () => {
+    const details = createDetails();
+    const oldCandidate = { ...details.candidate!, id: "old-candidate-0000-4000-8000-000000000000", candidateText: "历史版本正文。", createdAt: "2026-09-17T00:00:00.000Z" };
+    details.candidate = { ...details.candidate!, candidateTextRevision: 1 };
+    details.candidates = [oldCandidate, details.candidate];
+    const api = {
+      updateCandidateText: vi.fn(async (input) => ({ ...details.candidate!, candidateText: input.candidateText })),
+    } as unknown as AutoNovelApi;
+    const onResume = vi.fn(async () => undefined);
+    render(<ChapterReview details={details} api={api} onResume={onResume} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /历史候选/ }));
+    expect(screen.getByText("历史版本正文。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /恢复为当前候选/ }));
+    await waitFor(() => expect(api.updateCandidateText).toHaveBeenCalledWith({
+      candidateId,
+      expectedCandidateTextRevision: 1,
+      candidateText: "历史版本正文。",
+    }));
+    await waitFor(() => expect(onResume).toHaveBeenCalledOnce());
+  });
 });
