@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Library, Plus, Trash2, X } from "lucide-react";
+import type { BookDetails } from "../../shared/auto-novel";
 
 const ASSET_LIBRARY_KEY = "xiaoyi.creative-assets.v1";
 
@@ -15,6 +16,7 @@ export interface CreativeAsset {
 }
 
 interface AssetLibraryPanelProps {
+  sourceBook?: BookDetails | null;
   onClose: () => void;
   onUseAsset: (asset: CreativeAsset) => void;
 }
@@ -27,7 +29,7 @@ const KIND_LABELS: Record<CreativeAssetKind, string> = {
   style: "文风",
 };
 
-export function AssetLibraryPanel({ onClose, onUseAsset }: AssetLibraryPanelProps) {
+export function AssetLibraryPanel({ sourceBook = null, onClose, onUseAsset }: AssetLibraryPanelProps) {
   const [assets, setAssets] = useState<CreativeAsset[]>(loadAssets);
   const [kind, setKind] = useState<CreativeAssetKind | "all">("all");
   const [query, setQuery] = useState("");
@@ -70,6 +72,17 @@ export function AssetLibraryPanel({ onClose, onUseAsset }: AssetLibraryPanelProp
     }
   };
 
+  const extractFromBook = () => {
+    if (!sourceBook) return;
+    const extracted = extractBookAssets(sourceBook);
+    if (extracted.length === 0) {
+      setMessage("当前作品还没有可以提取的资料。");
+      return;
+    }
+    setAssets((current) => [...extracted, ...current].slice(0, 100));
+    setMessage(`已从《${sourceBook.book.title}》提取 ${extracted.length} 项资产。`);
+  };
+
   return (
     <aside className="story-drawer asset-library-drawer" aria-label="创作资产库">
       <div className="memory-drawer-header">
@@ -79,6 +92,7 @@ export function AssetLibraryPanel({ onClose, onUseAsset }: AssetLibraryPanelProp
       <div className="asset-library-toolbar">
         <input aria-label="搜索创作资产" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资产…" />
         <select aria-label="资产类型" value={kind} onChange={(event) => setKind(event.target.value as CreativeAssetKind | "all")}><option value="all">全部类型</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        {sourceBook ? <button className="secondary-button asset-extract-button" type="button" onClick={extractFromBook}><Library size={14} /> 从当前作品提取</button> : null}
         <button className="primary-button" type="button" onClick={createAsset}><Plus size={14} /> 新建资产</button>
       </div>
       {message ? <p className="asset-library-message" role="status">{message}</p> : null}
@@ -89,6 +103,20 @@ export function AssetLibraryPanel({ onClose, onUseAsset }: AssetLibraryPanelProp
       </div>
     </aside>
   );
+}
+
+function extractBookAssets(book: BookDetails): CreativeAsset[] {
+  const now = new Date().toISOString();
+  const title = book.book.title;
+  const assets: CreativeAsset[] = [{ id: `extracted-story-${book.book.id}-${Date.now()}`, kind: "story", name: `${title} · 故事起点`, content: book.book.idea, createdAt: now, updatedAt: now }];
+  if (book.foundation) {
+    if (book.foundation.characters.length > 0) assets.push({ id: `extracted-characters-${book.book.id}-${Date.now()}`, kind: "character", name: `${title} · 人物组`, content: book.foundation.characters.map((character) => `${character.name}｜${character.role}\n目标：${character.motivation}\n弧光：${character.arc}`).join("\n\n"), createdAt: now, updatedAt: now });
+    const world = [...book.foundation.worldRules, ...book.foundation.locations.map((location) => `${location.name}：${location.description}\n作用：${location.significance}`)];
+    if (world.length > 0) assets.push({ id: `extracted-world-${book.book.id}-${Date.now()}`, kind: "world", name: `${title} · 世界与地点`, content: world.join("\n\n"), createdAt: now, updatedAt: now });
+    if (book.foundation.styleGuide.trim()) assets.push({ id: `extracted-style-${book.book.id}-${Date.now()}`, kind: "style", name: `${title} · 文风`, content: book.foundation.styleGuide, createdAt: now, updatedAt: now });
+  }
+  if (book.chapterPlans.length > 0) assets.push({ id: `extracted-outline-${book.book.id}-${Date.now()}`, kind: "outline", name: `${title} · 章节结构`, content: book.chapterPlans.map((plan) => `第${plan.chapterNumber}章 ${plan.title}\n${plan.summary}\n钩子：${plan.hook}`).join("\n\n"), createdAt: now, updatedAt: now });
+  return assets.map((asset) => ({ ...asset, content: asset.content.slice(0, 8_000) }));
 }
 
 function AssetEditor({ asset, onChange, onCancel, onSave }: { asset: CreativeAsset; onChange: (asset: CreativeAsset) => void; onCancel: () => void; onSave: (asset: CreativeAsset) => void }) {

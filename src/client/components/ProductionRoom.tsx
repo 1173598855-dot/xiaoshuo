@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleDot, Command, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
+import { CheckCircle2, CircleDot, Command, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -7,6 +7,7 @@ import type { AutoNovelRunDetails } from "../auto-novel-api";
 import type { ProductionConnectionState } from "../hooks/use-production-run";
 import { apiClient } from "../api/client";
 import type { UsageSummary } from "../../shared/authoring";
+import { AssetLibraryPanel, type CreativeAsset } from "./AssetLibraryPanel";
 
 interface ProductionRoomProps {
   book: BookDetails;
@@ -26,6 +27,7 @@ interface ProductionRoomProps {
   onOpenSearch: () => void;
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
+  onOpenAssetLibrary?: () => void;
   onOpenCommandPalette?: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
@@ -49,11 +51,13 @@ export function ProductionRoom({
   onOpenSearch,
   onConfigureProvider,
   onConfigureWorkflow,
+  onOpenAssetLibrary,
   onOpenCommandPalette,
   connectionState = "connected",
   onRetryConnection,
 }: ProductionRoomProps) {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [assetOpen, setAssetOpen] = useState(false);
   useEffect(() => { void apiClient.getUsageSummary?.().then((value) => setUsage(value ?? null)).catch(() => undefined); }, [book.book.id, run?.run.version]);
   const accepted = run?.acceptedChapters.length ?? 0;
   const total = book.chapterPlans.length;
@@ -64,7 +68,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button>{onOpenCommandPalette ? <button className="command-trigger command-trigger-compact" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /></button> : null}<button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onOpenAssetLibrary ?? (() => setAssetOpen(true))}><Library size={14} /> 资产库</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button>{onOpenCommandPalette ? <button className="command-trigger command-trigger-compact" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /></button> : null}<button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>
@@ -117,6 +121,7 @@ export function ProductionRoom({
           {run?.candidates.length ? run.candidates.map((candidate, index) => <div className="chapter-feed-row" key={candidate.id}><span className="feed-index">{String(index + 1).padStart(2, "0")}</span><span><strong>第 {index + 1} 章</strong><small>{candidate.review.status === "passed" ? "审核通过 · 已进入正文" : "正在审核"}</small></span><span className={`feed-status ${candidate.status}`}>{candidate.status === "accepted" ? "已完成" : "候选"}</span></div>) : <div className="empty-feed">点击开始后，章节会在这里一章章出现。</div>}
         </div>
       </section>
+      {assetOpen ? <AssetLibraryPanel sourceBook={book} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => { window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: `${asset.name}\n\n${asset.content}`, directionCount: 3, selectedPresetId: null, updatedAt: Date.now() })); setAssetOpen(false); }} /> : null}
     </main>
   );
 }

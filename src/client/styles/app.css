@@ -4472,6 +4472,22 @@ select:focus-visible,
 }
 
 @layer studio {
+  .consistency-issue-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .consistency-issue-actions .text-button {
+    min-height: 28px;
+    padding: 0;
+    color: var(--accent);
+    font-size: 11px;
+  }
+}
+
+@layer studio {
   .asset-library-drawer {
     width: min(620px, 100vw);
   }
