@@ -93,6 +93,7 @@ git diff --check
 - [x] 生产任务中心：新增作品级作者任务历史 API 与 Desktop IPC 白名单频道，任务中心可筛选状态、刷新并打开历史 run；队列投影不包含 lease token 或凭据。
 - [x] 数据管理安全摘要：DatabaseStatus 公开完整性验证、备份计数、最新备份和待恢复事务标记；DataManagementDialog 展示安全摘要，导入校验/迁移/rollback 逻辑保持 Main-only。
 - [x] 更新检查：新增窄 `update:check` IPC；Renderer 只获取是否启用/已发起结果，版本发现、下载、失败和安装仍由 Main/updater/标准 DesktopCommand 负责。
+- [x] 发布专项证据：增加数据库导入预检成功/取消/损坏文件保护测试，以及更新 IPC enabled/disabled 行为测试。
 
 ## 后续审查修复
 
