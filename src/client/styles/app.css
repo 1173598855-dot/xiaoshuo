@@ -5525,12 +5525,15 @@ select:focus-visible,
     z-index: -2;
     inset: 0;
     background:
+      linear-gradient(180deg, rgb(9 17 31 / 86%), rgb(9 17 31 / 95%)),
+      url("/assets/old-paper-texture.jpg"),
       radial-gradient(circle at 15% 8%, rgb(72 103 157 / 26%), transparent 34%),
       radial-gradient(circle at 92% 68%, rgb(216 103 65 / 12%), transparent 32%),
       linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
       linear-gradient(0deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
       var(--atlas-night);
-    background-size: auto, auto, 56px 56px, 56px 56px, auto;
+    background-position: center, center, center, center, center, center, center;
+    background-size: auto, cover, auto, auto, 56px 56px, 56px 56px, auto;
     content: "";
     pointer-events: none;
   }
@@ -6065,7 +6068,7 @@ select:focus-visible,
     .director-page::before,
     .production-page::before,
     .manuscript-page::before {
-      background-size: auto, auto, 42px 42px, 42px 42px, auto;
+      background-size: auto, cover, auto, auto, 42px 42px, 42px 42px, auto;
     }
   }
 }

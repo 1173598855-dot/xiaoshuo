@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
+import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
 import { CursorGrid } from "./CursorGrid";
 import { SpotlightCard } from "./SpotlightCard";
 
@@ -33,6 +34,7 @@ export function CreativeHome({
   return (
     <main className="creative-home">
       <CursorGrid className="creative-cursor-grid" />
+      <BlackHoleBackdrop />
       <header className="creative-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">奕</span>
@@ -182,13 +184,13 @@ function IdeaForm({
           return;
         }
         window.localStorage.setItem(IDEA_DRAFT_KEY, JSON.stringify({ idea, directionCount, selectedPresetId, updatedAt: Date.now() }));
-        setDraftState("saved");
+        if (draftState !== "restored") setDraftState("saved");
       } catch {
         setDraftState("empty");
       }
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [directionCount, draftReady, idea, selectedPresetId]);
+  }, [directionCount, draftReady, draftState, idea, selectedPresetId]);
 
   const clearDraft = () => {
     setIdea("");
@@ -227,7 +229,7 @@ function IdeaForm({
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
       <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>START WITH A SENTENCE</span></div>
-      <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
+      <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
         {idea ? <button className="text-button" type="button" disabled={busy} onClick={clearDraft}>清除草稿</button> : null}
@@ -241,7 +243,7 @@ function IdeaForm({
       </div>
       {presetEditorOpen ? <div className="preset-editor"><input aria-label="预设名称" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="给这套写作方式起个名字" maxLength={32} autoFocus /><button className="secondary-button" type="button" disabled={busy || !presetName.trim()} onClick={savePreset}>保存预设</button><button className="text-button" type="button" onClick={() => setPresetEditorOpen(false)}>取消</button></div> : null}
       <label className="direction-count-control" htmlFor="direction-count">方向数量
-        <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1)))} />
+        <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
       </label>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="idea-form-footer">
