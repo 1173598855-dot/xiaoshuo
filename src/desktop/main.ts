@@ -170,6 +170,7 @@ async function bootstrap(): Promise<void> {
     databaseManager,
     providerVault,
     authService,
+    getUpdateController: () => updateController,
     dialogs: createDialogAdapter(),
     resolveClose: (input) => {
       closeDecisionCoordinator.resolve(input);
@@ -454,7 +455,6 @@ async function requestRendererClose(): Promise<void> {
 function beginFinalShutdown(exitCode = 0): void {
   void finalShutdown.request(exitCode);
 }
-
 
 
 

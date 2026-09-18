@@ -8,6 +8,7 @@ import {
   ProviderConnectionResultSchema,
   ProviderModelListSchema,
   ProviderSettingsSchema,
+  UpdateCheckResultSchema,
   WorkspaceSchema,
   type ProviderId,
 } from "../../shared/contracts";
@@ -127,6 +128,9 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
     },
     async cancelImportPreview() {
       parseResult(await api.database.cancelImportPreview(), undefinedSchema);
+    },
+    async checkForUpdates() {
+      return parseResult(await api.update.check(), UpdateCheckResultSchema);
     },
     async exportDatabase() {
       return parseResult(

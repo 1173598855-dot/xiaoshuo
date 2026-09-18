@@ -92,6 +92,7 @@ git diff --check
 - [x] 资产组合：多选本地资产后生成可编辑组合模板，保留原素材内容并继续进入首页或下一本作品。
 - [x] 生产任务中心：新增作品级作者任务历史 API 与 Desktop IPC 白名单频道，任务中心可筛选状态、刷新并打开历史 run；队列投影不包含 lease token 或凭据。
 - [x] 数据管理安全摘要：DatabaseStatus 公开完整性验证、备份计数、最新备份和待恢复事务标记；DataManagementDialog 展示安全摘要，导入校验/迁移/rollback 逻辑保持 Main-only。
+- [x] 更新检查：新增窄 `update:check` IPC；Renderer 只获取是否启用/已发起结果，版本发现、下载、失败和安装仍由 Main/updater/标准 DesktopCommand 负责。
 
 ## 后续审查修复
 

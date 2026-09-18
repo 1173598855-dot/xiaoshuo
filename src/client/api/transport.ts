@@ -87,6 +87,7 @@ export interface WorkbenchTransport {
   previewImportDatabase?(): Promise<DatabaseOperationResult>;
   confirmImportDatabase?(): Promise<DatabaseOperationResult>;
   cancelImportPreview?(): Promise<void>;
+  checkForUpdates?(): Promise<{ enabled: boolean }>;
   exportDatabase(): Promise<DatabaseOperationResult>;
   getUsageSummary?(): Promise<UsageSummary>;
   exportEncryptedDatabase?(password: string): Promise<DatabaseOperationResult>;

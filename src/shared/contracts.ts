@@ -397,6 +397,9 @@ export type DatabaseOperationResult = z.infer<
   typeof DatabaseOperationResultSchema
 >;
 
+export const UpdateCheckResultSchema = z.object({ enabled: z.boolean() }).strict();
+export type UpdateCheckResult = z.infer<typeof UpdateCheckResultSchema>;
+
 export const DesktopCommandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("save") }),
   z.object({ type: z.literal("new-chapter") }),

@@ -71,6 +71,7 @@ export interface DesktopApi {
     export(): Promise<DesktopResult<DatabaseOperationResult>>;
     exportEncrypted(password: string): Promise<DesktopResult<DatabaseOperationResult>>;
   };
+  readonly update: { check(): Promise<DesktopResult<{ enabled: boolean }>> };
   readonly lifecycle: {
     resolveClose(input: { requestId: string; canClose: boolean }): Promise<DesktopResult<void>>;
     onCommand(listener: (command: DesktopCommand) => void): () => void;
@@ -112,6 +113,7 @@ export function createPreloadApi(ipcRenderer: DesktopIpcRenderer): DesktopApi {
       export: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseExport),
       exportEncrypted: (password) => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseExportEncrypted, { password }),
     },
+    update: { check: () => invoke(ipcRenderer, DESKTOP_CHANNELS.updateCheck) },
     lifecycle: {
       resolveClose: (input) => invoke(ipcRenderer, DESKTOP_CHANNELS.lifecycleResolveClose, input),
       onCommand(listener) {

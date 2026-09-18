@@ -19,6 +19,7 @@ import {
   DesktopModelWorkflowSelectionSchema,
 } from "../../shared/auto-novel";
 import type { DesktopAuthService } from "../desktop-auth";
+import type { UpdateCheckController } from "../update-service";
 import { toPublicError } from "../../server/public-error";
 import { getProviderCatalog } from "../../server/providers/catalog";
 import { listOpenAICompatibleModels } from "../../server/providers/openai-compatible-models";
@@ -45,6 +46,7 @@ export interface DesktopIpcDependencies {
   readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "previewImportDatabase" | "confirmPendingImport" | "cancelPendingImport" | "exportDatabase" | "exportEncryptedDatabase">;
   readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest" | "getWorkflowSettings" | "saveWorkflowSettings">>;
   readonly authService: DesktopAuthService;
+  readonly getUpdateController?: () => Pick<UpdateCheckController, "enabled" | "check"> | undefined;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
   readonly dialogs: DesktopDialogAdapter;
   readonly resolveClose?: (input: { requestId: string; canClose: boolean }) => void;
@@ -113,6 +115,12 @@ export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies)
     if (selection.cancelled || !selection.destinationPath) return { cancelled: true };
     await dependencies.databaseManager.exportEncryptedDatabase(selection.destinationPath, password);
     return { cancelled: false, fileName: basename(selection.destinationPath) };
+  });
+  registerHandler(dependencies, DESKTOP_CHANNELS.updateCheck, EmptyInputSchema, async () => {
+    const controller = dependencies.getUpdateController?.();
+    if (!controller?.enabled) return { enabled: false };
+    await controller.check();
+    return { enabled: true };
   });
   registerHandler(dependencies, DESKTOP_CHANNELS.lifecycleResolveClose, LifecycleResolveCloseRequestSchema, (input) => {
     dependencies.resolveClose?.(input);

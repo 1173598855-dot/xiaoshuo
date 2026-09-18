@@ -24,7 +24,7 @@ export function DataManagementDialog({
   onImported,
 }: DataManagementDialogProps) {
   const titleId = useId();
-  const [busy, setBusy] = useState<"import" | "export" | "export-encrypted" | null>(null);
+  const [busy, setBusy] = useState<"import" | "export" | "export-encrypted" | "update-check" | null>(null);
   const [backupPassword, setBackupPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +187,21 @@ export function DataManagementDialog({
     finally { setBusy(null); }
   };
 
+  const checkForUpdates = async () => {
+    if (busy || apiClient.platform !== "desktop" || !apiClient.checkForUpdates) return;
+    setBusy("update-check");
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await apiClient.checkForUpdates();
+      setMessage(result.enabled ? "已发起更新检查；若有新版本，桌面端会显示通知。" : "当前未配置安全的更新源。");
+    } catch (requestError) {
+      setError(dataErrorMessage(requestError));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={requestClose}>
       <section
@@ -250,6 +265,7 @@ export function DataManagementDialog({
                 <button className="secondary-button" type="button" disabled={busy !== null || backupPassword.length < 12} aria-label="导出加密备份" onClick={() => void runEncryptedExport()}>
                   <Download size={16} /><span>{busy === "export-encrypted" ? "正在加密" : "导出加密备份"}</span>
                 </button>
+                {apiClient.checkForUpdates ? <button className="ghost-button" type="button" disabled={busy !== null} onClick={() => void checkForUpdates()}>检查更新</button> : null}
               </>
             ) : null}
           </div>
