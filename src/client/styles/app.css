@@ -4558,6 +4558,14 @@ select:focus-visible,
     gap: 8px;
   }
 
+  .asset-card-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--ink-soft);
+    font-size: 10px;
+  }
+
   .asset-card-heading strong {
     color: var(--ink);
     font-size: 13px;

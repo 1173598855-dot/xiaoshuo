@@ -35,6 +35,7 @@ export function AssetLibraryPanel({ sourceBook = null, onClose, onUseAsset }: As
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<CreativeAsset | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     window.localStorage.setItem(ASSET_LIBRARY_KEY, JSON.stringify(assets));
@@ -54,13 +55,21 @@ export function AssetLibraryPanel({ sourceBook = null, onClose, onUseAsset }: As
     if (!asset.name.trim() || !asset.content.trim()) return;
     const next = { ...asset, name: asset.name.trim(), content: asset.content.trim(), updatedAt: new Date().toISOString() };
     setAssets((current) => [next, ...current.filter(({ id }) => id !== next.id)]);
+    setSelectedIds(new Set());
     setEditing(null);
     setMessage("资产已保存到当前浏览器。");
   };
 
   const removeAsset = (assetId: string) => {
     setAssets((current) => current.filter(({ id }) => id !== assetId));
+    setSelectedIds((current) => { const next = new Set(current); next.delete(assetId); return next; });
     if (editing?.id === assetId) setEditing(null);
+  };
+
+  const combineSelected = () => {
+    const selected = assets.filter(({ id }) => selectedIds.has(id));
+    if (selected.length < 2) return;
+    setEditing({ id: `asset-${Date.now()}`, kind: "story", name: "组合资产", content: selected.map((asset) => `【${KIND_LABELS[asset.kind]}】${asset.name}\n${asset.content}`).join("\n\n"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
   };
 
   const copyAsset = async (asset: CreativeAsset) => {
@@ -93,13 +102,14 @@ export function AssetLibraryPanel({ sourceBook = null, onClose, onUseAsset }: As
         <input aria-label="搜索创作资产" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资产…" />
         <select aria-label="资产类型" value={kind} onChange={(event) => setKind(event.target.value as CreativeAssetKind | "all")}><option value="all">全部类型</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
         {sourceBook ? <button className="secondary-button asset-extract-button" type="button" onClick={extractFromBook}><Library size={14} /> 从当前作品提取</button> : null}
+        {selectedIds.size > 1 ? <button className="secondary-button" type="button" onClick={combineSelected}>组合选中（{selectedIds.size}）</button> : null}
         <button className="primary-button" type="button" onClick={createAsset}><Plus size={14} /> 新建资产</button>
       </div>
       {message ? <p className="asset-library-message" role="status">{message}</p> : null}
       {editing ? <AssetEditor asset={editing} onChange={setEditing} onCancel={() => setEditing(null)} onSave={saveAsset} /> : null}
       <div className="asset-library-list">
         {visibleAssets.length === 0 ? <div className="memory-empty"><Library size={18} /><span>{assets.length === 0 ? "还没有资产，先保存一套人物或世界观。" : "没有匹配的创作资产。"}</span></div> : null}
-        {visibleAssets.map((asset) => <article className="asset-card" key={asset.id}><div className="asset-card-heading"><span className="memory-kind">{KIND_LABELS[asset.kind]}</span><strong>{asset.name}</strong></div><p>{asset.content}</p><div className="asset-card-actions"><button className="primary-button" type="button" onClick={() => onUseAsset(asset)}>带入想法</button><button className="ghost-button" type="button" onClick={() => setEditing(asset)}>编辑</button><button className="ghost-button" type="button" onClick={() => void copyAsset(asset)}><Copy size={13} /> 复制</button><button className="text-button asset-delete" type="button" onClick={() => removeAsset(asset.id)} aria-label={`删除${asset.name}`}><Trash2 size={13} /></button></div></article>)}
+        {visibleAssets.map((asset) => <article className="asset-card" key={asset.id}><div className="asset-card-heading"><label className="asset-card-select"><input type="checkbox" aria-label={`选择${asset.name}`} checked={selectedIds.has(asset.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(asset.id); else next.delete(asset.id); return next; })} />选择</label><span className="memory-kind">{KIND_LABELS[asset.kind]}</span><strong>{asset.name}</strong></div><p>{asset.content}</p><div className="asset-card-actions"><button className="primary-button" type="button" onClick={() => onUseAsset(asset)}>带入想法</button><button className="ghost-button" type="button" onClick={() => setEditing(asset)}>编辑</button><button className="ghost-button" type="button" onClick={() => void copyAsset(asset)}><Copy size={13} /> 复制</button><button className="text-button asset-delete" type="button" onClick={() => removeAsset(asset.id)} aria-label={`删除${asset.name}`}><Trash2 size={13} /></button></div></article>)}
       </div>
     </aside>
   );
