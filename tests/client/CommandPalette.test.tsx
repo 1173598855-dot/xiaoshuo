@@ -18,7 +18,7 @@ describe("CommandPalette", () => {
       />,
     );
 
-    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "搜索操作" }), { key: "Enter" });
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledTimes(1);
@@ -43,5 +43,24 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("option", { name: /打开正文/ })).toBeNull();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a displayed shortcut without hijacking search input text", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <CommandPalette
+        open
+        onClose={onClose}
+        actions={[{ id: "workflow", label: "打开工作流", description: "配置角色", icon: FileText, shortcut: "W", onSelect }]}
+      />,
+    );
+
+    const input = screen.getByRole("textbox", { name: "搜索操作" });
+    fireEvent.keyDown(input, { key: "W" });
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "W" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 });

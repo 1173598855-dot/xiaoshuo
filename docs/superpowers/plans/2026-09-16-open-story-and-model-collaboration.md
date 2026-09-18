@@ -68,6 +68,13 @@ git diff --check
 - [x] 移动端采用单列布局与底部 sheet，覆盖 `1440x960`、`1024x768`、`390x844` 的无横向滚动检查。
 - [x] 所有新增动效提供 `prefers-reduced-motion` 降级；未触碰 API Key、IPC、revision 或 generation/context 冻结边界。
 
+## Xiaoyi Studio 账号入口与交互硬化（2026-09-18）
+
+- [x] 首页账号入口拆为可复用 AuthGate，覆盖登录 / 邀请码注册、字段级校验、密码显隐、强度提示、提交中 / 成功 / 错误 / 禁用状态，并适配移动端。
+- [x] 修复方向卡片 Space 冒泡，命令面板统一执行路径、面板内快捷键、焦点恢复与 Tab 限制，候选审核改用稳定锚点。
+- [x] 将视觉 token 收敛到 tokens 层，旧规则与 Studio 规则通过 CSS layer 明确分层；导航和临时层保留必要材质，其余全屏 blur 降级。
+- [x] 新增 AuthGate、DirectionPicker、CommandPalette 组件测试；最终门禁以 78 个测试文件、348 个测试和桌面发布验收为证据。
+
 ## 后续审查修复
 
 - [x] ProductionWorker 原子工作流入队，避免唤醒竞态丢失 collaborative 配置。

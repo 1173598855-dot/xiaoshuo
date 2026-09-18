@@ -28,7 +28,7 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
       </section>
       <section className="direction-grid" aria-label="故事方向">
         {directions.map((direction) => (
-          <article className="direction-card" key={direction.id} tabIndex={0} onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); setPeekDirection(direction); } }}>
+          <article className="direction-card" key={direction.id} tabIndex={0} aria-label={`预览方向：${direction.title}`} onKeyDown={(event) => { if (event.target !== event.currentTarget || event.key !== " ") return; event.preventDefault(); setPeekDirection(direction); }}>
             <div className="direction-card-top">
               <span className="direction-index">{String(direction.rank).padStart(2, "0")}</span>
               <span className="direction-type"><Sparkles size={13} /> {direction.genre}</span>

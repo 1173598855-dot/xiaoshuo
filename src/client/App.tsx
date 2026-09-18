@@ -34,6 +34,7 @@ import { ConsistencyPanel, SearchPanel } from "./components/AuthoringToolsPanel"
 import { DataManagementDialog } from "./components/DataManagementDialog";
 import { WorkflowDialog } from "./components/WorkflowDialog";
 import { CommandPalette, type CommandAction } from "./components/CommandPalette";
+import { AuthGate, type AuthMode, type AuthStatus } from "./components/AuthGate";
 import { storeAccessToken } from "./access-token";
 
 type Page = "home" | "directions" | "production" | "manuscript";
@@ -68,7 +69,8 @@ export function App() {
   const [activationPrompt, setActivationPrompt] = useState(false);
   const [activationCodeInput, setActivationCodeInput] = useState("");
   const [accessTokenPrompt, setAccessTokenPrompt] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("idle");
   const [authUsername, setAuthUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [invitationCodeInput, setInvitationCodeInput] = useState("");
@@ -421,19 +423,25 @@ export function App() {
 
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (authStatus !== "idle") return;
     setInvitationError(null);
+    setAuthStatus("submitting");
     try {
       const result = authMode === "register"
         ? await apiClient.registerAccount({ inviteCode: invitationCodeInput.trim(), username: authUsername.trim(), password: authPassword })
         : await apiClient.loginAccount({ username: authUsername.trim(), password: authPassword });
       storeAccessToken(result.accessToken);
+      setAuthStatus("success");
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
       setAuthUsername("");
       setAuthPassword("");
       setInvitationCodeInput("");
+      setAuthStatus("idle");
       setAccessTokenPrompt(false);
       setLoading(true);
       void loadLibrary();
     } catch (redeemError) {
+      setAuthStatus("idle");
       setInvitationError(redeemError instanceof Error ? redeemError.message : "邀请码兑换失败。" );
     }
   };
@@ -476,50 +484,7 @@ export function App() {
     );
   }
   if (accessTokenPrompt) {
-    return (
-      <main className="app-error" role="dialog" aria-labelledby="access-token-title">
-        <span className="brand-mark">奕</span>
-        <h1 id="access-token-title">{authMode === "register" ? "注册工作台账号" : "登录工作台"}</h1>
-        <p>{authMode === "register" ? "注册需要有效邀请码；邀请码只用于注册，账号创建后使用用户名和密码登录。" : "请输入已注册账号的用户名和密码。凭据只保存在当前浏览器会话。"}</p>
-        <form onSubmit={(event) => void submitAuth(event)}>
-          <input
-            type="text"
-            value={authUsername}
-            onChange={(event) => setAuthUsername(event.target.value)}
-            placeholder="用户名"
-            autoComplete="off"
-            autoFocus
-          />
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(event) => setAuthPassword(event.target.value)}
-            placeholder="密码（至少 12 位）"
-            autoComplete={authMode === "register" ? "new-password" : "current-password"}
-          />
-          {authMode === "register" ? (
-            <input
-              type="text"
-              value={invitationCodeInput}
-              onChange={(event) => setInvitationCodeInput(event.target.value)}
-              placeholder="邀请码"
-              autoComplete="off"
-            />
-          ) : null}
-          <button type="submit" disabled={!authUsername.trim() || !authPassword || (authMode === "register" && !invitationCodeInput.trim())}>
-            {authMode === "register" ? "注册并登录" : "登录"}
-          </button>
-        </form>
-        <button type="button" className="text-button" onClick={() => {
-          setAuthMode(authMode === "register" ? "login" : "register");
-          setInvitationError(null);
-        }}>
-          {authMode === "register" ? "已有账号，返回登录" : "没有账号？使用邀请码注册"}
-        </button>
-        {invitationError ? <p role="alert">{invitationError}</p> : null}
-        {error ? <p role="alert">{error}</p> : null}
-      </main>
-    );
+    return <AuthGate mode={authMode} status={authStatus} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} />;
   }
   const workflowDialog = () => <WorkflowDialog open={workflowOpen} platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} />;
   const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
@@ -535,7 +500,7 @@ export function App() {
       { id: "timeline", label: "打开故事时间线", description: "查看事件、伏笔与章节节奏", icon: GitBranch, onSelect: () => setTimelineOpen(true) },
       { id: "search", label: "搜索全书", description: "在作品内容与记忆中查找", icon: Search, shortcut: "/", onSelect: () => setSearchOpen(true) },
       { id: "manuscript", label: "查看正式正文", description: "阅读已采纳章节", icon: FileText, shortcut: "M", onSelect: () => setPage("manuscript") },
-      { id: "review", label: "打开候选审核", description: "审核、重写或采纳当前候选", icon: ListChecks, shortcut: "R", onSelect: () => document.querySelector(".review-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
+      { id: "review", label: "打开候选审核", description: "审核、重写或采纳当前候选", icon: ListChecks, shortcut: "R", onSelect: () => document.getElementById("chapter-review-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
     ] : []),
   ];
   const commandPalette = <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />;
@@ -549,7 +514,7 @@ export function App() {
   if (page === "manuscript") {
     return <><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onBack={() => setPage("production")} />{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
   }
-  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} /><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} />{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{consistencyOpen ? <ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} /> : null}{searchOpen ? <SearchPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setSearchOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
+  return <><ProductionRoom book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} /><div id="chapter-review-anchor"><ChapterReview details={runState.details} api={autoApi} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} /></div>{memoryOpen ? <MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /> : null}{timelineOpen ? <StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /> : null}{storyBibleOpen ? <StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /> : null}{consistencyOpen ? <ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} /> : null}{searchOpen ? <SearchPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setSearchOpen(false)} /> : null}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
 }
 
 function providerDialog(
