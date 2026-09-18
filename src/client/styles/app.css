@@ -4472,6 +4472,42 @@ select:focus-visible,
 }
 
 @layer studio {
+  .data-import-preview {
+    display: grid;
+    gap: 7px;
+    margin: 12px 0;
+    padding: 13px;
+    border: 1px solid rgb(0 113 227 / 22%);
+    border-radius: 11px;
+    background: rgb(0 113 227 / 5%);
+  }
+
+  .data-import-preview strong {
+    color: var(--ink);
+    font-size: 13px;
+  }
+
+  .data-import-preview p,
+  .data-import-preview small {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .data-import-preview > div {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .data-import-preview button {
+    min-height: 34px;
+    font-size: 12px;
+  }
+}
+
+@layer studio {
   .data-dialog-status {
     display: grid;
     gap: 4px;

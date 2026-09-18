@@ -42,7 +42,7 @@ export interface DesktopDialogAdapter {
 
 export interface DesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
-  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "exportDatabase" | "exportEncryptedDatabase">;
+  readonly databaseManager: Pick<DesktopDatabaseManager, "initialize" | "getRuntime" | "getAutoNovelServices" | "runWrite" | "importDatabase" | "previewImportDatabase" | "confirmPendingImport" | "cancelPendingImport" | "exportDatabase" | "exportEncryptedDatabase">;
   readonly providerVault: Pick<ProviderVault, "getSettings" | "saveSettings" | "clearKey" | "resolveModelListing"> & Partial<Pick<ProviderVault, "resolveConnectionTest" | "getWorkflowSettings" | "saveWorkflowSettings">>;
   readonly authService: DesktopAuthService;
   readonly providerModelLister?: typeof listOpenAICompatibleModels;
@@ -94,6 +94,14 @@ export function registerDesktopIpcHandlers(dependencies: DesktopIpcDependencies)
     if (selection.cancelled || !selection.sourcePath) return { cancelled: true };
     return { cancelled: false, workspace: await dependencies.databaseManager.importDatabase(selection.sourcePath) };
   });
+  registerHandler(dependencies, DESKTOP_CHANNELS.databasePreviewImport, EmptyInputSchema, async () => {
+    const selection = await dependencies.dialogs.selectImportSource();
+    if (selection.cancelled || !selection.sourcePath) return { cancelled: true };
+    const workspace = await dependencies.databaseManager.previewImportDatabase(selection.sourcePath);
+    return { cancelled: false, preview: { fileName: basename(selection.sourcePath), projectTitle: workspace.project.title, chapterCount: workspace.chapters.length } };
+  });
+  registerHandler(dependencies, DESKTOP_CHANNELS.databaseConfirmImport, EmptyInputSchema, async () => ({ cancelled: false, workspace: await dependencies.databaseManager.confirmPendingImport() }));
+  registerHandler(dependencies, DESKTOP_CHANNELS.databaseCancelImport, EmptyInputSchema, () => { dependencies.databaseManager.cancelPendingImport(); });
   registerHandler(dependencies, DESKTOP_CHANNELS.databaseExport, EmptyInputSchema, async () => {
     const selection = await dependencies.dialogs.selectExportTarget();
     if (selection.cancelled || !selection.destinationPath) return { cancelled: true };

@@ -8,7 +8,7 @@ import {
 import { Database, Download, Upload, X } from "lucide-react";
 
 import { apiClient, ApiRequestError } from "../api/client";
-import type { DatabaseStatus } from "../../shared/contracts";
+import type { DatabaseOperationResult, DatabaseStatus } from "../../shared/contracts";
 
 interface DataManagementDialogProps {
   open: boolean;
@@ -29,6 +29,7 @@ export function DataManagementDialog({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus | null>(null);
+  const [importPreview, setImportPreview] = useState<NonNullable<DatabaseOperationResult["preview"]> | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -39,6 +40,7 @@ export function DataManagementDialog({
     setMessage(null);
     setError(null);
     setBackupPassword("");
+    setImportPreview(null);
     void apiClient.getDatabaseStatus().then(setDatabaseStatus).catch(() => setDatabaseStatus(null));
   }, [open]);
 
@@ -59,7 +61,11 @@ export function DataManagementDialog({
   if (!open) return null;
 
   const requestClose = () => {
-    if (!busy) onClose();
+    if (!busy) {
+      if (importPreview && apiClient.cancelImportPreview) void apiClient.cancelImportPreview();
+      setImportPreview(null);
+      onClose();
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -100,6 +106,16 @@ export function DataManagementDialog({
         setError("请先解决当前章节的保存问题，再执行数据操作。");
         return;
       }
+      if (apiClient.platform === "desktop" && apiClient.previewImportDatabase) {
+        const result = await apiClient.previewImportDatabase();
+        if (result.cancelled) {
+          onClose();
+          return;
+        }
+        setImportPreview(result.preview ?? null);
+        setMessage(result.preview ? "导入文件已通过预检，请确认替换当前工作区。" : "导入文件预检完成。" );
+        return;
+      }
       const result = await apiClient.importDatabase();
       if (result.cancelled) {
         onClose();
@@ -107,6 +123,24 @@ export function DataManagementDialog({
       }
       await onImported();
       setMessage("数据导入成功。");
+    } catch (requestError) {
+      setError(dataErrorMessage(requestError));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (busy || !importPreview || !apiClient.confirmImportDatabase) return;
+    setBusy("import");
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await apiClient.confirmImportDatabase();
+      if (result.cancelled) return;
+      await onImported();
+      setImportPreview(null);
+      setMessage("数据导入成功。" );
     } catch (requestError) {
       setError(dataErrorMessage(requestError));
     } finally {
@@ -187,6 +221,7 @@ export function DataManagementDialog({
             导入会替换当前工作区，导出会创建一个可备份的 SQLite 文件。
           </p>
           {databaseStatus ? <div className="data-dialog-status" aria-live="polite"><strong>{databaseStatus.isFirstRun ? "数据库即将初始化" : "数据库已通过完整性校验"}</strong><small>{databaseStatus.isDesktop ? `自动备份 ${databaseStatus.backupCount ?? 0} 份 · ${databaseStatus.pendingRecovery ? "存在待恢复事务" : "没有待恢复事务"}` : "浏览器模式使用当前会话数据"}</small></div> : null}
+          {importPreview ? <div className="data-import-preview" aria-label="导入预检结果"><strong>确认替换当前工作区？</strong><p>{importPreview.fileName} 已通过完整性和 schema 校验。</p><small>项目：{importPreview.projectTitle || "未命名"} · 章节：{importPreview.chapterCount}</small><div><button className="primary-button" type="button" disabled={busy !== null} onClick={() => void confirmImport()}>确认导入</button><button className="secondary-button" type="button" disabled={busy !== null} onClick={() => { if (apiClient.cancelImportPreview) void apiClient.cancelImportPreview(); setImportPreview(null); setMessage("已取消导入预检。" ); }}>取消</button></div></div> : null}
           <div className="data-actions">
             <button
               ref={importButtonRef}
@@ -197,7 +232,7 @@ export function DataManagementDialog({
               onClick={() => void runImport()}
             >
               <Upload size={16} />
-              <span>{busy === "import" ? "正在导入" : "导入现有数据库"}</span>
+              <span>{busy === "import" ? "正在处理" : apiClient.platform === "desktop" && apiClient.previewImportDatabase ? "预检导入" : "导入现有数据库"}</span>
             </button>
             <button
               className="primary-button"

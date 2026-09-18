@@ -387,6 +387,11 @@ export const DatabaseOperationResultSchema = z.object({
   cancelled: z.boolean(),
   workspace: WorkspaceSchema.optional(),
   fileName: z.string().optional(),
+  preview: z.object({
+    fileName: z.string().min(1).max(260),
+    projectTitle: z.string().max(200),
+    chapterCount: z.number().int().nonnegative(),
+  }).strict().optional(),
 });
 export type DatabaseOperationResult = z.infer<
   typeof DatabaseOperationResultSchema

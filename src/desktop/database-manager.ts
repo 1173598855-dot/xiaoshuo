@@ -173,6 +173,7 @@ export class DesktopDatabaseManager {
   private lastDailyBackup: string | undefined;
   private databaseLineage: string | undefined;
   private backupSequence = 0;
+  private pendingImportPath: string | undefined;
 
   constructor(
     userDataDirectory: string,
@@ -429,6 +430,58 @@ getAutoNovelServices(): AutoNovelServices {
         }
       }
     });
+  }
+
+  async previewImportDatabase(sourcePath: string): Promise<Workspace> {
+    this.cancelPendingImport();
+    return this.runMaintenance(async () => {
+      this.assertImportDatabaseSize(sourcePath);
+      const previewPath = this.temporaryPath("import-preview");
+      try {
+        await this.snapshotFile(sourcePath, previewPath);
+        this.assertImportDatabaseSize(previewPath);
+        this.verifyAndMigrate(previewPath);
+        const candidateRuntime = this.createCandidateRuntime(previewPath);
+        let workspace: Workspace | undefined;
+        let candidateError: unknown;
+        try {
+          this.assertImportedTextLimits(candidateRuntime.database);
+          workspace = this.verifyRuntime(candidateRuntime);
+          candidateRuntime.database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        } catch (error) {
+          candidateError = error;
+        }
+        const release = this.releaseRuntime(candidateRuntime);
+        if (!release.closed) throw new DatabaseRecoveryError();
+        if (release.error) throw release.error;
+        if (candidateError) throw candidateError;
+        if (!workspace) {
+          throw new DatabaseIntegrityError();
+        }
+        this.pendingImportPath = previewPath;
+        return workspace;
+      } catch (error) {
+        if (this.pendingImportPath !== previewPath) this.removeDatabaseFamily(previewPath);
+        throw error;
+      }
+    });
+  }
+
+  async confirmPendingImport(): Promise<Workspace> {
+    const sourcePath = this.pendingImportPath;
+    if (!sourcePath) throw new Error("没有待确认的数据库导入预览。");
+    this.pendingImportPath = undefined;
+    try {
+      return await this.importDatabase(sourcePath);
+    } finally {
+      this.removeDatabaseFamily(sourcePath);
+    }
+  }
+
+  cancelPendingImport(): void {
+    if (!this.pendingImportPath) return;
+    this.removeDatabaseFamily(this.pendingImportPath);
+    this.pendingImportPath = undefined;
   }
 
   async exportDatabase(destinationPath: string): Promise<void> {
@@ -1271,6 +1324,7 @@ getAutoNovelServices(): AutoNovelServices {
       throw new DatabaseRecoveryError();
     }
     this.releaseUnreleasedRuntimes();
+    this.cancelPendingImport();
     this.runtime = undefined;
     this.closed = true;
   }
@@ -1371,6 +1425,4 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
-
-
 

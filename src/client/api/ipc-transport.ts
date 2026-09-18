@@ -119,6 +119,15 @@ export function createIpcTransport(api: DesktopApi): WorkbenchTransport {
         DatabaseOperationResultSchema,
       );
     },
+    async previewImportDatabase() {
+      return parseResult(await api.database.previewImport(), DatabaseOperationResultSchema);
+    },
+    async confirmImportDatabase() {
+      return parseResult(await api.database.confirmImport(), DatabaseOperationResultSchema);
+    },
+    async cancelImportPreview() {
+      parseResult(await api.database.cancelImportPreview(), undefinedSchema);
+    },
     async exportDatabase() {
       return parseResult(
         await api.database.export(),

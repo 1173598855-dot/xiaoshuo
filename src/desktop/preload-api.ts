@@ -65,6 +65,9 @@ export interface DesktopApi {
   readonly database: {
     status(): Promise<DesktopResult<DatabaseStatus>>;
     import(): Promise<DesktopResult<DatabaseOperationResult>>;
+    previewImport(): Promise<DesktopResult<DatabaseOperationResult>>;
+    confirmImport(): Promise<DesktopResult<DatabaseOperationResult>>;
+    cancelImportPreview(): Promise<DesktopResult<void>>;
     export(): Promise<DesktopResult<DatabaseOperationResult>>;
     exportEncrypted(password: string): Promise<DesktopResult<DatabaseOperationResult>>;
   };
@@ -103,6 +106,9 @@ export function createPreloadApi(ipcRenderer: DesktopIpcRenderer): DesktopApi {
     database: {
       status: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseStatus),
       import: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseImport),
+      previewImport: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databasePreviewImport),
+      confirmImport: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseConfirmImport),
+      cancelImportPreview: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseCancelImport),
       export: () => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseExport),
       exportEncrypted: (password) => invoke(ipcRenderer, DESKTOP_CHANNELS.databaseExportEncrypted, { password }),
     },
