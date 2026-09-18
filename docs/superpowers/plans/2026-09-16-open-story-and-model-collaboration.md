@@ -59,6 +59,15 @@ git diff --check
 - [x] 全量质量门禁 + 桌面发布门禁 + git diff --check。
 - [x] 提交中文开发说明并推送 main。
 
+## Xiaoyi Studio 前端闭环重构（2026-09-18）
+
+- [x] 首页、方向选择、生产室统一空间层次与浅色实体内容面板，玻璃材质限定在导航和临时控制层。
+- [x] 加入 `Ctrl/Cmd + K` 上下文命令面板，支持搜索、方向键选择、Enter 执行和 Escape 关闭。
+- [x] 方向卡片加入聚焦 / 键盘 `Space` Peek 预览，并保持候选先审后采纳的业务回调不变。
+- [x] 生产进度改为 transform 动画，状态与章节记录增加明确的状态色、焦点态和进度语义。
+- [x] 移动端采用单列布局与底部 sheet，覆盖 `1440x960`、`1024x768`、`390x844` 的无横向滚动检查。
+- [x] 所有新增动效提供 `prefers-reduced-motion` 降级；未触碰 API Key、IPC、revision 或 generation/context 冻结边界。
+
 ## 后续审查修复
 
 - [x] ProductionWorker 原子工作流入队，避免唤醒竞态丢失 collaborative 配置。

@@ -1,4 +1,5 @@
-import { ArrowRight, Check, Compass, Play, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
 
@@ -11,23 +12,25 @@ interface DirectionPickerProps {
 }
 
 export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack }: DirectionPickerProps) {
+  const [peekDirection, setPeekDirection] = useState<StoryDirection | null>(null);
   return (
     <main className="director-page">
       <header className="page-topbar">
         <button className="text-button" type="button" onClick={onBack}>← 返回想法</button>
-        <span className="stage-progress"><span className="stage-progress-active" /> 01 / 03 · 自动导演</span>
+        <span className="stage-progress"><span className="stage-progress-active" /> 自动导演 · {directions.length} 个方向</span>
       </header>
       <section className="direction-intro">
         <span className="stage-label"><Compass size={14} /> {directions.length} 条路，选一条</span>
         <h1>你的故事可以这样开始</h1>
         <p>这些不是角色卡。它们是 {directions.length} 种整本书的命运：选定以后，AI 会自动把它写下去。</p>
+        <span className="peek-hint">聚焦方向卡片后按 Space 查看详情</span>
         {onAutoSelect ? <button className="primary-button direction-auto-button" type="button" disabled={busy || directions.length === 0} onClick={onAutoSelect}><Play size={15} /> 自动选第一方向并开写</button> : null}
       </section>
       <section className="direction-grid" aria-label="故事方向">
         {directions.map((direction) => (
-          <article className="direction-card" key={direction.id}>
+          <article className="direction-card" key={direction.id} tabIndex={0} onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); setPeekDirection(direction); } }}>
             <div className="direction-card-top">
-              <span className="direction-index">0{direction.rank}</span>
+              <span className="direction-index">{String(direction.rank).padStart(2, "0")}</span>
               <span className="direction-type"><Sparkles size={13} /> {direction.genre}</span>
             </div>
             <h2>{direction.title}</h2>
@@ -49,6 +52,7 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
           </article>
         ))}
       </section>
+      {peekDirection ? <div className="peek-preview" role="dialog" aria-modal="false" aria-label={`预览方向：${peekDirection.title}`}><div className="peek-preview-bar"><span>方向预览</span><button className="icon-button" type="button" aria-label="关闭方向预览" onClick={() => setPeekDirection(null)}><X size={16} /></button></div><h2>{peekDirection.title}</h2><p>{peekDirection.logline}</p><div className="peek-preview-grid"><div><span>读者承诺</span><strong>{peekDirection.promise}</strong></div><div><span>核心冲突</span><strong>{peekDirection.centralConflict}</strong></div></div><button className="primary-button" type="button" disabled={busy} onClick={() => { onSelect(peekDirection); setPeekDirection(null); }}><Check size={15} /> 选择这条路</button></div> : null}
     </main>
   );
 }

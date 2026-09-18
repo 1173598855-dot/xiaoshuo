@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleDot, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
+import { CheckCircle2, CircleDot, Command, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -26,6 +26,7 @@ interface ProductionRoomProps {
   onOpenSearch: () => void;
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
+  onOpenCommandPalette?: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
 }
@@ -48,6 +49,7 @@ export function ProductionRoom({
   onOpenSearch,
   onConfigureProvider,
   onConfigureWorkflow,
+  onOpenCommandPalette,
   connectionState = "connected",
   onRetryConnection,
 }: ProductionRoomProps) {
@@ -62,7 +64,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button><button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button>{onOpenCommandPalette ? <button className="command-trigger command-trigger-compact" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /></button> : null}<button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>
@@ -85,7 +87,7 @@ export function ProductionRoom({
               {onRetryConnection ? <button className="text-button" type="button" onClick={onRetryConnection}>立即重试</button> : null}
             </div>
           ) : null}
-          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+          <div className="progress-track" role="progressbar" aria-label="生产进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ transform: `scaleX(${progress / 100})` }} /></div>
           <div className="stage-list">
             {[
               ["foundation", "基础设定", "世界、人物和写法自动就位"],

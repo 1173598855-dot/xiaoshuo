@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpRight, BookOpen, Plus, Settings2, Sparkles } from "lucide-react";
+import { ArrowUpRight, BookOpen, Command, Plus, Settings2, Sparkles } from "lucide-react";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 
@@ -11,6 +11,7 @@ interface CreativeHomeProps {
   onOpenBook: (book: Book) => void;
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export function CreativeHome({
@@ -21,6 +22,7 @@ export function CreativeHome({
   onOpenBook,
   onConfigureProvider,
   onConfigureWorkflow,
+  onOpenCommandPalette,
 }: CreativeHomeProps) {
   return (
     <main className="creative-home">
@@ -39,6 +41,7 @@ export function CreativeHome({
             模型设置
           </button>
           <button className="ghost-button" type="button" onClick={onConfigureWorkflow}>工作流</button>
+          {onOpenCommandPalette ? <button className="command-trigger" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /><kbd>⌘K</kbd></button> : null}
         </div>
       </header>
 
@@ -52,7 +55,7 @@ export function CreativeHome({
         </div>
         <div className="idea-column">
           <IdeaForm busy={busy} error={error} onSubmit={onCreateIdea} />
-          <div className="idea-caption"><span>01 / 03</span><span>输入 → 方向 → 正文</span></div>
+          <div className="idea-caption"><span>01 / 1–12</span><span>输入 → 方向 → 正文</span></div>
         </div>
       </section>
 
