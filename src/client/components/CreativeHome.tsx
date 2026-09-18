@@ -3,6 +3,7 @@ import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles, Wo
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 import { CursorGrid } from "./CursorGrid";
+import { SpotlightCard } from "./SpotlightCard";
 
 interface CreativeHomeProps {
   books: readonly Book[];
@@ -61,7 +62,9 @@ export function CreativeHome({
           <div className="stage-notes"><span>NO CARDS</span><span>NO BUSYWORK</span><span>JUST START</span></div>
         </div>
         <div className="idea-column">
-          <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onSubmit={onCreateIdea} />
+          <SpotlightCard className="idea-spotlight-shell">
+            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onSubmit={onCreateIdea} />
+          </SpotlightCard>
           <div className="idea-caption"><span>01 / 1–12</span><span>输入 → 方向 → 正文</span></div>
         </div>
       </section>

@@ -5633,6 +5633,29 @@ select:focus-visible,
     animation: atlas-card-in 640ms 120ms var(--ease-studio) both;
   }
 
+  .idea-spotlight-shell {
+    padding: 10px;
+    border: 1px solid rgb(244 239 229 / 18%);
+    border-radius: 24px;
+    background:
+      linear-gradient(140deg, rgb(26 42 64 / 96%), rgb(10 18 31 / 96%)),
+      var(--atlas-night-soft);
+    box-shadow: 0 30px 72px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 7%);
+    transition: border-color 240ms ease, box-shadow 240ms ease;
+  }
+
+  .idea-spotlight-shell:hover,
+  .idea-spotlight-shell:focus-within {
+    border-color: rgb(99 214 198 / 48%);
+    box-shadow: 0 34px 82px rgb(0 0 0 / 36%), 0 0 0 1px rgb(99 214 198 / 12%), inset 0 1px 0 rgb(255 255 255 / 9%);
+  }
+
+  .idea-spotlight-shell .idea-form {
+    border: 1px solid rgb(255 255 255 / 38%);
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
+  }
+
   .idea-form::before {
     position: absolute;
     top: 0;
@@ -6001,6 +6024,11 @@ select:focus-visible,
   }
 
   @media (max-width: 620px) {
+    .idea-spotlight-shell {
+      padding: 7px;
+      border-radius: 21px;
+    }
+
     .creative-header-actions {
       flex: 0 0 auto;
       gap: 5px;
