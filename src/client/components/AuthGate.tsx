@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Sparkles, UserRound } from "lucide-react";
 
 import { PasswordSchema, RegisterAccountInputSchema, UsernameSchema } from "../../shared/auth";
@@ -139,7 +139,7 @@ export function AuthGate({
               </span>
               {isRegister ? (
                 <div id="auth-password-strength" className="auth-password-strength" aria-live="polite">
-                  <div className="auth-strength-bar" aria-hidden="true"><span style={{ width: `${Math.max(1, passwordScore) * 33.333}%` }} /></div>
+                  <div className="auth-strength-bar" aria-hidden="true"><span style={{ "--auth-strength": `${Math.max(1, passwordScore) / 3}` } as CSSProperties} /></div>
                   <span>{password ? (passwordScore === 3 ? "密码强度足够" : "再加强一点会更稳妥") : "密码强度提示"}</span>
                   <div className="auth-strength-checks">
                     {passwordChecks.map((check) => <span className={check.valid ? "is-valid" : ""} key={check.label}>{check.valid ? <Check size={12} /> : <span className="auth-strength-dot" />} {check.label}</span>)}

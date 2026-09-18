@@ -1798,7 +1798,7 @@ button:disabled {
 }
 
 .story-bible-drawer .memory-entry {
-  border-left: 3px solid var(--violet);
+  border-color: var(--violet);
 }
 
 @media (max-width: 560px) {
@@ -5171,9 +5171,12 @@ select:focus-visible,
   .auth-strength-bar span {
     display: block;
     height: 100%;
+    width: 100%;
     border-radius: inherit;
     background: var(--accent);
-    transition: width 180ms var(--ease-studio), background-color 180ms ease;
+    transform: scaleX(var(--auth-strength, .333));
+    transform-origin: left center;
+    transition: transform 180ms var(--ease-studio), background-color 180ms ease;
   }
 
   .auth-strength-checks {

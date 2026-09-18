@@ -132,7 +132,8 @@ export function CursorGrid({
     const context = canvas.getContext("2d");
     if (!context) return undefined;
 
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     let columns = 0;
     let rows = 0;
