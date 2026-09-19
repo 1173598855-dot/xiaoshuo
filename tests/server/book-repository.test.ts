@@ -299,6 +299,18 @@ describe("BookRepository", () => {
     const chapter = production.getOrCreateChapter(book.id, "第一章", 0);
     database.prepare("UPDATE chapters SET content = ? WHERE id = ?").run("正文里的旧称呼。", chapter.id);
 
+    const preview = repository.batchReplaceText({
+      bookId: book.id,
+      expectedBookRevision: 0,
+      query: "旧称呼",
+      replacement: "新称呼",
+      includePlans: true,
+      includeChapters: true,
+      previewOnly: true,
+    });
+    expect(preview).toMatchObject({ bookRevision: 0, replacementCount: 5, previewOnly: true });
+    expect(repository.getBook(book.id).book.revision).toBe(0);
+
     const result = repository.batchReplaceText({
       bookId: book.id,
       expectedBookRevision: 0,
@@ -306,6 +318,7 @@ describe("BookRepository", () => {
       replacement: "新称呼",
       includePlans: true,
       includeChapters: true,
+      previewOnly: false,
     });
 
     expect(result).toMatchObject({ bookRevision: 1, planCount: 1, chapterCount: 1, replacementCount: 5 });
@@ -318,6 +331,7 @@ describe("BookRepository", () => {
       replacement: "冲突",
       includePlans: true,
       includeChapters: true,
+      previewOnly: false,
     })).toThrow(BookRevisionConflictError);
   });
 });

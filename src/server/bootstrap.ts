@@ -7,6 +7,7 @@ import type { ProviderResolver } from "./providers/resolver";
 import type { ProviderConfig } from "../shared/contracts";
 import { BookRepository } from "./repositories/book-repository";
 import { ProductionRepository } from "./repositories/production-repository";
+import { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
 import { MemoryRepository } from "./repositories/memory-repository";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
 import { DirectorService } from "./services/director-service";
@@ -38,6 +39,7 @@ export interface ServerRuntime {
   readonly workspaceRepository: WorkspaceRepository;
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
+  readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
@@ -59,7 +61,8 @@ export function createServerRuntime(
     migrate(database);
     const workspaceRepository = new WorkspaceRepository(database);
     const bookRepository = new BookRepository(database);
-    const productionRepository = new ProductionRepository(database);
+    const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
+    const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
     const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
@@ -79,6 +82,7 @@ export function createServerRuntime(
     });
     const shared = {
       bookRepository,
+      authoringWorkspaceRepository,
       productionRepository,
       providerResolver,
       memoryService,
@@ -97,6 +101,7 @@ export function createServerRuntime(
       workspaceRepository,
       bookRepository,
       productionRepository,
+      authoringWorkspaceRepository,
       memoryRepository,
       directorService: new DirectorService(shared),
       foundationService: new FoundationService(shared),

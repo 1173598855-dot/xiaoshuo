@@ -811,6 +811,7 @@ export class BookRepository {
           planCount: 0,
           chapterCount: 0,
           replacementCount: 0,
+          previewOnly: input.previewOnly,
         };
       }
 
@@ -846,16 +847,18 @@ export class BookRepository {
           const nextForeshadowing = foreshadowing.map((item) => replace(item));
           const count = title.count + summary.count + objective.count + hook.count + nextForeshadowing.reduce((sum, item) => sum + item.count, 0);
           if (count === 0) continue;
-          update.run(
-            title.value,
-            summary.value,
-            objective.value,
-            hook.value,
-            JSON.stringify(nextForeshadowing.map((item) => item.value)),
-            timestamp,
-            row.id,
-            input.bookId,
-          );
+          if (!input.previewOnly) {
+            update.run(
+              title.value,
+              summary.value,
+              objective.value,
+              hook.value,
+              JSON.stringify(nextForeshadowing.map((item) => item.value)),
+              timestamp,
+              row.id,
+              input.bookId,
+            );
+          }
           planCount += 1;
           replacementCount += count;
         }
@@ -887,22 +890,24 @@ export class BookRepository {
           const title = replace(row.title);
           const content = replace(row.content);
           if (title.count === 0 && content.count === 0) continue;
-          insertRevision.run(this.createId(), row.id, row.revision, row.title, row.content, row.status, timestamp);
-          const result = update.run(title.value, content.value, timestamp, row.id, row.revision);
-          if (result.changes !== 1) throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+          if (!input.previewOnly) {
+            insertRevision.run(this.createId(), row.id, row.revision, row.title, row.content, row.status, timestamp);
+            const result = update.run(title.value, content.value, timestamp, row.id, row.revision);
+            if (result.changes !== 1) throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+          }
           chapterCount += 1;
           replacementCount += title.count + content.count;
         }
       }
 
-      const nextRevision = book.revision + (replacementCount > 0 ? 1 : 0);
-      if (replacementCount > 0) {
+      const nextRevision = book.revision + (!input.previewOnly && replacementCount > 0 ? 1 : 0);
+      if (replacementCount > 0 && !input.previewOnly) {
         const result = this.database
           .prepare("UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
           .run(timestamp, input.bookId, input.expectedBookRevision);
         if (result.changes !== 1) throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
       }
-      return { bookId: input.bookId, bookRevision: nextRevision, planCount, chapterCount, replacementCount };
+      return { bookId: input.bookId, bookRevision: nextRevision, planCount, chapterCount, replacementCount, previewOnly: input.previewOnly };
     });
   }
 

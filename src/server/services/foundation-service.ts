@@ -13,10 +13,14 @@ import {
   buildOutlinePrompt,
 } from "./foundation-prompts";
 import { NormalizedProviderError } from "../providers/types";
+import type { AuthoringWorkspaceRepository } from "../repositories/authoring-workspace-repository";
+import { getAuthoringGenerationContext } from "../authoring-context";
+import { DEFAULT_MEMORY_CONTEXT_CONFIG } from "../../shared/memory";
 
 export interface FoundationServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly providerResolver: ProviderResolver;
+  readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
 }
 
 export class FoundationService {
@@ -42,11 +46,17 @@ export class FoundationService {
       };
     }
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
+    const authoringContext = getAuthoringGenerationContext(
+      this.dependencies.authoringWorkspaceRepository,
+      bookId,
+      1,
+      DEFAULT_MEMORY_CONTEXT_CONFIG,
+    );
     const foundationResult = await provider.generate(
       {
         model: providerConfig.model,
         reasoningLevel: providerConfig.reasoningLevel,
-        ...buildFoundationPrompt(details.book, direction),
+        ...buildFoundationPrompt(details.book, direction, authoringContext),
         maxOutputTokens: 8_000,
       },
       signal,
@@ -68,6 +78,7 @@ export class FoundationService {
           direction.title,
           details.book.targetChapters,
           foundationData,
+          authoringContext,
         ),
         maxOutputTokens: 12_000,
       },
@@ -90,10 +101,16 @@ export class FoundationService {
     const direction = details.directions.find(({ selected }) => selected);
     if (!direction) throw new NormalizedProviderError("REQUEST_INVALID", "请先选择一套整本方向。");
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
+    const authoringContext = getAuthoringGenerationContext(
+      this.dependencies.authoringWorkspaceRepository,
+      bookId,
+      details.chapterPlans[0]?.chapterNumber ?? 1,
+      DEFAULT_MEMORY_CONTEXT_CONFIG,
+    );
     const result = await provider.generate({
       model: providerConfig.model,
       reasoningLevel: providerConfig.reasoningLevel,
-      ...buildOutlinePrompt(details.book.idea, direction.title, details.book.targetChapters, details.foundation),
+      ...buildOutlinePrompt(details.book.idea, direction.title, details.book.targetChapters, details.foundation, authoringContext),
       maxOutputTokens: 12_000,
     }, signal);
     const outline = parseStructuredProviderResult(result.text, OutlineModelOutputSchema);
@@ -104,4 +121,3 @@ export class FoundationService {
     return ChapterPlanPreviewEnvelopeSchema.parse({ bookId, baseRevision: details.book.revision, plans });
   }
 }
-

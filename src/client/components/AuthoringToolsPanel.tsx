@@ -32,10 +32,14 @@ export function SearchPanel({ bookId, expectedBookRevision, api, onClose, onRepl
     setBusy(true);
     setError(null);
     try {
-      const result = await api.batchReplaceText({ bookId, expectedBookRevision, query: query.trim(), replacement, includePlans, includeChapters });
+      const preview = await api.batchReplaceText({ bookId, expectedBookRevision, query: query.trim(), replacement, includePlans, includeChapters, previewOnly: true });
       setResults(null);
-      if (result.replacementCount === 0) setError("没有找到可替换内容。");
-      else { setReplacement(""); await onReplaced?.(); }
+      if (preview.replacementCount === 0) setError("没有找到可替换内容。");
+      else if (window.confirm(`将替换 ${preview.replacementCount} 处内容，涉及 ${preview.planCount} 条章纲和 ${preview.chapterCount} 章正文。此操作会增加一次作品 revision，是否继续？`)) {
+        const result = await api.batchReplaceText({ bookId, expectedBookRevision, query: query.trim(), replacement, includePlans, includeChapters, previewOnly: false });
+        setReplacement("");
+        if (result.replacementCount > 0) await onReplaced?.();
+      }
     } catch (value) { setError(value instanceof Error ? value.message : "批量替换失败。"); }
     finally { setBusy(false); }
   };

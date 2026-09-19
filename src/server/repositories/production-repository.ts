@@ -25,6 +25,7 @@ import {
   type ModelWorkflowConfig,
 } from "../../shared/auto-novel";
 import type { ManuscriptImportResult } from "../../shared/authoring";
+import type { AuthoringWorkspaceRepository } from "./authoring-workspace-repository";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   filterMemoryDelta,
@@ -35,10 +36,12 @@ import {
 import type { MemoryContextConfig, MemoryDelta, MemoryDeltaReview } from "../../shared/memory";
 import { BookRepository } from "./book-repository";
 import { MemoryRepository } from "./memory-repository";
+import { getAuthoringGenerationContext, hashAuthoringGenerationContext } from "../authoring-context";
 
 interface RepositoryOptions {
   createId?: () => string;
   now?: () => string;
+  authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
 }
 
 /**
@@ -162,6 +165,7 @@ interface CandidateRow {
   context_hash: string;
   memory_revision: number;
   memory_context_hash: string;
+  authoring_context_hash: string;
   memory_delta_json: string;
   memory_delta_review_json: string;
   memory_review_revision: number;
@@ -196,6 +200,7 @@ export interface CreateCandidateInput {
   contextHash: string;
   memoryRevision?: number;
   memoryContextHash?: string;
+  authoringContextHash?: string;
   memoryDelta?: MemoryDelta | null;
   memoryDeltaReview?: MemoryDeltaReview;
   candidateText: string;
@@ -320,6 +325,7 @@ export class ProductionRepository {
   private readonly now: () => string;
   private readonly bookRepository: BookRepository;
   private readonly memoryRepository: MemoryRepository;
+  private readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
 
   constructor(
     private readonly database: DatabaseSync,
@@ -329,6 +335,7 @@ export class ProductionRepository {
     this.now = options.now ?? (() => new Date().toISOString());
     this.bookRepository = new BookRepository(database);
     this.memoryRepository = new MemoryRepository(database);
+    this.authoringWorkspaceRepository = options.authoringWorkspaceRepository;
   }
 
   createRun(
@@ -838,7 +845,7 @@ export class ProductionRepository {
     const candidateRows = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, memory_revision, memory_context_hash,
+                context_hash, memory_revision, memory_context_hash, authoring_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
                 original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
@@ -1003,12 +1010,12 @@ export class ProductionRepository {
     const insertSql = input.lease
       ? `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
-           context_hash, memory_revision, memory_context_hash, memory_delta_json,
+           context_hash, memory_revision, memory_context_hash, authoring_context_hash, memory_delta_json,
            memory_delta_review_json, memory_review_revision, original_text,
            candidate_text_revision, memory_context_config_json, candidate_text, status,
            review_json, repair_count,
            created_at, accepted_at
-         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL
          WHERE EXISTS (
            SELECT 1 FROM production_runs
            WHERE id = ? AND status = 'running' AND lease_owner = ?
@@ -1016,11 +1023,11 @@ export class ProductionRepository {
          )`
       : `INSERT INTO chapter_candidates (
            id, run_id, book_id, chapter_id, base_revision, context_revision,
-           context_hash, memory_revision, memory_context_hash, memory_delta_json,
+           context_hash, memory_revision, memory_context_hash, authoring_context_hash, memory_delta_json,
            memory_delta_review_json, memory_review_revision, original_text,
            candidate_text_revision, memory_context_config_json, candidate_text, status,
            review_json, repair_count, created_at, accepted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL)`;
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, 'completed', ?, ?, ?, NULL)`;
     const insertParameters: Array<string | number | null> = [
         id,
         input.runId,
@@ -1031,6 +1038,7 @@ export class ProductionRepository {
         input.contextHash,
         input.memoryRevision ?? 0,
         input.memoryContextHash ?? "0".repeat(64),
+        input.authoringContextHash ?? "0".repeat(64),
         JSON.stringify(input.memoryDelta ?? null),
         JSON.stringify(input.memoryDeltaReview ?? emptyMemoryDeltaReview()),
         input.originalText ?? input.candidateText,
@@ -1052,7 +1060,7 @@ export class ProductionRepository {
     const row = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, memory_revision, memory_context_hash,
+                context_hash, memory_revision, memory_context_hash, authoring_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
                 original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
@@ -1122,11 +1130,12 @@ export class ProductionRepository {
     contextHash: string,
     memoryRevision = 0,
     memoryContextHash = "0".repeat(64),
+    authoringContextHash = "0".repeat(64),
   ): ChapterCandidate | null {
     const row = this.database
       .prepare(
         `SELECT id, run_id, book_id, chapter_id, base_revision, context_revision,
-                context_hash, memory_revision, memory_context_hash,
+                context_hash, memory_revision, memory_context_hash, authoring_context_hash,
                 memory_delta_json, memory_delta_review_json, memory_review_revision,
                 original_text, candidate_text_revision, memory_context_config_json,
                 candidate_text, status, review_json,
@@ -1134,7 +1143,7 @@ export class ProductionRepository {
          FROM chapter_candidates
          WHERE run_id = ? AND book_id = ? AND chapter_id = ? AND status = ?
            AND base_revision = ? AND context_hash = ?
-           AND memory_revision = ? AND memory_context_hash = ?
+           AND memory_revision = ? AND memory_context_hash = ? AND authoring_context_hash = ?
          ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(
@@ -1146,6 +1155,7 @@ export class ProductionRepository {
         contextHash,
         memoryRevision,
         memoryContextHash,
+        authoringContextHash,
       ) as unknown as
       | CandidateRow
       | undefined;
@@ -1375,12 +1385,26 @@ export class ProductionRepository {
         const currentMemoryContext = this.memoryRepository.getContextForChapter(
           candidate.bookId,
           chapter.position + 1,
-          candidate.memoryContextConfig,
+          candidate.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG,
         );
         if (
           candidate.memoryRevision !== currentMemoryContext.memoryRevision ||
           candidate.memoryContextHash !== currentMemoryContext.contextHash
         ) {
+          this.database
+            .prepare("UPDATE chapter_candidates SET status = 'expired' WHERE id = ?")
+            .run(candidateId);
+          throw new CandidateStaleError(candidateId);
+        }
+      }
+      if (candidate.authoringContextHash !== "0".repeat(64) && this.authoringWorkspaceRepository) {
+        const currentAuthoringContext = getAuthoringGenerationContext(
+          this.authoringWorkspaceRepository,
+          candidate.bookId,
+          chapter.position + 1,
+          candidate.memoryContextConfig ?? DEFAULT_MEMORY_CONTEXT_CONFIG,
+        );
+        if (candidate.authoringContextHash !== hashAuthoringGenerationContext(currentAuthoringContext)) {
           this.database
             .prepare("UPDATE chapter_candidates SET status = 'expired' WHERE id = ?")
             .run(candidateId);
@@ -1870,6 +1894,7 @@ function toCandidate(row: CandidateRow): ChapterCandidate {
     },
     memoryRevision: row.memory_revision,
     memoryContextHash: row.memory_context_hash,
+    authoringContextHash: row.authoring_context_hash,
     memoryDelta: parseJson<MemoryDelta | null>(row.memory_delta_json),
     memoryDeltaReview: MemoryDeltaReviewSchema.parse(
       parseJson<unknown>(row.memory_delta_review_json),

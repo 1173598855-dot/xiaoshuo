@@ -37,7 +37,7 @@ export function createAutoNovelServices(
 ): AutoNovelServices {
   const bookRepository = new BookRepository(database);
   const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
-  const productionRepository = new ProductionRepository(database);
+  const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
   const memoryRepository = new MemoryRepository(database);
   const memoryService = new MemoryService(memoryRepository);
   const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);

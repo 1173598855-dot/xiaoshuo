@@ -117,6 +117,7 @@ const AUTO_NOVEL_SCHEMA = `
     context_hash TEXT NOT NULL,
     memory_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_revision >= 0),
     memory_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
+    authoring_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
     memory_delta_json TEXT NOT NULL DEFAULT 'null',
     memory_delta_review_json TEXT NOT NULL DEFAULT '{"approved":false,"ignoredAddIndices":[],"ignoredUpdateIds":[],"ignoredResolveIds":[]}',
     memory_review_revision INTEGER NOT NULL DEFAULT 0 CHECK (memory_review_revision >= 0),
@@ -182,6 +183,9 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   }
   if (!candidateColumns.some(({ name }) => name === "memory_context_hash")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'");
+  }
+  if (!candidateColumns.some(({ name }) => name === "authoring_context_hash")) {
+    database.exec("ALTER TABLE chapter_candidates ADD COLUMN authoring_context_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'");
   }
   if (!candidateColumns.some(({ name }) => name === "memory_delta_json")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_delta_json TEXT NOT NULL DEFAULT 'null'");

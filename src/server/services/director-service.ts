@@ -16,10 +16,14 @@ import {
 } from "./auto-novel-prompts";
 import { NormalizedProviderError } from "../providers/types";
 import type { StoryDirection } from "../../shared/auto-novel";
+import { DEFAULT_MEMORY_CONTEXT_CONFIG } from "../../shared/memory";
+import type { AuthoringWorkspaceRepository } from "../repositories/authoring-workspace-repository";
+import { getAuthoringGenerationContext } from "../authoring-context";
 
 export interface DirectorServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly providerResolver: ProviderResolver;
+  readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
 }
 
 export class DirectorService {
@@ -36,7 +40,13 @@ export class DirectorService {
 
     const book = this.dependencies.bookRepository.getBook(bookId).book;
     const provider = this.dependencies.providerResolver.resolve(providerConfig);
-    const prompt = buildDirectorPrompt(book);
+    const authoringContext = getAuthoringGenerationContext(
+      this.dependencies.authoringWorkspaceRepository,
+      bookId,
+      1,
+      DEFAULT_MEMORY_CONTEXT_CONFIG,
+    );
+    const prompt = buildDirectorPrompt(book, authoringContext);
     const result = await provider.generate(
       {
         model: providerConfig.model,

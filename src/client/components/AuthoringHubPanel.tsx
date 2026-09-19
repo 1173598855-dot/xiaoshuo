@@ -35,6 +35,7 @@ interface AuthoringHubPanelProps {
 interface Recipe {
   id: string;
   name: string;
+  instruction: string;
   memoryContextConfig: MemoryContextConfig;
   updatedAt: string;
 }
@@ -61,13 +62,14 @@ export function AuthoringHubPanel({
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [workspace, setWorkspace] = useState<AuthoringWorkspace | null>(null);
   const [recipeName, setRecipeName] = useState("");
+  const [recipeInstruction, setRecipeInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem(RECIPE_KEY) ?? "[]") as unknown;
-      if (Array.isArray(parsed)) setRecipes(parsed.filter(isRecipe).slice(0, 12));
+      if (Array.isArray(parsed)) setRecipes(parsed.filter(isRecipe).map((item) => ({ ...item, instruction: typeof item.instruction === "string" ? item.instruction : "" })).slice(0, 12));
     } catch {
       setRecipes([]);
     }
@@ -113,10 +115,11 @@ export function AuthoringHubPanel({
   const saveRecipe = async () => {
     const name = recipeName.trim();
     if (!name) return;
-    const next: Recipe = { id: makeLocalId(), name, memoryContextConfig, updatedAt: new Date().toISOString() };
+    const next: Recipe = { id: makeLocalId(), name, instruction: recipeInstruction.trim(), memoryContextConfig, updatedAt: new Date().toISOString() };
     const updated = [next, ...recipes].slice(0, 12);
     setRecipes(updated);
     setRecipeName("");
+    setRecipeInstruction("");
     window.localStorage.setItem(RECIPE_KEY, JSON.stringify(updated));
     await persistWorkspace({ ...workspacePayload(workspace, details.book.id), productionRecipes: updated.map(toProductionRecipe) });
   };
@@ -165,10 +168,10 @@ export function AuthoringHubPanel({
       {busy ? <p className="hub-loading" role="status">正在同步作品上下文…</p> : null}
       {tab === "health" ? <HealthTab score={health.score} issues={health.issues} memory={memory} onOpenConsistency={onOpenConsistency} onOpenSearch={onOpenSearch} onOpenBranches={onOpenBranches} /> : null}
       {tab === "scenes" ? <ScenesTab details={details} onOpenTimeline={onOpenTimeline} /> : null}
-      {tab === "context" ? <ContextTab details={details} context={context} chapterNumber={chapterNumber} onChapterChange={setChapterNumber} memoryContextConfig={memoryContextConfig} onOpenMemory={onOpenMemory} /> : null}
+      {tab === "context" ? <ContextTab details={details} context={context} workspace={workspace} chapterNumber={chapterNumber} onChapterChange={setChapterNumber} memoryContextConfig={memoryContextConfig} onOpenMemory={onOpenMemory} /> : null}
       {tab === "relations" ? <RelationsTab details={details} /> : null}
       {tab === "workspace" && workspace ? <WorkspaceTab workspace={workspace} onSave={persistWorkspace} /> : null}
-      {tab === "recipes" ? <RecipesTab recipes={recipes} name={recipeName} onNameChange={setRecipeName} onSave={saveRecipe} onDelete={deleteRecipe} onApply={(recipe) => onMemoryContextConfigChange(recipe.memoryContextConfig)} /> : null}
+      {tab === "recipes" ? <RecipesTab recipes={recipes} name={recipeName} instruction={recipeInstruction} onNameChange={setRecipeName} onInstructionChange={setRecipeInstruction} onSave={saveRecipe} onDelete={deleteRecipe} onApply={(recipe) => onMemoryContextConfigChange(recipe.memoryContextConfig)} /> : null}
     </aside>
   );
 }
@@ -195,8 +198,11 @@ function ScenesTab({ details, onOpenTimeline }: { details: BookDetails; onOpenTi
   return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">SCENE CARDS</span><h3>章节场景卡</h3></div><button className="ghost-button" type="button" onClick={onOpenTimeline}>编辑时间线</button></div>{details.chapterPlans.slice(0, 24).map((plan) => <article className="hub-scene-card" key={plan.id}><span className="hub-scene-number">{String(plan.chapterNumber).padStart(2, "0")}</span><div><strong>{plan.title}</strong><p>{plan.objective}</p><small>钩子：{plan.hook || "未设置"} · 伏笔 {plan.foreshadowing.length} 条</small></div></article>)}</div>;
 }
 
-function ContextTab({ details, context, chapterNumber, onChapterChange, memoryContextConfig, onOpenMemory }: { details: BookDetails; context: Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null; chapterNumber: number; onChapterChange: (value: number) => void; memoryContextConfig: MemoryContextConfig; onOpenMemory: () => void }) {
-  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT INSPECTOR</span><h3>本次生成会带什么</h3></div><button className="ghost-button" type="button" onClick={onOpenMemory}><Brain size={14} />管理记忆</button></div><label className="hub-select-label">章节<select value={chapterNumber} onChange={(event) => onChapterChange(Number(event.target.value))}>{details.chapterPlans.map((plan) => <option value={plan.chapterNumber} key={plan.id}>第 {plan.chapterNumber} 章 · {plan.title}</option>)}</select></label><p className="hub-context-mode">模式：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送 ${memoryContextConfig.entryIds.length} 条`} · 已注入 {context?.entries.length ?? 0} 条</p>{context?.entries.map((entry) => <div className="hub-context-entry" key={entry.id}><span>{entry.kind}</span><strong>{entry.subject}</strong><small>{memorySummary(entry.content)}</small></div>)}</div>;
+function ContextTab({ details, context, workspace, chapterNumber, onChapterChange, memoryContextConfig, onOpenMemory }: { details: BookDetails; context: Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null; workspace: AuthoringWorkspace | null; chapterNumber: number; onChapterChange: (value: number) => void; memoryContextConfig: MemoryContextConfig; onOpenMemory: () => void }) {
+  const activePrompts = workspace?.promptVersions.filter((prompt) => prompt.active) ?? [];
+  const boundaries = workspace?.knowledgeBoundaries.filter(({ revealChapter }) => revealChapter === null || revealChapter <= chapterNumber) ?? [];
+  const recipe = workspace?.productionRecipes.filter((candidate) => sameMemoryConfig(candidate.memoryContextConfig, memoryContextConfig)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).at(0);
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT INSPECTOR</span><h3>本次生成会带什么</h3></div><button className="ghost-button" type="button" onClick={onOpenMemory}><Brain size={14} />管理记忆</button></div><label className="hub-select-label">章节<select value={chapterNumber} onChange={(event) => onChapterChange(Number(event.target.value))}>{details.chapterPlans.map((plan) => <option value={plan.chapterNumber} key={plan.id}>第 {plan.chapterNumber} 章 · {plan.title}</option>)}</select></label><p className="hub-context-mode">模式：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送 ${memoryContextConfig.entryIds.length} 条`} · 已注入 {context?.entries.length ?? 0} 条记忆 · 作者工作区 v{workspace?.revision ?? 0}</p><div className="hub-context-rules"><span>术语 {workspace?.termLocks.length ?? 0}</span><span>人物边界 {boundaries.length}</span><span>启用 Prompt {activePrompts.length}</span><span>{recipe ? `配方：${recipe.name}` : "未匹配生产配方"}</span></div>{activePrompts.map((prompt) => <div className="hub-context-entry" key={prompt.id}><span>Prompt · {prompt.role}</span><strong>{prompt.name}</strong><small>{prompt.content}</small></div>)}{boundaries.map((boundary) => <div className="hub-context-entry" key={boundary.id}><span>知识边界 · {boundary.characterName}</span><strong>已知：{boundary.knows || "未填写"}</strong><small>未知：{boundary.doesNotKnow || "未填写"}</small></div>)}{context?.entries.map((entry) => <div className="hub-context-entry" key={entry.id}><span>{entry.kind}</span><strong>{entry.subject}</strong><small>{memorySummary(entry.content)}</small></div>)}</div>;
 }
 
 function RelationsTab({ details }: { details: BookDetails }) {
@@ -205,8 +211,8 @@ function RelationsTab({ details }: { details: BookDetails }) {
   return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">STORY GRAPH</span><h3>人物与地点</h3></div><Network size={18} /></div><div className="hub-relation-columns"><div><h4><Sparkles size={14} />人物 {characters.length}</h4>{characters.slice(0, 16).map((item) => <div className="hub-relation-node" key={item.name}><strong>{item.name}</strong><small>{item.role} · {item.motivation}</small></div>)}</div><div><h4><MapPin size={14} />地点 {locations.length}</h4>{locations.slice(0, 16).map((item) => <div className="hub-relation-node" key={item.name}><strong>{item.name}</strong><small>{item.significance}</small></div>)}</div></div></div>;
 }
 
-function RecipesTab({ recipes, name, onNameChange, onSave, onDelete, onApply }: { recipes: readonly Recipe[]; name: string; onNameChange: (value: string) => void; onSave: () => void; onDelete: (id: string) => void; onApply: (recipe: Recipe) => void }) {
-  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">PRODUCTION RECIPES</span><h3>生产配方</h3></div></div><div className="hub-recipe-create"><input aria-label="配方名称" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="例如：悬疑快节奏审核" /><button className="primary-button" type="button" disabled={!name.trim()} onClick={onSave}>保存当前配方</button></div>{recipes.map((recipe) => <div className="hub-recipe-row" key={recipe.id}><span><strong>{recipe.name}</strong><small>{recipe.memoryContextConfig.mode === "automatic" ? "自动记忆" : `选中 ${recipe.memoryContextConfig.entryIds.length} 条记忆`}</small></span><button className="ghost-button" type="button" onClick={() => onApply(recipe)}>应用</button><button className="danger-button" type="button" onClick={() => onDelete(recipe.id)}>删除</button></div>)}</div>;
+function RecipesTab({ recipes, name, instruction, onNameChange, onInstructionChange, onSave, onDelete, onApply }: { recipes: readonly Recipe[]; name: string; instruction: string; onNameChange: (value: string) => void; onInstructionChange: (value: string) => void; onSave: () => void; onDelete: (id: string) => void; onApply: (recipe: Recipe) => void }) {
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">PRODUCTION RECIPES</span><h3>生产配方</h3></div></div><div className="hub-recipe-create"><input aria-label="配方名称" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="例如：悬疑快节奏审核" /><textarea aria-label="配方指令" value={instruction} onChange={(event) => onInstructionChange(event.target.value)} placeholder="本配方对写作、审核或修复的额外要求…" /><button className="primary-button" type="button" disabled={!name.trim()} onClick={onSave}>保存当前配方</button></div>{recipes.map((recipe) => <div className="hub-recipe-row" key={recipe.id}><span><strong>{recipe.name}</strong><small>{recipe.memoryContextConfig.mode === "automatic" ? "自动记忆" : `选中 ${recipe.memoryContextConfig.entryIds.length} 条记忆`}{recipe.instruction.trim() ? ` · ${recipe.instruction}` : ""}</small></span><button className="ghost-button" type="button" onClick={() => onApply(recipe)}>应用</button><button className="danger-button" type="button" onClick={() => onDelete(recipe.id)}>删除</button></div>)}</div>;
 }
 
 function WorkspaceTab({ workspace, onSave }: { workspace: AuthoringWorkspace; onSave: (payload: AuthoringWorkspacePayload) => Promise<void> }) {
@@ -326,6 +332,12 @@ function workspacePayload(workspace: AuthoringWorkspace | null, bookId: string):
   };
 }
 
+function sameMemoryConfig(left: MemoryContextConfig, right: MemoryContextConfig): boolean {
+  if (left.mode !== right.mode || left.entryIds.length !== right.entryIds.length) return false;
+  const rightIds = new Set(right.entryIds);
+  return left.entryIds.every((entryId) => rightIds.has(entryId));
+}
+
 function isRecipe(value: unknown): value is Recipe {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<Recipe>;
@@ -333,7 +345,7 @@ function isRecipe(value: unknown): value is Recipe {
 }
 
 function toRecipe(recipe: ProductionRecipe): Recipe {
-  return { id: recipe.id, name: recipe.name, memoryContextConfig: recipe.memoryContextConfig, updatedAt: recipe.updatedAt };
+  return { id: recipe.id, name: recipe.name, instruction: recipe.instruction, memoryContextConfig: recipe.memoryContextConfig, updatedAt: recipe.updatedAt };
 }
 
 function toProductionRecipe(recipe: Recipe): ProductionRecipe {
@@ -341,7 +353,7 @@ function toProductionRecipe(recipe: Recipe): ProductionRecipe {
     id: recipe.id,
     name: recipe.name,
     memoryContextConfig: recipe.memoryContextConfig,
-    instruction: "",
+    instruction: recipe.instruction,
     targetChapterFrom: null,
     targetChapterTo: null,
     updatedAt: recipe.updatedAt,

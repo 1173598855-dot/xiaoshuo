@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { CONTEXT_SYNC_PROTOCOL } from "./auto-novel-prompts";
+import type { AuthoringGenerationContext } from "../../shared/authoring-context";
+import { buildAuthoringRulesPrompt } from "./auto-novel-prompts";
 
 export const FoundationModelOutputSchema = z
   .object({
@@ -61,6 +63,7 @@ export function buildOutlinePrompt(
   title: string,
   targetChapters: number,
   foundation: unknown,
+  authoringContext?: AuthoringGenerationContext,
 ) {
   return {
     systemPrompt:
@@ -70,6 +73,7 @@ export function buildOutlinePrompt(
       `书名：${title}`,
       `目标章节数：${targetChapters}`,
       `基础设定：${JSON.stringify(foundation)}`,
+      ...(authoringContext ? buildAuthoringRulesPrompt(authoringContext) : []),
       "每章必须包含标题、摘要、章节目标、钩子和可回收伏笔。",
     ].join("\n"),
   };

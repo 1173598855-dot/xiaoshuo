@@ -14,8 +14,10 @@ import {
 import {
   filterMemoryDelta,
   type MemoryContext,
+  type MemoryContextConfig,
   type MemoryDelta,
 } from "../../shared/memory";
+import type { AuthoringGenerationContext } from "../../shared/authoring-context";
 import { NormalizedProviderError } from "../providers/types";
 import type {
   PersistedProviderDescriptor,
@@ -26,6 +28,7 @@ import type {
 import { toPersistedWorkflowDescriptor } from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
 import type { BookRepository } from "../repositories/book-repository";
+import type { AuthoringWorkspaceRepository } from "../repositories/authoring-workspace-repository";
 import type { ProviderResolver } from "../providers/resolver";
 import type { MemoryService } from "./memory-service";
 import { buildMemoryPrompt, parseStructuredProviderResult } from "./auto-novel-prompts";
@@ -37,6 +40,7 @@ import {
   type StructuredLogger,
 } from "../enterprise/observability";
 import type { AuditRepository } from "../enterprise/operational-repository";
+import { getAuthoringGenerationContext, hashAuthoringGenerationContext } from "../authoring-context";
 
 const ReviewOutputSchema = z
   .object({
@@ -66,6 +70,7 @@ export interface ProductionServiceDependencies {
   readonly productionRepository: ProductionRepository;
   readonly providerResolver: ProviderResolver;
   readonly memoryService?: MemoryService;
+  readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
   /** Maximum number of book production runs executing at once. */
   readonly maxConcurrentRuns?: number;
   readonly metrics?: MetricsRegistry;
@@ -187,6 +192,8 @@ export class ProductionService {
     const memoryContext = this.dependencies.memoryService
       ? this.dependencies.memoryService.getContext(run.bookId, plan, run.memoryContextConfig)
       : emptyMemoryContext();
+    const authoringContext = this.getAuthoringContext(run.bookId, chapterNumber, run.memoryContextConfig);
+    const authoringContextHash = hashAuthoringGenerationContext(authoringContext);
     const book = this.dependencies.bookRepository.getBook(run.bookId);
     const candidateText = await generateDraft(
       this.dependencies.providerResolver.resolve(writerConfig),
@@ -195,6 +202,7 @@ export class ProductionService {
       plan,
       chapter.content,
       memoryContext,
+      authoringContext,
       signal,
       instruction,
       book.book.style,
@@ -209,6 +217,7 @@ export class ProductionService {
       contextHash: hashContext(chapter.content),
       memoryRevision: memoryContext.memoryRevision,
       memoryContextHash: memoryContext.contextHash,
+      authoringContextHash,
       memoryContextConfig: run.memoryContextConfig,
       originalText: chapter.content,
       candidateText,
@@ -226,6 +235,7 @@ export class ProductionService {
       plan,
       candidateText,
       memoryContext,
+      authoringContext,
       signal,
       book.book.style,
       book.book.targetChapterCharacters,
@@ -370,6 +380,8 @@ export class ProductionService {
               run.memoryContextConfig,
             )
           : emptyMemoryContext();
+        const authoringContext = this.getAuthoringContext(run.bookId, plan.chapterNumber, run.memoryContextConfig);
+        const authoringContextHash = hashAuthoringGenerationContext(authoringContext);
         run = this.dependencies.productionRepository.updateRun(runId, {
           status: "running",
           stage: "draft",
@@ -391,6 +403,7 @@ export class ProductionService {
             contextHash,
             memoryContext.memoryRevision,
             memoryContext.contextHash,
+            authoringContextHash,
           );
 
         if (!candidate) {
@@ -402,6 +415,7 @@ export class ProductionService {
             plan,
             chapter.content,
             memoryContext,
+            authoringContext,
             signal,
             "",
             bookDetails.book.style,
@@ -418,6 +432,7 @@ export class ProductionService {
             contextHash,
             memoryRevision: memoryContext.memoryRevision,
             memoryContextHash: memoryContext.contextHash,
+            authoringContextHash,
             memoryContextConfig: run.memoryContextConfig,
             candidateText,
             ...(lease ? { lease } : {}),
@@ -456,6 +471,7 @@ export class ProductionService {
               candidate.candidateText,
               candidate.review.findings,
               memoryContext,
+              authoringContext,
               signal,
               bookDetails.book.style,
               bookDetails.book.targetChapterCharacters,
@@ -491,6 +507,7 @@ export class ProductionService {
             plan,
             candidate.candidateText,
             memoryContext,
+            authoringContext,
             signal,
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
@@ -685,6 +702,19 @@ export class ProductionService {
     }
   }
 
+  private getAuthoringContext(
+    bookId: string,
+    chapterNumber: number,
+    memoryContextConfig: MemoryContextConfig,
+  ): AuthoringGenerationContext {
+    return getAuthoringGenerationContext(
+      this.dependencies.authoringWorkspaceRepository,
+      bookId,
+      chapterNumber,
+      memoryContextConfig,
+    );
+  }
+
   private getStoppedRun(
     runId: string,
     signal: AbortSignal,
@@ -789,13 +819,14 @@ async function generateDraft(
   plan: ChapterPlan,
   currentContent: string,
   memoryContext: MemoryContext,
+  authoringContext: AuthoringGenerationContext,
   signal?: AbortSignal,
   instruction = "",
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
 ): Promise<string> {
-  const memoryPrompt = buildMemoryPrompt(memoryContext);
+  const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [
@@ -834,12 +865,13 @@ async function reviewDraft(
   plan: ChapterPlan,
   draft: string,
   memoryContext: MemoryContext,
+  authoringContext: AuthoringGenerationContext,
   signal?: AbortSignal,
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
 ) {
-  const memoryPrompt = buildMemoryPrompt(memoryContext);
+  const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [
@@ -869,12 +901,13 @@ async function repairDraft(
   draft: string,
   findings: readonly string[],
   memoryContext: MemoryContext,
+  authoringContext: AuthoringGenerationContext,
   signal?: AbortSignal,
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
 ): Promise<string> {
-  const memoryPrompt = buildMemoryPrompt(memoryContext);
+  const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
       model,
       systemPrompt: [

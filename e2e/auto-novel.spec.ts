@@ -41,6 +41,11 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "故事资料卡" })).toBeVisible();
   await expect(page.locator(".story-bible-drawer .memory-kind").filter({ hasText: "地点资料" })).toBeVisible();
   await page.getByRole("button", { name: "关闭故事资料卡" }).click();
+  await page.getByRole("button", { name: "创作中枢" }).click();
+  await expect(page.getByRole("complementary", { name: "创作中枢" })).toBeVisible();
+  await page.getByRole("button", { name: "作者资料" }).click();
+  await expect(page.getByText("人物知识边界")).toBeVisible();
+  await page.getByRole("button", { name: "关闭创作中枢" }).click();
   await page.getByRole("button", { name: "一致性检查" }).click();
   await expect(page.getByRole("complementary", { name: "一致性检查" })).toBeVisible();
   await page.getByRole("button", { name: "关闭一致性检查" }).click();

@@ -365,6 +365,7 @@ export const ChapterCandidateSchema = z
     chapterId: UuidSchema,
     memoryRevision: z.number().int().nonnegative().default(0),
     memoryContextHash: HashSchema.default("0".repeat(64)),
+    authoringContextHash: HashSchema.optional(),
     memoryDelta: MemoryDeltaSchema.nullable().default(null),
     memoryDeltaReview: MemoryDeltaReviewSchema.default({
       approved: false,

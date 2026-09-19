@@ -2,6 +2,18 @@ import { inflateRawSync } from "node:zlib";
 
 import type { ManuscriptImportInput } from "../../shared/authoring";
 
+const MAX_ARCHIVE_BYTES = 5_500_000;
+const MAX_EXTRACTED_DOCUMENT_BYTES = 8_000_000;
+
+export class ManuscriptImportLimitError extends Error {
+  readonly code = "CONTENT_TOO_LARGE";
+
+  constructor() {
+    super("导入文件超过安全大小限制。" );
+    this.name = "ManuscriptImportLimitError";
+  }
+}
+
 export interface ImportedManuscriptChapter {
   readonly title: string;
   readonly content: string;
@@ -78,6 +90,7 @@ function extractDocxText(value: string): string {
   const marker = "base64,";
   const base64 = value.includes(marker) ? value.slice(value.indexOf(marker) + marker.length) : value;
   const archive = Buffer.from(base64, "base64");
+  if (archive.byteLength > MAX_ARCHIVE_BYTES) throw new ManuscriptImportLimitError();
   const xml = readZipEntry(archive, "word/document.xml");
   if (!xml) throw new Error("DOCX 文档缺少正文内容。");
   const paragraphs = [...xml.toString("utf8").matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => {
@@ -102,7 +115,11 @@ function readZipEntry(archive: Buffer, target: string): Buffer | null {
     const data = archive.subarray(dataStart, dataStart + compressedSize);
     if (name === target) {
       if (compression === 0) return Buffer.from(data);
-      if (compression === 8) return inflateRawSync(data);
+      if (compression === 8) {
+        const inflated = inflateRawSync(data, { maxOutputLength: MAX_EXTRACTED_DOCUMENT_BYTES });
+        if (inflated.byteLength > MAX_EXTRACTED_DOCUMENT_BYTES) throw new ManuscriptImportLimitError();
+        return inflated;
+      }
       throw new Error("DOCX 压缩格式不受支持。");
     }
     offset = dataStart + compressedSize;
