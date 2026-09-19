@@ -131,6 +131,16 @@ const AUTO_NOVEL_SCHEMA = `
     accepted_at TEXT
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS story_snapshots (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    base_revision INTEGER NOT NULL CHECK (base_revision >= 0),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
   CREATE INDEX IF NOT EXISTS books_updated_idx
     ON books(updated_at DESC, id);
   CREATE INDEX IF NOT EXISTS story_directions_book_idx
@@ -149,6 +159,8 @@ const AUTO_NOVEL_SCHEMA = `
     ON production_checkpoints(run_id, sequence DESC);
   CREATE INDEX IF NOT EXISTS chapter_candidates_book_idx
     ON chapter_candidates(book_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS story_snapshots_book_idx
+    ON story_snapshots(book_id, updated_at DESC);
 `;
 
 export function ensureAutoNovelSchema(database: DatabaseSync): void {
@@ -277,7 +289,7 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database
     .prepare(
       `INSERT INTO app_meta (key, value)
-       VALUES ('auto_novel_schema_version', '4')
+       VALUES ('auto_novel_schema_version', '5')
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
     .run();

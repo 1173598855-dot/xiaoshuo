@@ -20,7 +20,9 @@ import {
   type ModelWorkflowConfig,
 } from "../shared/auto-novel";
 import {
+  CreateStorySnapshotInputSchema,
   ReorderChapterPlansInputSchema,
+  RestoreStorySnapshotInputSchema,
   SearchQuerySchema,
   UpdateChapterPlansInputSchema,
 } from "../shared/authoring";
@@ -615,6 +617,45 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       ...(limit !== undefined ? { limit } : {}),
       ...(before ? { before } : {}),
     }));
+  });
+
+  app.get("/api/books/:bookId/snapshots", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    return context.json(dependencies.bookRepository.listStorySnapshots(bookId.data));
+  });
+
+  app.post("/api/books/:bookId/snapshots", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, CreateStorySnapshotInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data) return context.json(apiError("VALIDATION_ERROR", "作品标识不一致。"), 400);
+    return context.json(dependencies.bookRepository.createStorySnapshot(bookId.data, parsed.data.name), 201);
+  });
+
+  app.delete("/api/books/:bookId/snapshots/:snapshotId", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    const snapshotId = MemoryPathIdSchema.safeParse(context.req.param("snapshotId"));
+    if (!bookId.success || !snapshotId.success) return context.json(apiError("VALIDATION_ERROR", "快照标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    dependencies.bookRepository.deleteStorySnapshot(bookId.data, snapshotId.data);
+    return context.json({ deleted: true });
+  });
+
+  app.post("/api/books/:bookId/snapshots/:snapshotId/restore", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    const snapshotId = MemoryPathIdSchema.safeParse(context.req.param("snapshotId"));
+    if (!bookId.success || !snapshotId.success) return context.json(apiError("VALIDATION_ERROR", "快照标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    const parsed = await parseJson(context.req.raw, RestoreStorySnapshotInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data || parsed.data.snapshotId !== snapshotId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "快照标识不一致。"), 400);
+    }
+    return context.json(dependencies.bookRepository.restoreStorySnapshot(bookId.data, snapshotId.data, parsed.data.expectedBookRevision));
   });
 
   app.post("/api/books", async (context) => {

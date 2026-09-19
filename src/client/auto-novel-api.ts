@@ -31,7 +31,14 @@ import {
   type UpdateChapterPlanInput,
   type ProductionRunSummary,
 } from "../shared/auto-novel";
-import { ChapterPlanPreviewEnvelopeSchema, type ChapterPlanPreviewEnvelope } from "../shared/authoring";
+import {
+  ChapterPlanPreviewEnvelopeSchema,
+  CreateStorySnapshotInputSchema,
+  RestoreStorySnapshotInputSchema,
+  StorySnapshotSchema,
+  type ChapterPlanPreviewEnvelope,
+  type StorySnapshot,
+} from "../shared/authoring";
 import {
   MemoryBookSnapshotSchema,
   MemoryContextSchema,
@@ -125,6 +132,10 @@ export interface AutoNovelApi {
   ): Promise<ProductionRun>;
   getRun(runId: string, signal?: AbortSignal): Promise<AutoNovelRunDetails>;
   listRunSummaries(bookId: string, options?: { status?: string; limit?: number; before?: string }): Promise<readonly ProductionRunSummary[]>;
+  listStorySnapshots(bookId: string): Promise<readonly StorySnapshot[]>;
+  createStorySnapshot(bookId: string, name: string): Promise<StorySnapshot>;
+  deleteStorySnapshot(bookId: string, snapshotId: string): Promise<void>;
+  restoreStorySnapshot(bookId: string, snapshotId: string, expectedBookRevision: number): Promise<BookDetails>;
   pauseRun(runId: string): Promise<ProductionRun>;
   resumeRun(runId: string, provider: AutoNovelProviderInput): Promise<ProductionRun>;
   rewriteCurrentChapter(
@@ -254,6 +265,20 @@ export function createAutoNovelApi(
       if (options.before) params.set("before", options.before);
       const suffix = params.toString() ? `?${params.toString()}` : "";
       return z.array(ProductionRunSummarySchema).parse(await requestJson(fetchImpl, `/api/books/${bookId}/runs${suffix}`));
+    },
+    async listStorySnapshots(bookId) {
+      return z.array(StorySnapshotSchema).parse(await requestJson(fetchImpl, `/api/books/${bookId}/snapshots`));
+    },
+    async createStorySnapshot(bookId, name) {
+      const input = CreateStorySnapshotInputSchema.parse({ bookId, name });
+      return StorySnapshotSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/snapshots`, { method: "POST", body: JSON.stringify(input) }));
+    },
+    async deleteStorySnapshot(bookId, snapshotId) {
+      await requestJson(fetchImpl, `/api/books/${bookId}/snapshots/${snapshotId}`, { method: "DELETE" });
+    },
+    async restoreStorySnapshot(bookId, snapshotId, expectedBookRevision) {
+      const input = RestoreStorySnapshotInputSchema.parse({ bookId, snapshotId, expectedBookRevision });
+      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/snapshots/${snapshotId}/restore`, { method: "POST", body: JSON.stringify(input) }));
     },
     async pauseRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/pause`, { method: "POST", body: JSON.stringify({ action: "pause" }) }));

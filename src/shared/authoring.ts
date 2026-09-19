@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { ChapterPlanSchema } from "./auto-novel";
+import {
+  BookFoundationSchema,
+  BookSchema,
+  ChapterPlanSchema,
+  StoryDirectionSchema,
+} from "./auto-novel";
 
 const UuidSchema = z.string().uuid();
 
@@ -90,6 +95,38 @@ export const SearchResponseSchema = z.object({
   results: z.array(SearchResultSchema).max(100),
 }).strict();
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+
+export const StorySnapshotPayloadSchema = z.object({
+  book: BookSchema,
+  directions: z.array(StoryDirectionSchema),
+  foundation: BookFoundationSchema.nullable(),
+  chapterPlans: z.array(ChapterPlanSchema),
+}).strict();
+export type StorySnapshotPayload = z.infer<typeof StorySnapshotPayloadSchema>;
+
+export const StorySnapshotSchema = z.object({
+  id: UuidSchema,
+  bookId: UuidSchema,
+  name: z.string().trim().min(1).max(120),
+  baseRevision: z.number().int().nonnegative(),
+  payload: StorySnapshotPayloadSchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+}).strict();
+export type StorySnapshot = z.infer<typeof StorySnapshotSchema>;
+
+export const CreateStorySnapshotInputSchema = z.object({
+  bookId: UuidSchema,
+  name: z.string().trim().min(1).max(120),
+}).strict();
+export type CreateStorySnapshotInput = z.infer<typeof CreateStorySnapshotInputSchema>;
+
+export const RestoreStorySnapshotInputSchema = z.object({
+  bookId: UuidSchema,
+  snapshotId: UuidSchema,
+  expectedBookRevision: z.number().int().nonnegative(),
+}).strict();
+export type RestoreStorySnapshotInput = z.infer<typeof RestoreStorySnapshotInputSchema>;
 
 export const UsageSummarySchema = z.object({
   from: z.string().datetime(),

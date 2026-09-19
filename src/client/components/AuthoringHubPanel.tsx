@@ -1,0 +1,181 @@
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Brain, GitBranch, MapPin, Network, Search, Sparkles, X } from "lucide-react";
+
+import type { BookDetails } from "../../shared/auto-novel";
+import type { ConsistencyReport } from "../../shared/authoring";
+import type { MemoryBookSnapshot, MemoryContextConfig } from "../../shared/memory";
+import type { AutoNovelApi } from "../auto-novel-api";
+
+type HubTab = "health" | "scenes" | "context" | "relations" | "recipes";
+
+interface AuthoringHubPanelProps {
+  details: BookDetails;
+  api: AutoNovelApi;
+  memoryContextConfig: MemoryContextConfig;
+  onMemoryContextConfigChange: (config: MemoryContextConfig) => void;
+  onOpenBranches: () => void;
+  onOpenTimeline: () => void;
+  onOpenMemory: () => void;
+  onOpenConsistency: () => void;
+  onOpenSearch: () => void;
+  onClose: () => void;
+}
+
+interface Recipe {
+  id: string;
+  name: string;
+  memoryContextConfig: MemoryContextConfig;
+  updatedAt: string;
+}
+
+const RECIPE_KEY = "xiaoyi.production-recipes.v1";
+
+export function AuthoringHubPanel({
+  details,
+  api,
+  memoryContextConfig,
+  onMemoryContextConfigChange,
+  onOpenBranches,
+  onOpenTimeline,
+  onOpenMemory,
+  onOpenConsistency,
+  onOpenSearch,
+  onClose,
+}: AuthoringHubPanelProps) {
+  const [tab, setTab] = useState<HubTab>("health");
+  const [report, setReport] = useState<ConsistencyReport | null>(null);
+  const [memory, setMemory] = useState<MemoryBookSnapshot | null>(null);
+  const [context, setContext] = useState<Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null>(null);
+  const [chapterNumber, setChapterNumber] = useState(details.chapterPlans[0]?.chapterNumber ?? 1);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [recipeName, setRecipeName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(RECIPE_KEY) ?? "[]") as unknown;
+      if (Array.isArray(parsed)) setRecipes(parsed.filter(isRecipe).slice(0, 12));
+    } catch {
+      setRecipes([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBusy(true);
+    setError(null);
+    void Promise.all([
+      api.checkConsistency(details.book.id),
+      api.listMemory(details.book.id, { includeArchived: false }),
+      api.getMemoryContext(details.book.id, chapterNumber, memoryContextConfig),
+    ]).then(([nextReport, nextMemory, nextContext]) => {
+      if (cancelled) return;
+      setReport(nextReport);
+      setMemory(nextMemory);
+      setContext(nextContext);
+    }).catch((loadError) => {
+      if (!cancelled) setError(loadError instanceof Error ? loadError.message : "创作中枢加载失败。");
+    }).finally(() => {
+      if (!cancelled) setBusy(false);
+    });
+    return () => { cancelled = true; };
+  }, [api, chapterNumber, details.book.id, memoryContextConfig]);
+
+  const health = useMemo(() => {
+    const issues = report?.issues ?? [];
+    const score = Math.max(0, 100 - issues.filter((issue) => issue.severity === "error").length * 18 - issues.filter((issue) => issue.severity === "warning").length * 6);
+    return { score, issues };
+  }, [report]);
+
+  const saveRecipe = () => {
+    const name = recipeName.trim();
+    if (!name) return;
+    const next: Recipe = { id: makeLocalId(), name, memoryContextConfig, updatedAt: new Date().toISOString() };
+    const updated = [next, ...recipes].slice(0, 12);
+    setRecipes(updated);
+    setRecipeName("");
+    window.localStorage.setItem(RECIPE_KEY, JSON.stringify(updated));
+  };
+
+  const deleteRecipe = (id: string) => {
+    const updated = recipes.filter((recipe) => recipe.id !== id);
+    setRecipes(updated);
+    window.localStorage.setItem(RECIPE_KEY, JSON.stringify(updated));
+  };
+
+  return (
+    <aside className="story-drawer authoring-hub-drawer" aria-label="创作中枢">
+      <div className="memory-drawer-header">
+        <div>
+          <span className="eyebrow">AUTHORING CONTROL CENTER</span>
+          <h2>创作中枢</h2>
+          <p className="story-drawer-subtitle">把结构、记忆、一致性和生产配方放在同一条作者路径上。</p>
+        </div>
+        <button className="icon-button" type="button" aria-label="关闭创作中枢" onClick={onClose}><X size={18} /></button>
+      </div>
+      <nav className="authoring-hub-tabs" aria-label="创作中枢模块">
+        {(["health", "scenes", "context", "relations", "recipes"] as HubTab[]).map((item) => <button className={tab === item ? "active" : ""} type="button" key={item} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}
+      </nav>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {busy ? <p className="hub-loading" role="status">正在同步作品上下文…</p> : null}
+      {tab === "health" ? <HealthTab score={health.score} issues={health.issues} memory={memory} onOpenConsistency={onOpenConsistency} onOpenSearch={onOpenSearch} onOpenBranches={onOpenBranches} /> : null}
+      {tab === "scenes" ? <ScenesTab details={details} onOpenTimeline={onOpenTimeline} /> : null}
+      {tab === "context" ? <ContextTab details={details} context={context} chapterNumber={chapterNumber} onChapterChange={setChapterNumber} memoryContextConfig={memoryContextConfig} onOpenMemory={onOpenMemory} /> : null}
+      {tab === "relations" ? <RelationsTab details={details} /> : null}
+      {tab === "recipes" ? <RecipesTab recipes={recipes} name={recipeName} onNameChange={setRecipeName} onSave={saveRecipe} onDelete={deleteRecipe} onApply={(recipe) => onMemoryContextConfigChange(recipe.memoryContextConfig)} /> : null}
+    </aside>
+  );
+}
+
+const TAB_LABELS: Record<HubTab, string> = {
+  health: "健康度",
+  scenes: "场景卡",
+  context: "上下文",
+  relations: "关系图",
+  recipes: "生产配方",
+};
+
+function HealthTab({ score, issues, memory, onOpenConsistency, onOpenSearch, onOpenBranches }: { score: number; issues: ConsistencyReport["issues"]; memory: MemoryBookSnapshot | null; onOpenConsistency: () => void; onOpenSearch: () => void; onOpenBranches: () => void }) {
+  return <div className="hub-tab-content">
+    <section className="hub-health-hero"><div><span className="eyebrow">STORY HEALTH</span><strong>{score}</strong><p>{score >= 85 ? "故事基线稳定，可以继续生产。" : score >= 60 ? "有几处需要作者确认的连续性风险。" : "建议先处理高优先级冲突，再继续生成。"}</p></div><Activity size={34} /></section>
+    <div className="hub-stat-grid"><span><strong>{issues.filter((issue) => issue.severity === "error").length}</strong>错误</span><span><strong>{issues.filter((issue) => issue.severity === "warning").length}</strong>警告</span><span><strong>{memory?.entries.length ?? 0}</strong>记忆条目</span><span><strong>{memory?.entries.filter((entry) => entry.kind === "foreshadowing").length ?? 0}</strong>伏笔</span></div>
+    <div className="hub-actions"><button className="secondary-button" type="button" onClick={onOpenConsistency}>打开一致性雷达</button><button className="ghost-button" type="button" onClick={onOpenSearch}><Search size={14} />搜索证据</button><button className="ghost-button" type="button" onClick={onOpenBranches}><GitBranch size={14} />保存分支</button></div>
+    {issues.slice(0, 6).map((issue) => <div className={`hub-issue ${issue.severity}`} key={issue.id}><strong>{issue.title}</strong><small>{issue.detail}</small></div>)}
+  </div>;
+}
+
+function ScenesTab({ details, onOpenTimeline }: { details: BookDetails; onOpenTimeline: () => void }) {
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">SCENE CARDS</span><h3>章节场景卡</h3></div><button className="ghost-button" type="button" onClick={onOpenTimeline}>编辑时间线</button></div>{details.chapterPlans.slice(0, 24).map((plan) => <article className="hub-scene-card" key={plan.id}><span className="hub-scene-number">{String(plan.chapterNumber).padStart(2, "0")}</span><div><strong>{plan.title}</strong><p>{plan.objective}</p><small>钩子：{plan.hook || "未设置"} · 伏笔 {plan.foreshadowing.length} 条</small></div></article>)}</div>;
+}
+
+function ContextTab({ details, context, chapterNumber, onChapterChange, memoryContextConfig, onOpenMemory }: { details: BookDetails; context: Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null; chapterNumber: number; onChapterChange: (value: number) => void; memoryContextConfig: MemoryContextConfig; onOpenMemory: () => void }) {
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT INSPECTOR</span><h3>本次生成会带什么</h3></div><button className="ghost-button" type="button" onClick={onOpenMemory}><Brain size={14} />管理记忆</button></div><label className="hub-select-label">章节<select value={chapterNumber} onChange={(event) => onChapterChange(Number(event.target.value))}>{details.chapterPlans.map((plan) => <option value={plan.chapterNumber} key={plan.id}>第 {plan.chapterNumber} 章 · {plan.title}</option>)}</select></label><p className="hub-context-mode">模式：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送 ${memoryContextConfig.entryIds.length} 条`} · 已注入 {context?.entries.length ?? 0} 条</p>{context?.entries.map((entry) => <div className="hub-context-entry" key={entry.id}><span>{entry.kind}</span><strong>{entry.subject}</strong><small>{memorySummary(entry.content)}</small></div>)}</div>;
+}
+
+function RelationsTab({ details }: { details: BookDetails }) {
+  const characters = details.foundation?.characters ?? [];
+  const locations = details.foundation?.locations ?? [];
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">STORY GRAPH</span><h3>人物与地点</h3></div><Network size={18} /></div><div className="hub-relation-columns"><div><h4><Sparkles size={14} />人物 {characters.length}</h4>{characters.slice(0, 16).map((item) => <div className="hub-relation-node" key={item.name}><strong>{item.name}</strong><small>{item.role} · {item.motivation}</small></div>)}</div><div><h4><MapPin size={14} />地点 {locations.length}</h4>{locations.slice(0, 16).map((item) => <div className="hub-relation-node" key={item.name}><strong>{item.name}</strong><small>{item.significance}</small></div>)}</div></div></div>;
+}
+
+function RecipesTab({ recipes, name, onNameChange, onSave, onDelete, onApply }: { recipes: readonly Recipe[]; name: string; onNameChange: (value: string) => void; onSave: () => void; onDelete: (id: string) => void; onApply: (recipe: Recipe) => void }) {
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">PRODUCTION RECIPES</span><h3>生产配方</h3></div></div><div className="hub-recipe-create"><input aria-label="配方名称" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="例如：悬疑快节奏审核" /><button className="primary-button" type="button" disabled={!name.trim()} onClick={onSave}>保存当前配方</button></div>{recipes.map((recipe) => <div className="hub-recipe-row" key={recipe.id}><span><strong>{recipe.name}</strong><small>{recipe.memoryContextConfig.mode === "automatic" ? "自动记忆" : `选中 ${recipe.memoryContextConfig.entryIds.length} 条记忆`}</small></span><button className="ghost-button" type="button" onClick={() => onApply(recipe)}>应用</button><button className="danger-button" type="button" onClick={() => onDelete(recipe.id)}>删除</button></div>)}</div>;
+}
+
+function isRecipe(value: unknown): value is Recipe {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<Recipe>;
+  return typeof item.id === "string" && typeof item.name === "string" && typeof item.updatedAt === "string" && Boolean(item.memoryContextConfig);
+}
+
+function memorySummary(content: unknown): string {
+  if (!content || typeof content !== "object") return "";
+  const summary = (content as { summary?: unknown }).summary;
+  return typeof summary === "string" ? summary : JSON.stringify(content);
+}
+
+function makeLocalId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  return `recipe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}

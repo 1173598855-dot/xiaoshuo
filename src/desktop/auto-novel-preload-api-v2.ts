@@ -18,7 +18,7 @@ import type {
   UpdateChapterPlanInput,
   DesktopModelWorkflowSelection,
 } from "../shared/auto-novel";
-import type { ChapterPlanPreviewEnvelope, ConsistencyReport, ReorderChapterPlansInput, SearchQuery, SearchResponse, UpdateChapterPlansInput } from "../shared/authoring";
+import type { ChapterPlanPreviewEnvelope, ConsistencyReport, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
 import type { UsageSummary } from "../shared/authoring";
 import type {
   MemoryBookSnapshot,
@@ -47,6 +47,10 @@ export interface AutoNovelDesktopApiV2 {
     listRecoverableIds(): Promise<DesktopResult<readonly string[]>>;
     listRecoverableDetails(): Promise<DesktopResult<readonly BookDetails[]>>;
     listRuns(bookId: string): Promise<DesktopResult<readonly ProductionRunSummary[]>>;
+    listSnapshots(bookId: string): Promise<DesktopResult<readonly StorySnapshot[]>>;
+    createSnapshot(input: { bookId: string; name: string }): Promise<DesktopResult<StorySnapshot>>;
+    deleteSnapshot(input: { bookId: string; snapshotId: string }): Promise<DesktopResult<{ deleted: boolean }>>;
+    restoreSnapshot(input: { bookId: string; snapshotId: string; expectedBookRevision: number }): Promise<DesktopResult<BookDetails>>;
     create(input: {
       input: CreateBookInput;
       providerId?: ProviderId;
@@ -117,6 +121,10 @@ export function createAutoNovelPreloadApiV2(
       listRecoverableIds: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableList),
       listRecoverableDetails: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableDetails),
       listRuns: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRuns, { bookId }),
+      listSnapshots: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotsList, { bookId }),
+      createSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotCreate, input),
+      deleteSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotDelete, input),
+      restoreSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotRestore, input),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
       updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleDot, Command, History, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
+import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -27,6 +27,8 @@ interface ProductionRoomProps {
   onOpenManuscript: () => void;
   onOpenMemory: () => void;
   onOpenTimeline: () => void;
+  onOpenBranches?: () => void;
+  onOpenAuthoringHub?: () => void;
   onOpenStoryBible: () => void;
   onOpenConsistency: () => void;
   onOpenSearch: () => void;
@@ -53,6 +55,8 @@ export function ProductionRoom({
   onOpenManuscript,
   onOpenMemory,
   onOpenTimeline,
+  onOpenBranches = () => undefined,
+  onOpenAuthoringHub = () => undefined,
   onOpenStoryBible,
   onOpenConsistency,
   onOpenSearch,
@@ -83,7 +87,7 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={() => setTaskOpen(true)}><History size={14} /> 任务中心</button><button className="text-button" type="button" onClick={onOpenAssetLibrary ?? (() => setAssetOpen(true))}><Library size={14} /> 资产库</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button>{onOpenCommandPalette ? <button className="command-trigger command-trigger-compact" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /></button> : null}<button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
+        <div className="production-top-actions"><button className="text-button" type="button" onClick={onOpenAuthoringHub}><Activity size={14} /> 创作中枢</button><button className="text-button" type="button" onClick={onOpenTimeline}>故事时间线</button><button className="text-button" type="button" onClick={onOpenBranches}><GitBranch size={14} /> 分支快照</button><button className="text-button" type="button" onClick={onOpenStoryBible}>故事资料卡</button><button className="text-button" type="button" onClick={onOpenConsistency}>一致性检查</button><button className="text-button" type="button" onClick={onOpenSearch}>全局搜索</button><button className="text-button" type="button" onClick={onOpenMemory}>记忆中心</button><button className="text-button" type="button" onClick={() => setTaskOpen(true)}><History size={14} /> 任务中心</button><button className="text-button" type="button" onClick={onOpenAssetLibrary ?? (() => setAssetOpen(true))}><Library size={14} /> 资产库</button><button className="text-button" type="button" onClick={onConfigureProvider}><Settings2 size={14} /> 模型设置</button><button className="text-button" type="button" onClick={onConfigureWorkflow}>工作流</button>{onOpenCommandPalette ? <button className="command-trigger command-trigger-compact" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /></button> : null}<button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button></div>
       </header>
       <section className="production-hero">
         <div>

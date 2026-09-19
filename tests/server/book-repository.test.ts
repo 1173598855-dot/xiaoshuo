@@ -246,4 +246,39 @@ describe("BookRepository", () => {
       entryIds: [selectedEntryId],
     });
   });
+
+  it("saves, compares, and restores a revision-safe story snapshot", () => {
+    const { repository } = createRepository();
+    const book = repository.createBook({ idea: "可以分支的故事" });
+    const [plan] = repository.saveChapterPlans(book.id, [{
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      chapterNumber: 1,
+      title: "旧标题",
+      summary: "旧摘要",
+      objective: "旧目标",
+      hook: "旧钩子",
+      foreshadowing: [],
+    }]);
+    const snapshot = repository.createStorySnapshot(book.id, "旧路线");
+
+    repository.updateChapterPlan(book.id, {
+      bookId: book.id,
+      planId: plan.id,
+      expectedBookRevision: 0,
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      title: "新标题",
+      summary: "新摘要",
+      objective: "新目标",
+      hook: "新钩子",
+      foreshadowing: [],
+    });
+
+    const restored = repository.restoreStorySnapshot(book.id, snapshot.id, 1);
+    expect(restored.book.revision).toBe(2);
+    expect(restored.chapterPlans[0]?.title).toBe("旧标题");
+    expect(repository.listStorySnapshots(book.id)).toHaveLength(1);
+    expect(() => repository.restoreStorySnapshot(book.id, snapshot.id, 1)).toThrow(BookRevisionConflictError);
+  });
 });

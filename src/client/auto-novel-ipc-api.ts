@@ -42,7 +42,7 @@ import {
   type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
-import { ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, UpdateChapterPlansInputSchema, UsageSummarySchema } from "../shared/authoring";
+import { ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema } from "../shared/authoring";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -60,6 +60,18 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
         return parseResult(await api.books.listRuns(bookId), z.array(ProductionRunSummarySchema));
       }
       return parseResult(await api.books.listRuns(bookId), z.array(ProductionRunSummarySchema));
+    },
+    async listStorySnapshots(bookId) {
+      return parseResult(await api.books.listSnapshots(bookId), z.array(StorySnapshotSchema));
+    },
+    async createStorySnapshot(bookId, name) {
+      return parseResult(await api.books.createSnapshot({ bookId, name }), StorySnapshotSchema);
+    },
+    async deleteStorySnapshot(bookId, snapshotId) {
+      parseResult(await api.books.deleteSnapshot({ bookId, snapshotId }), z.object({ deleted: z.boolean() }).strict());
+    },
+    async restoreStorySnapshot(bookId, snapshotId, expectedBookRevision) {
+      return parseResult(await api.books.restoreSnapshot({ bookId, snapshotId, expectedBookRevision }), BookDetailsSchema);
     },
     async createBook(input, provider, idempotencyKey) {
       return parseResult(

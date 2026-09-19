@@ -18,9 +18,12 @@ import {
   type UpdateChapterPlanInput,
 } from "../../shared/auto-novel";
 import type {
+  StorySnapshot,
+  StorySnapshotPayload,
   ReorderChapterPlansInput,
   UpdateChapterPlansInput,
 } from "../../shared/authoring";
+import { StorySnapshotSchema } from "../../shared/authoring";
 import { MemoryContextConfigSchema } from "../../shared/memory";
 
 export type DirectionDraft = Omit<
@@ -105,6 +108,16 @@ interface ChapterPlanRow {
   updated_at: string;
 }
 
+interface StorySnapshotRow {
+  id: string;
+  book_id: string;
+  name: string;
+  base_revision: number;
+  payload_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface RunRow {
   id: string;
   book_id: string;
@@ -144,6 +157,15 @@ export class ChapterPlanNotFoundError extends Error {
   constructor(planId: string) {
     super(`Chapter plan ${planId} was not found`);
     this.name = "ChapterPlanNotFoundError";
+  }
+}
+
+export class StorySnapshotNotFoundError extends Error {
+  readonly code = "NOT_FOUND";
+
+  constructor(snapshotId: string) {
+    super(`Story snapshot ${snapshotId} was not found`);
+    this.name = "StorySnapshotNotFoundError";
   }
 }
 
@@ -317,6 +339,194 @@ export class BookRepository {
       foundation: foundationRow ? toFoundation(foundationRow) : null,
       chapterPlans: chapterPlanRows.map(toChapterPlan),
       run: runRow ? toRun(runRow) : null,
+    });
+  }
+
+  listStorySnapshots(bookId: string): readonly StorySnapshot[] {
+    this.requireBookRow(bookId);
+    const rows = this.database
+      .prepare(
+        `SELECT id, book_id, name, base_revision, payload_json, created_at, updated_at
+           FROM story_snapshots
+          WHERE book_id = ?
+          ORDER BY updated_at DESC, id`,
+      )
+      .all(bookId) as unknown as StorySnapshotRow[];
+    return rows.map(toStorySnapshot);
+  }
+
+  createStorySnapshot(bookId: string, name: string): StorySnapshot {
+    return this.withTransaction(() => {
+      const details = this.getBook(bookId);
+      const timestamp = this.now();
+      const payload: StorySnapshotPayload = {
+        book: details.book,
+        directions: details.directions,
+        foundation: details.foundation,
+        chapterPlans: details.chapterPlans,
+      };
+      const row = {
+        id: this.createId(),
+        book_id: bookId,
+        name,
+        base_revision: details.book.revision,
+        payload_json: JSON.stringify(payload),
+        created_at: timestamp,
+        updated_at: timestamp,
+      } satisfies StorySnapshotRow;
+      this.database
+        .prepare(
+          `INSERT INTO story_snapshots
+             (id, book_id, name, base_revision, payload_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          row.id,
+          row.book_id,
+          row.name,
+          row.base_revision,
+          row.payload_json,
+          row.created_at,
+          row.updated_at,
+        );
+      return toStorySnapshot(row);
+    });
+  }
+
+  deleteStorySnapshot(bookId: string, snapshotId: string): void {
+    this.withTransaction(() => {
+      this.requireBookRow(bookId);
+      const result = this.database
+        .prepare("DELETE FROM story_snapshots WHERE id = ? AND book_id = ?")
+        .run(snapshotId, bookId);
+      if (result.changes !== 1) throw new StorySnapshotNotFoundError(snapshotId);
+    });
+  }
+
+  restoreStorySnapshot(
+    bookId: string,
+    snapshotId: string,
+    expectedBookRevision: number,
+  ): BookDetails {
+    return this.withTransaction(() => {
+      const current = this.requireBookRow(bookId);
+      if (current.revision !== expectedBookRevision) {
+        throw new BookRevisionConflictError(expectedBookRevision, current.revision);
+      }
+      const row = this.database
+        .prepare(
+          `SELECT id, book_id, name, base_revision, payload_json, created_at, updated_at
+             FROM story_snapshots WHERE id = ? AND book_id = ?`,
+        )
+        .get(snapshotId, bookId) as StorySnapshotRow | undefined;
+      if (!row) throw new StorySnapshotNotFoundError(snapshotId);
+      const snapshot = toStorySnapshot(row);
+      const timestamp = this.now();
+      const payload = snapshot.payload;
+
+      this.database
+        .prepare(
+          `UPDATE projects
+              SET title = ?, description = ?, updated_at = ?
+            WHERE id = ?`,
+        )
+        .run(payload.book.title, payload.book.idea, timestamp, current.project_id);
+      this.database
+        .prepare(
+          `UPDATE books
+              SET title = ?, idea = ?, genre = ?, target_chapters = ?,
+                  target_chapter_characters = ?, direction_count = ?, style = ?,
+                  selected_direction_id = ?, revision = revision + 1, updated_at = ?
+            WHERE id = ? AND revision = ?`,
+        )
+        .run(
+          payload.book.title,
+          payload.book.idea,
+          payload.book.genre,
+          payload.book.targetChapters,
+          payload.book.targetChapterCharacters,
+          payload.book.directionCount,
+          payload.book.style,
+          payload.book.selectedDirectionId,
+          timestamp,
+          bookId,
+          expectedBookRevision,
+        );
+
+      this.database.prepare("DELETE FROM story_directions WHERE book_id = ?").run(bookId);
+      for (const direction of payload.directions) {
+        this.database
+          .prepare(
+            `INSERT INTO story_directions
+              (id, book_id, title, logline, genre, promise, central_conflict,
+               ending_direction, outline_preview_json, rank, selected, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            direction.id,
+            bookId,
+            direction.title,
+            direction.logline,
+            direction.genre,
+            direction.promise,
+            direction.centralConflict,
+            direction.endingDirection,
+            JSON.stringify(direction.outlinePreview),
+            direction.rank,
+            direction.selected ? 1 : 0,
+            direction.createdAt,
+          );
+      }
+
+      this.database.prepare("DELETE FROM book_foundations WHERE book_id = ?").run(bookId);
+      if (payload.foundation) {
+        this.database
+          .prepare(
+            `INSERT INTO book_foundations
+              (id, book_id, world_rules_json, characters_json, locations_json,
+               style_guide, facts_json, revision, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            payload.foundation.id,
+            bookId,
+            JSON.stringify(payload.foundation.worldRules),
+            JSON.stringify(payload.foundation.characters),
+            JSON.stringify(payload.foundation.locations),
+            payload.foundation.styleGuide,
+            JSON.stringify(payload.foundation.facts),
+            payload.foundation.revision,
+            payload.foundation.createdAt,
+            timestamp,
+          );
+      }
+
+      this.database.prepare("DELETE FROM chapter_plans WHERE book_id = ?").run(bookId);
+      for (const plan of payload.chapterPlans) {
+        this.database
+          .prepare(
+            `INSERT INTO chapter_plans
+              (id, book_id, volume_number, volume_title, chapter_number, title,
+               summary, objective, hook, foreshadowing_json, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            plan.id,
+            bookId,
+            plan.volumeNumber,
+            plan.volumeTitle,
+            plan.chapterNumber,
+            plan.title,
+            plan.summary,
+            plan.objective,
+            plan.hook,
+            JSON.stringify(plan.foreshadowing),
+            plan.status,
+            plan.createdAt,
+            timestamp,
+          );
+      }
+      return this.getBook(bookId);
     });
   }
 
@@ -761,6 +971,18 @@ function toChapterPlan(row: ChapterPlanRow): ChapterPlan {
     hook: row.hook,
     foreshadowing: parseJson<string[]>(row.foreshadowing_json),
     status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+function toStorySnapshot(row: StorySnapshotRow): StorySnapshot {
+  return StorySnapshotSchema.parse({
+    id: row.id,
+    bookId: row.book_id,
+    name: row.name,
+    baseRevision: row.base_revision,
+    payload: parseJson<StorySnapshotPayload>(row.payload_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

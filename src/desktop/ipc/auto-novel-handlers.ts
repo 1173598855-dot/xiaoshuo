@@ -14,7 +14,13 @@ import {
   type ModelWorkflowConfig,
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ProviderId, type ApiError, type DesktopResult } from "../../shared/contracts";
-import { ReorderChapterPlansInputSchema, SearchQuerySchema, UpdateChapterPlansInputSchema } from "../../shared/authoring";
+import {
+  CreateStorySnapshotInputSchema,
+  ReorderChapterPlansInputSchema,
+  RestoreStorySnapshotInputSchema,
+  SearchQuerySchema,
+  UpdateChapterPlansInputSchema,
+} from "../../shared/authoring";
 import {
   MemoryFilterSchema,
   MemoryContextConfigSchema,
@@ -97,6 +103,7 @@ const MemoryContextRequestSchema = z.object({
 }).strict();
 const MemoryHistoryRequestSchema = z.object({ entryId: z.string().uuid() }).strict();
 const TimelineUpdateRequestSchema = UpdateChapterPlanInputSchema;
+const SnapshotDeleteRequestSchema = z.object({ bookId: z.string().uuid(), snapshotId: z.string().uuid() }).strict();
 
 export interface AutoNovelDesktopIpcDependencies {
   readonly ipcMain: DesktopIpcMain;
@@ -127,6 +134,23 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.booksRuns, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
     dependencies.authService?.assertBookAccess(bookId);
     return dependencies.getServices().productionRepository.listRunSummaries({ bookId });
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksSnapshotsList, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().bookRepository.listStorySnapshots(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksSnapshotCreate, CreateStorySnapshotInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().bookRepository.createStorySnapshot(input.bookId, input.name);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksSnapshotDelete, SnapshotDeleteRequestSchema, ({ bookId, snapshotId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    dependencies.getServices().bookRepository.deleteStorySnapshot(bookId, snapshotId);
+    return { deleted: true };
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksSnapshotRestore, RestoreStorySnapshotInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().bookRepository.restoreStorySnapshot(input.bookId, input.snapshotId, input.expectedBookRevision);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
