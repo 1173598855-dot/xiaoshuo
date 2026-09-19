@@ -9,6 +9,14 @@ This project includes adapted `CursorGrid`, `SpotlightCard`, `Dock`, and directi
 
 The adapted component is used as part of the Xiaoyi Novel Workbench application. It is not distributed as a standalone component library.
 
+## Surface mapping
+
+- Home / idea entry: `CursorGrid` plus `SpotlightCard`-style paper focus; the black-hole backdrop is a separate local NASA asset.
+- Direction picker: `SpotlightCard` interaction on each candidate direction so focus and Space preview remain visible.
+- Production room: `Dock` pattern for high-frequency author actions; the existing top actions remain as the keyboard-readable source of truth.
+- Authoring hub and story branches: native drawer structure with the same spotlight/color vocabulary; dense data comparison is intentionally not turned into a decorative card grid.
+- Timeline, memory, candidate review, asset editor, authentication, and data-management dialogs: native semantic forms are retained because revision fields, text editing, focus traps, and error states are more important than animation. The Flutter login motion reference is documented separately.
+
 ## License text
 
 ```text
