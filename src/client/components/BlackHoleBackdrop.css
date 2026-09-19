@@ -40,6 +40,12 @@
   }
 }
 
+@media (hover: none), (pointer: coarse) {
+  .black-hole-backdrop {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .black-hole-backdrop {
     opacity: .1;

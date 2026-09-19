@@ -124,9 +124,12 @@ npm run smoke:desktop
 npm run desktop:test
 npm run desktop:dist
 npm run desktop:package:test
+npm run clean:generated
 ```
 
 安装包输出到 `release/XiaoyiNovelWorkbench-<version>-setup.exe`。桌面版 Renderer 只通过白名单 IPC 访问 Main；API Key 由 Main 的 Electron `safeStorage`/Windows DPAPI Vault 管理，Renderer 永远不会收到已保存密钥。桌面工作流设置同样通过白名单 IPC 持久化为无密钥选择；跨 Provider 的角色使用各自已保存的 credentialId，Renderer 不接收密钥。
+
+`npm run clean:generated` 只清理 `dist/`、Playwright 报告、截图和临时桌面构建目录，不触碰 `data/`、`backups/`、`secrets/`、`.worktrees/`、`release/` 或 `node_modules/`。
 
 桌面数据库位于 Electron 用户数据目录：
 

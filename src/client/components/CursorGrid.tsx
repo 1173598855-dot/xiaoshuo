@@ -128,6 +128,7 @@ export function CursorGrid({
     const canvas = canvasRef.current;
     if (!container || !canvas) return undefined;
     if (typeof ResizeObserver === "undefined") return undefined;
+    if (typeof window.matchMedia === "function" && !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return undefined;
 
     const context = canvas.getContext("2d");
     if (!context) return undefined;

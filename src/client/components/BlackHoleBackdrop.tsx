@@ -9,7 +9,9 @@ export function BlackHoleBackdrop() {
     const backdrop = backdropRef.current;
     const prefersReducedMotion = typeof window.matchMedia === "function"
       && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!backdrop || prefersReducedMotion) return undefined;
+    const supportsHover = typeof window.matchMedia !== "function"
+      || window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!backdrop || prefersReducedMotion || !supportsHover) return undefined;
     let frameId = 0;
     let nextX = 0;
     let nextY = 0;
@@ -35,7 +37,7 @@ export function BlackHoleBackdrop() {
 
   return (
     <div ref={backdropRef} className="black-hole-backdrop" aria-hidden="true">
-      <img src="/assets/black-hole-accretion.png" alt="" />
+      <img src="/assets/black-hole-accretion.webp" alt="" />
     </div>
   );
 }
