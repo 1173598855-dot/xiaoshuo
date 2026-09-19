@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
+import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Search, Settings2, Sparkles, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -13,6 +13,7 @@ import { apiClient } from "../api/client";
 import type { UsageSummary } from "../../shared/authoring";
 import { AssetLibraryPanel, type CreativeAsset } from "./AssetLibraryPanel";
 import { ProductionTaskPanel } from "./ProductionTaskPanel";
+import { AuthoringDock } from "./AuthoringDock";
 
 interface ProductionRoomProps {
   book: BookDetails;
@@ -142,6 +143,14 @@ export function ProductionRoom({
       </section>
       {assetOpen ? <AssetLibraryPanel sourceBook={book} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => { window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: `${asset.name}\n\n${asset.content}`, directionCount: 3, selectedPresetId: null, updatedAt: Date.now() })); setAssetOpen(false); }} /> : null}
       {taskOpen ? <ProductionTaskPanel bookId={book.book.id} currentRunId={run?.run.id ?? null} api={taskApi} onClose={() => setTaskOpen(false)} onOpenRun={onOpenRun} /> : null}
+      <AuthoringDock items={[
+        { id: "hub", label: "创作中枢", icon: <Activity size={17} />, onClick: onOpenAuthoringHub },
+        { id: "branches", label: "分支快照", icon: <GitBranch size={17} />, onClick: onOpenBranches },
+        { id: "memory", label: "记忆中心", icon: <Sparkles size={17} />, onClick: onOpenMemory },
+        { id: "timeline", label: "故事时间线", icon: <History size={17} />, onClick: onOpenTimeline },
+        { id: "search", label: "全局搜索", icon: <Search size={17} />, onClick: onOpenSearch },
+        { id: "assets", label: "资产库", icon: <Library size={17} />, onClick: onOpenAssetLibrary ?? (() => setAssetOpen(true)) },
+      ]} />
     </main>
   );
 }

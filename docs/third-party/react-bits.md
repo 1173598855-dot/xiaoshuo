@@ -1,9 +1,9 @@
 # React Bits attribution
 
-This project includes adapted `CursorGrid` and `SpotlightCard` interactions based on the React Bits component library.
+This project includes adapted `CursorGrid`, `SpotlightCard`, and `Dock` interactions based on the React Bits component library.
 
 - Source: <https://github.com/DavidHDev/react-bits>
-- Component references: `src/ts-default/Animations/CursorGrid/CursorGrid.tsx`, `src/ts-default/Components/SpotlightCard/SpotlightCard.tsx`, and `src/ts-default/Components/TiltedCard/TiltedCard.tsx`
+- Component references: `src/ts-default/Animations/CursorGrid/CursorGrid.tsx`, `src/ts-default/Components/SpotlightCard/SpotlightCard.tsx`, `src/ts-default/Components/TiltedCard/TiltedCard.tsx`, and `src/ts-default/Components/Dock/Dock.tsx`
 - License: MIT + Commons Clause License Condition v1.0
 - Copyright: © 2026 David Haz
 
