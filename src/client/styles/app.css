@@ -699,6 +699,399 @@ button:disabled {
   }
 }
 
+/* Final theme pass: keep every route on the same Runapi-inspired surface. */
+@layer studio {
+  :root {
+    --atlas-night: #111019;
+    --atlas-night-soft: #1a1826;
+    --atlas-ink: #f4f2fb;
+    --atlas-muted: #a5a1b4;
+    --atlas-line: rgb(205 191 255 / 17%);
+    --atlas-copper: #a99dff;
+    --atlas-copper-dark: #8e80ee;
+    --atlas-teal: #a99dff;
+    --atlas-paper: #1a1826;
+    --atlas-paper-ink: #f4f2fb;
+  }
+
+  html,
+  body,
+  #root {
+    background: var(--atlas-night);
+  }
+
+  body,
+  button,
+  input,
+  select,
+  textarea {
+    font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  .creative-home,
+  .director-page,
+  .production-page,
+  .manuscript-page {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .creative-home::before,
+  .director-page::before,
+  .production-page::before,
+  .manuscript-page::before {
+    background:
+      radial-gradient(ellipse at 16% 12%, transparent 0 23%, rgb(169 157 255 / 8%) 23.2%, transparent 23.5% 100%),
+      radial-gradient(ellipse at 82% 26%, transparent 0 29%, rgb(169 157 255 / 6%) 29.2%, transparent 29.5% 100%),
+      radial-gradient(circle at 82% 0%, rgb(169 157 255 / 10%), transparent 30%),
+      linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      linear-gradient(0deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      var(--atlas-night);
+    background-size: auto, auto, auto, 64px 64px, 64px 64px, auto;
+  }
+
+  .creative-cursor-grid {
+    opacity: .18;
+  }
+
+  .black-hole-backdrop {
+    opacity: .055;
+    filter: grayscale(1) hue-rotate(205deg) saturate(.75);
+  }
+
+  .creative-header,
+  .page-topbar {
+    border-color: var(--atlas-line);
+    background: rgb(17 16 25 / 86%);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+  }
+
+  .brand-mark {
+    color: var(--atlas-night);
+    background: var(--atlas-ink);
+    box-shadow: 3px 3px 0 var(--atlas-copper);
+  }
+
+  .brand-wordmark h1,
+  .production-title strong,
+  .creative-header h1,
+  .stage-copy h2,
+  .direction-intro h1,
+  .production-hero h1,
+  .manuscript-heading h1,
+  .section-heading h2,
+  .panel-heading h2,
+  .direction-card h2,
+  .manuscript-chapter h2 {
+    color: var(--atlas-ink);
+    font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+    text-shadow: none;
+  }
+
+  .eyebrow,
+  .header-note,
+  .stage-topline,
+  .stage-notes,
+  .idea-form-heading > span,
+  .library-count,
+  .muted-label,
+  .peek-hint,
+  .stage-progress,
+  .stage-copy p,
+  .direction-intro p,
+  .production-hero p,
+  .manuscript-heading p,
+  .book-card-copy small,
+  .chapter-feed-row small,
+  .memory-mode-note,
+  .production-telemetry {
+    color: var(--atlas-muted);
+  }
+
+  .stage-topline i {
+    background: var(--atlas-copper);
+    box-shadow: 0 0 12px rgb(169 157 255 / 38%);
+  }
+
+  .stage-label,
+  .direction-index,
+  .book-card > svg,
+  .feed-index,
+  .stage-icon {
+    color: var(--atlas-copper);
+  }
+
+  .ghost-button,
+  .text-button,
+  .secondary-button,
+  .command-trigger,
+  .preset-chip,
+  .icon-button,
+  .select-direction-button,
+  .direction-auto-button {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ghost-button:hover,
+  .text-button:hover,
+  .secondary-button:hover:not(:disabled),
+  .command-trigger:hover,
+  .icon-button:hover,
+  .preset-chip:hover,
+  .preset-chip.active,
+  .select-direction-button:hover:not(:disabled),
+  .direction-auto-button:hover:not(:disabled) {
+    border-color: rgb(169 157 255 / 62%);
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 11%);
+    transform: translateY(-1px);
+  }
+
+  .primary-button {
+    border-color: var(--atlas-copper);
+    background: var(--atlas-copper);
+    color: #15121e;
+    box-shadow: 0 8px 22px rgb(169 157 255 / 19%);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--atlas-copper-dark);
+    background: var(--atlas-copper-dark);
+    color: #fff;
+  }
+
+  .danger-button {
+    border-color: rgb(238 140 158 / 35%);
+    background: rgb(238 140 158 / 9%);
+    color: #f3a4b0;
+  }
+
+  .idea-spotlight-shell {
+    border-color: var(--atlas-line);
+    border-radius: 18px;
+    background: linear-gradient(145deg, rgb(37 32 59 / 96%), rgb(22 20 34 / 96%));
+    box-shadow: 0 24px 62px rgb(0 0 0 / 34%), inset 0 1px 0 rgb(255 255 255 / 6%);
+  }
+
+  .idea-spotlight-shell:hover,
+  .idea-spotlight-shell:focus-within {
+    border-color: rgb(169 157 255 / 52%);
+  }
+
+  .idea-form,
+  .idea-spotlight-shell .idea-form {
+    color: var(--atlas-paper-ink);
+    border-color: rgb(205 191 255 / 25%);
+    border-radius: 12px;
+    background: var(--atlas-paper);
+    box-shadow: 0 18px 42px rgb(0 0 0 / 23%);
+  }
+
+  .idea-form-heading,
+  .idea-form-footer {
+    border-color: var(--atlas-line);
+  }
+
+  .idea-form label,
+  .direction-count-control,
+  .idea-form textarea {
+    color: var(--atlas-ink);
+  }
+
+  .idea-form textarea,
+  .direction-count-control input,
+  .preset-editor input,
+  .manuscript-toolbar input,
+  .manuscript-template-select select,
+  .form-field input,
+  .form-field select,
+  .secret-input input,
+  .workflow-assignment input,
+  .workflow-assignment select,
+  .search-form input {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .idea-form textarea:focus,
+  .direction-count-control input:focus,
+  .preset-editor input:focus,
+  .manuscript-toolbar input:focus,
+  .manuscript-template-select select:focus,
+  .form-field input:focus,
+  .form-field select:focus,
+  .secret-input input:focus {
+    border-color: rgb(169 157 255 / 72%);
+    background: rgb(255 255 255 / 8%);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 14%);
+  }
+
+  .idea-form textarea::placeholder,
+  input::placeholder,
+  textarea::placeholder {
+    color: #858096;
+  }
+
+  .idea-form .idea-draft-status,
+  .idea-form .idea-presets-label,
+  .idea-form-footer > span,
+  .direction-count-control {
+    color: var(--atlas-muted);
+  }
+
+  .idea-form .preset-chip {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .idea-form .preset-chip:hover,
+  .idea-form .preset-chip.active {
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 12%);
+  }
+
+  .library-section {
+    border-color: var(--atlas-line);
+  }
+
+  .book-card,
+  .direction-card,
+  .run-panel,
+  .chapter-feed,
+  .review-panel,
+  .manuscript-chapter {
+    border-color: var(--atlas-line);
+    background: rgb(26 24 38 / 82%);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+  }
+
+  .book-card:hover,
+  .direction-card:hover,
+  .direction-card:focus-within {
+    border-color: rgb(169 157 255 / 58%);
+    background: rgb(34 30 52 / 90%);
+    box-shadow: 0 22px 56px rgb(0 0 0 / 34%);
+  }
+
+  .book-card-icon {
+    border-color: rgb(169 157 255 / 38%);
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .empty-library,
+  .empty-feed,
+  .review-empty {
+    border-color: var(--atlas-line);
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 2%);
+  }
+
+  .direction-card p,
+  .direction-detail > span,
+  .direction-detail p,
+  .review-copy,
+  .review-meta,
+  .candidate-diff-collapsed,
+  .empty-feed {
+    color: var(--atlas-muted);
+  }
+
+  .stage-row.active {
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .progress-track {
+    background: rgb(255 255 255 / 9%);
+  }
+
+  .progress-track span {
+    background: var(--atlas-copper);
+    box-shadow: 0 0 18px rgb(169 157 255 / 38%);
+  }
+
+  .status-badge,
+  .feed-status {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 6%);
+  }
+
+  .status-badge.running,
+  .status-badge.queued,
+  .feed-status.accepted {
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 11%);
+  }
+
+  .dialog-backdrop,
+  .command-backdrop {
+    background: rgb(4 3 8 / 76%);
+  }
+
+  .story-drawer,
+  .provider-dialog,
+  .command-palette,
+  .peek-preview {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(26 24 38 / 97%);
+    box-shadow: 0 30px 96px rgb(0 0 0 / 46%);
+  }
+
+  .dialog-header,
+  .dialog-actions,
+  .command-palette-footer {
+    border-color: var(--atlas-line);
+  }
+
+  .auth-gate {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .auth-gate-shell,
+  .auth-gate-card {
+    border-color: var(--atlas-line);
+    background: var(--atlas-night-soft);
+    box-shadow: 0 24px 72px rgb(0 0 0 / 38%);
+  }
+
+  .auth-gate-rail {
+    color: var(--atlas-ink);
+    background: #191725;
+  }
+
+  .auth-mode-switch {
+    border-color: var(--atlas-line);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .auth-field input {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .authoring-dock {
+    border-color: var(--atlas-line);
+    background: rgb(20 18 30 / 94%);
+  }
+
+  @media (max-width: 620px) {
+    .creative-home::before,
+    .director-page::before,
+    .production-page::before,
+    .manuscript-page::before {
+      background-size: auto, auto, auto, 42px 42px, 42px 42px, auto;
+    }
+  }
+}
+
 .stage-list {
   display: grid;
   gap: 5px;
@@ -3189,6 +3582,501 @@ select:focus-visible,
 .direction-card:focus-visible {
   outline: 3px solid rgb(0 113 227 / 32%);
   outline-offset: 3px;
+}
+
+/* Unified Runapi-inspired night theme: one canvas, one accent, one control language. */
+@layer studio {
+  :root {
+    --atlas-night: #111019;
+    --atlas-night-soft: #1a1826;
+    --atlas-ink: #f4f2fb;
+    --atlas-muted: #a5a1b4;
+    --atlas-line: rgb(205 191 255 / 17%);
+    --atlas-copper: #a99dff;
+    --atlas-copper-dark: #8e80ee;
+    --atlas-teal: #a99dff;
+    --atlas-paper: #1a1826;
+    --atlas-paper-ink: #f4f2fb;
+  }
+
+  html,
+  body,
+  #root {
+    background: var(--atlas-night);
+  }
+
+  body,
+  button,
+  input,
+  select,
+  textarea {
+    font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .brand-wordmark h1,
+  .production-title strong,
+  .stage-copy h2,
+  .direction-intro h1,
+  .production-hero h1,
+  .manuscript-heading h1,
+  .section-heading h2,
+  .panel-heading h2,
+  .direction-card h2,
+  .manuscript-chapter h2 {
+    font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  .direction-card:focus-visible {
+    outline: 2px solid var(--atlas-copper);
+    outline-offset: 3px;
+  }
+
+  .creative-home,
+  .director-page,
+  .production-page,
+  .manuscript-page {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .creative-home::before,
+  .director-page::before,
+  .production-page::before,
+  .manuscript-page::before {
+    background:
+      radial-gradient(ellipse at 16% 12%, transparent 0 23%, rgb(169 157 255 / 8%) 23.2%, transparent 23.5% 100%),
+      radial-gradient(ellipse at 82% 26%, transparent 0 29%, rgb(169 157 255 / 6%) 29.2%, transparent 29.5% 100%),
+      radial-gradient(circle at 82% 0%, rgb(169 157 255 / 10%), transparent 30%),
+      linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      linear-gradient(0deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      var(--atlas-night);
+    background-size: auto, auto, auto, 64px 64px, 64px 64px, auto;
+  }
+
+  .creative-cursor-grid {
+    opacity: .18;
+  }
+
+  .black-hole-backdrop {
+    opacity: .055;
+    filter: grayscale(1) hue-rotate(205deg) saturate(.75);
+    mix-blend-mode: screen;
+  }
+
+  .creative-header,
+  .page-topbar {
+    border-color: var(--atlas-line);
+    background: rgb(17 16 25 / 86%);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+
+  .brand-mark {
+    color: var(--atlas-night);
+    background: var(--atlas-ink);
+    box-shadow: 3px 3px 0 var(--atlas-copper);
+  }
+
+  .brand-wordmark h1,
+  .production-title strong,
+  .creative-header h1,
+  .stage-copy h2,
+  .direction-intro h1,
+  .production-hero h1,
+  .manuscript-heading h1,
+  .section-heading h2,
+  .panel-heading h2,
+  .direction-card h2,
+  .manuscript-chapter h2 {
+    color: var(--atlas-ink);
+    text-shadow: none;
+  }
+
+  .eyebrow,
+  .header-note,
+  .stage-topline,
+  .stage-notes,
+  .idea-form-heading > span,
+  .library-count,
+  .muted-label,
+  .peek-hint,
+  .stage-progress,
+  .stage-copy p,
+  .direction-intro p,
+  .production-hero p,
+  .manuscript-heading p,
+  .book-card-copy small,
+  .chapter-feed-row small,
+  .memory-mode-note,
+  .production-telemetry {
+    color: var(--atlas-muted);
+  }
+
+  .stage-topline i {
+    background: var(--atlas-copper);
+    box-shadow: 0 0 12px rgb(169 157 255 / 38%);
+  }
+
+  .stage-label,
+  .direction-index,
+  .book-card > svg,
+  .feed-index,
+  .stage-icon {
+    color: var(--atlas-copper);
+  }
+
+  .ghost-button,
+  .text-button,
+  .secondary-button,
+  .command-trigger,
+  .preset-chip,
+  .icon-button,
+  .select-direction-button,
+  .direction-auto-button {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ghost-button:hover,
+  .text-button:hover,
+  .secondary-button:hover:not(:disabled),
+  .command-trigger:hover,
+  .icon-button:hover,
+  .preset-chip:hover,
+  .preset-chip.active,
+  .select-direction-button:hover:not(:disabled),
+  .direction-auto-button:hover:not(:disabled) {
+    border-color: rgb(169 157 255 / 62%);
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 11%);
+    transform: translateY(-1px);
+  }
+
+  .primary-button {
+    border-color: var(--atlas-copper);
+    background: var(--atlas-copper);
+    color: #15121e;
+    box-shadow: 0 8px 22px rgb(169 157 255 / 19%);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--atlas-copper-dark);
+    background: var(--atlas-copper-dark);
+    color: #fff;
+    box-shadow: 0 11px 28px rgb(169 157 255 / 27%);
+  }
+
+  .danger-button {
+    border-color: rgb(238 140 158 / 35%);
+    background: rgb(238 140 158 / 9%);
+    color: #f4a4b3;
+  }
+
+  .idea-spotlight-shell {
+    border-color: var(--atlas-line);
+    border-radius: 18px;
+    background: linear-gradient(145deg, rgb(37 32 59 / 96%), rgb(22 20 34 / 96%));
+    box-shadow: 0 24px 62px rgb(0 0 0 / 34%), inset 0 1px 0 rgb(255 255 255 / 6%);
+  }
+
+  .idea-spotlight-shell:hover,
+  .idea-spotlight-shell:focus-within {
+    border-color: rgb(169 157 255 / 52%);
+    box-shadow: 0 28px 70px rgb(0 0 0 / 42%), 0 0 0 1px rgb(169 157 255 / 15%);
+  }
+
+  .idea-form,
+  .idea-spotlight-shell .idea-form {
+    color: var(--atlas-paper-ink);
+    border-color: rgb(205 191 255 / 25%);
+    border-radius: 12px;
+    background: var(--atlas-paper);
+    box-shadow: 0 18px 42px rgb(0 0 0 / 23%);
+  }
+
+  .idea-form-heading,
+  .idea-form-footer {
+    border-color: var(--atlas-line);
+  }
+
+  .idea-form label,
+  .direction-count-control,
+  .idea-form textarea {
+    color: var(--atlas-ink);
+  }
+
+  .idea-form textarea,
+  .direction-count-control input,
+  .preset-editor input,
+  .manuscript-toolbar input,
+  .manuscript-template-select select {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .idea-form textarea:focus,
+  .direction-count-control input:focus,
+  .preset-editor input:focus,
+  .manuscript-toolbar input:focus,
+  .manuscript-template-select select:focus {
+    border-color: rgb(169 157 255 / 72%);
+    background: rgb(255 255 255 / 8%);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 14%);
+  }
+
+  .idea-form textarea::placeholder,
+  input::placeholder,
+  textarea::placeholder {
+    color: #858096;
+  }
+
+  .idea-form .idea-draft-status,
+  .idea-form .idea-presets-label,
+  .idea-form-footer > span,
+  .direction-count-control {
+    color: var(--atlas-muted);
+  }
+
+  .idea-form .preset-chip {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .idea-form .preset-chip:hover,
+  .idea-form .preset-chip.active {
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 12%);
+  }
+
+  .status-dot {
+    background: var(--success);
+    box-shadow: 0 0 0 4px rgb(123 216 181 / 13%);
+  }
+
+  .library-section {
+    border-color: var(--atlas-line);
+  }
+
+  .book-card,
+  .direction-card,
+  .run-panel,
+  .chapter-feed,
+  .review-panel,
+  .manuscript-chapter {
+    border-color: var(--atlas-line);
+    background: rgb(26 24 38 / 82%);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+  }
+
+  .book-card:hover,
+  .direction-card:hover,
+  .direction-card:focus-within {
+    border-color: rgb(169 157 255 / 58%);
+    background: rgb(34 30 52 / 90%);
+    box-shadow: 0 22px 56px rgb(0 0 0 / 34%);
+  }
+
+  .book-card-icon {
+    border-color: rgb(169 157 255 / 38%);
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .empty-library,
+  .empty-feed,
+  .review-empty {
+    border-color: var(--atlas-line);
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 2%);
+  }
+
+  .direction-card p,
+  .direction-detail > span,
+  .direction-detail p,
+  .review-copy,
+  .review-meta,
+  .candidate-diff-collapsed,
+  .empty-feed {
+    color: var(--atlas-muted);
+  }
+
+  .direction-card h2,
+  .direction-card strong,
+  .panel-heading h2,
+  .chapter-feed-row strong,
+  .review-panel h2,
+  .manuscript-chapter h2 {
+    color: var(--atlas-ink);
+  }
+
+  .stage-row.active {
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .stage-number,
+  .chapter-feed-row,
+  .progress-track,
+  .status-badge,
+  .feed-status {
+    border-color: var(--atlas-line);
+  }
+
+  .progress-track {
+    background: rgb(255 255 255 / 9%);
+  }
+
+  .progress-track span {
+    background: var(--atlas-copper);
+    box-shadow: 0 0 18px rgb(169 157 255 / 38%);
+  }
+
+  .status-badge,
+  .feed-status {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 6%);
+  }
+
+  .status-badge.running,
+  .status-badge.queued,
+  .feed-status.accepted {
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 11%);
+  }
+
+  .status-badge.completed {
+    color: var(--success);
+    background: var(--pine-soft);
+  }
+
+  .connection-banner {
+    color: #f3a4b0;
+    background: rgb(238 140 158 / 10%);
+  }
+
+  .dialog-backdrop,
+  .command-backdrop {
+    background: rgb(4 3 8 / 76%);
+  }
+
+  .story-drawer,
+  .provider-dialog,
+  .command-palette,
+  .peek-preview {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(26 24 38 / 97%);
+    box-shadow: 0 30px 96px rgb(0 0 0 / 46%);
+  }
+
+  .dialog-header,
+  .dialog-actions,
+  .provider-dialog .dialog-body,
+  .command-palette-footer {
+    border-color: var(--atlas-line);
+  }
+
+  .provider-dialog h2,
+  .command-palette h2,
+  .peek-preview h2,
+  .story-drawer h2 {
+    color: var(--atlas-ink);
+  }
+
+  .form-field,
+  .form-field input,
+  .form-field select,
+  .secret-input input,
+  .workflow-assignment strong,
+  .data-dialog-note,
+  .memory-context-note {
+    color: var(--atlas-muted);
+  }
+
+  .form-field input,
+  .form-field select,
+  .secret-input input,
+  .workflow-assignment input,
+  .workflow-assignment select,
+  .search-form input {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .data-dialog-note,
+  .memory-context-note {
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .manuscript-page .chapter-body {
+    color: var(--atlas-ink);
+  }
+
+  .auth-gate {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .auth-gate-shell,
+  .auth-gate-card {
+    border-color: var(--atlas-line);
+    background: var(--atlas-night-soft);
+    box-shadow: 0 24px 72px rgb(0 0 0 / 38%);
+  }
+
+  .auth-gate-rail {
+    color: var(--atlas-ink);
+    background: #191725;
+  }
+
+  .auth-gate-card,
+  .auth-gate-header h2,
+  .auth-field label,
+  .auth-gate-footer {
+    color: var(--atlas-ink);
+  }
+
+  .auth-mode-switch {
+    border-color: var(--atlas-line);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .auth-field input,
+  .auth-mode-switch button {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .authoring-dock {
+    border-color: var(--atlas-line);
+    background: rgb(20 18 30 / 94%);
+    box-shadow: 0 18px 46px rgb(0 0 0 / 44%), inset 0 1px 0 rgb(255 255 255 / 7%);
+  }
+
+  @media (max-width: 620px) {
+    .creative-home::before,
+    .director-page::before,
+    .production-page::before,
+    .manuscript-page::before {
+      background-size: auto, auto, auto, 42px 42px, 42px 42px, auto;
+    }
+  }
 }
 
   .idea-draft-status {
@@ -5856,14 +6744,7 @@ select:focus-visible,
   }
 
   .idea-form::before {
-    position: absolute;
-    top: 0;
-    left: 34px;
-    width: 1px;
-    height: 100%;
-    background: rgb(231 133 82 / 30%);
-    content: "";
-    pointer-events: none;
+    display: none;
   }
 
   .idea-form:focus-within {
@@ -6883,5 +7764,310 @@ select:focus-visible,
     .manuscript-page::before {
       background-size: auto, cover, auto, auto, 42px 42px, 42px 42px, auto;
     }
+  }
+}
+
+/* Authoritative theme tokens are last so older route-specific styles cannot drift. */
+@layer studio {
+  :root {
+    --atlas-night: #111019;
+    --atlas-night-soft: #1a1826;
+    --atlas-ink: #f4f2fb;
+    --atlas-muted: #a5a1b4;
+    --atlas-line: rgb(205 191 255 / 17%);
+    --atlas-copper: #a99dff;
+    --atlas-copper-dark: #8e80ee;
+    --atlas-teal: #a99dff;
+    --atlas-paper: #1a1826;
+    --atlas-paper-ink: #f4f2fb;
+  }
+
+  html,
+  body,
+  #root,
+  .creative-home,
+  .director-page,
+  .production-page,
+  .manuscript-page {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .creative-home::before,
+  .director-page::before,
+  .production-page::before,
+  .manuscript-page::before {
+    background:
+      radial-gradient(ellipse at 16% 12%, transparent 0 23%, rgb(169 157 255 / 8%) 23.2%, transparent 23.5% 100%),
+      radial-gradient(ellipse at 82% 26%, transparent 0 29%, rgb(169 157 255 / 6%) 29.2%, transparent 29.5% 100%),
+      radial-gradient(circle at 82% 0%, rgb(169 157 255 / 10%), transparent 30%),
+      linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      linear-gradient(0deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
+      var(--atlas-night);
+    background-size: auto, auto, auto, 64px 64px, 64px 64px, auto;
+  }
+
+  .creative-cursor-grid { opacity: .18; }
+
+  .black-hole-backdrop {
+    opacity: .055;
+    filter: grayscale(1) hue-rotate(205deg) saturate(.75);
+  }
+
+  .creative-header,
+  .page-topbar {
+    border-color: var(--atlas-line);
+    background: rgb(17 16 25 / 86%);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+  }
+
+  .brand-mark {
+    color: var(--atlas-night);
+    background: var(--atlas-ink);
+    box-shadow: 3px 3px 0 var(--atlas-copper);
+  }
+
+  .brand-wordmark h1,
+  .production-title strong,
+  .creative-header h1,
+  .stage-copy h2,
+  .direction-intro h1,
+  .production-hero h1,
+  .manuscript-heading h1,
+  .section-heading h2,
+  .panel-heading h2,
+  .direction-card h2,
+  .manuscript-chapter h2 {
+    color: var(--atlas-ink);
+    font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+    text-shadow: none;
+  }
+
+  .eyebrow,
+  .header-note,
+  .stage-topline,
+  .stage-notes,
+  .idea-form-heading > span,
+  .library-count,
+  .muted-label,
+  .peek-hint,
+  .stage-progress,
+  .stage-copy p,
+  .direction-intro p,
+  .production-hero p,
+  .manuscript-heading p,
+  .book-card-copy small,
+  .chapter-feed-row small,
+  .memory-mode-note,
+  .production-telemetry {
+    color: var(--atlas-muted);
+  }
+
+  .stage-label,
+  .direction-index,
+  .book-card > svg,
+  .feed-index,
+  .stage-icon {
+    color: var(--atlas-copper);
+  }
+
+  .ghost-button,
+  .text-button,
+  .secondary-button,
+  .command-trigger,
+  .preset-chip,
+  .icon-button,
+  .select-direction-button,
+  .direction-auto-button {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ghost-button:hover,
+  .text-button:hover,
+  .secondary-button:hover:not(:disabled),
+  .command-trigger:hover,
+  .icon-button:hover,
+  .preset-chip:hover,
+  .preset-chip.active,
+  .select-direction-button:hover:not(:disabled),
+  .direction-auto-button:hover:not(:disabled) {
+    border-color: rgb(169 157 255 / 62%);
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 11%);
+  }
+
+  .primary-button {
+    border-color: var(--atlas-copper);
+    background: var(--atlas-copper);
+    color: #15121e;
+    box-shadow: 0 8px 22px rgb(169 157 255 / 19%);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--atlas-copper-dark);
+    background: var(--atlas-copper-dark);
+    color: #fff;
+  }
+
+  .idea-spotlight-shell {
+    border-color: var(--atlas-line);
+    border-radius: 18px;
+    background: linear-gradient(145deg, rgb(37 32 59 / 96%), rgb(22 20 34 / 96%));
+  }
+
+  .idea-form,
+  .idea-spotlight-shell .idea-form {
+    color: var(--atlas-paper-ink);
+    border-color: rgb(205 191 255 / 25%);
+    border-radius: 12px;
+    background: var(--atlas-paper);
+    box-shadow: 0 18px 42px rgb(0 0 0 / 23%);
+  }
+
+  .idea-form-heading,
+  .idea-form-footer {
+    border-color: var(--atlas-line);
+  }
+
+  .idea-form label,
+  .direction-count-control,
+  .idea-form textarea,
+  .idea-form .idea-draft-status,
+  .idea-form .idea-presets-label,
+  .idea-form-footer > span {
+    color: var(--atlas-ink);
+  }
+
+  .idea-form textarea,
+  .direction-count-control input,
+  .preset-editor input,
+  .manuscript-toolbar input,
+  .manuscript-template-select select,
+  .form-field input,
+  .form-field select,
+  .secret-input input,
+  .workflow-assignment input,
+  .workflow-assignment select,
+  .search-form input,
+  .auth-field input {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .idea-form textarea::placeholder,
+  input::placeholder,
+  textarea::placeholder {
+    color: #858096;
+  }
+
+  .idea-form .preset-chip {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .book-card,
+  .direction-card,
+  .run-panel,
+  .chapter-feed,
+  .review-panel,
+  .manuscript-chapter {
+    border-color: var(--atlas-line);
+    background: rgb(26 24 38 / 82%);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+  }
+
+  .book-card:hover,
+  .direction-card:hover,
+  .direction-card:focus-within {
+    border-color: rgb(169 157 255 / 58%);
+    background: rgb(34 30 52 / 90%);
+  }
+
+  .book-card-icon {
+    border-color: rgb(169 157 255 / 38%);
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .empty-library,
+  .empty-feed,
+  .review-empty {
+    border-color: var(--atlas-line);
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 2%);
+  }
+
+  .direction-card p,
+  .direction-detail > span,
+  .direction-detail p,
+  .review-copy,
+  .review-meta,
+  .candidate-diff-collapsed,
+  .empty-feed {
+    color: var(--atlas-muted);
+  }
+
+  .stage-row.active {
+    color: var(--atlas-ink);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .progress-track { background: rgb(255 255 255 / 9%); }
+
+  .progress-track span {
+    background: var(--atlas-copper);
+    box-shadow: 0 0 18px rgb(169 157 255 / 38%);
+  }
+
+  .status-badge,
+  .feed-status {
+    color: var(--atlas-muted);
+    background: rgb(255 255 255 / 6%);
+  }
+
+  .status-badge.running,
+  .status-badge.queued,
+  .feed-status.accepted {
+    color: var(--atlas-copper);
+    background: rgb(169 157 255 / 11%);
+  }
+
+  .dialog-backdrop,
+  .command-backdrop { background: rgb(4 3 8 / 76%); }
+
+  .story-drawer,
+  .provider-dialog,
+  .command-palette,
+  .peek-preview {
+    border-color: var(--atlas-line);
+    color: var(--atlas-ink);
+    background: rgb(26 24 38 / 97%);
+  }
+
+  .dialog-header,
+  .dialog-actions,
+  .command-palette-footer { border-color: var(--atlas-line); }
+
+  .auth-gate {
+    color: var(--atlas-ink);
+    background: var(--atlas-night);
+  }
+
+  .auth-gate-shell,
+  .auth-gate-card {
+    border-color: var(--atlas-line);
+    background: var(--atlas-night-soft);
+    box-shadow: 0 24px 72px rgb(0 0 0 / 38%);
+  }
+
+  .auth-gate-rail { background: #191725; }
+
+  .authoring-dock {
+    border-color: var(--atlas-line);
+    background: rgb(20 18 30 / 94%);
   }
 }
