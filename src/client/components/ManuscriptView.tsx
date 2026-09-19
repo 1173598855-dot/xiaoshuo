@@ -29,6 +29,14 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported }: Manu
     }
     setCurrentChapters(chapters);
   }, [chapters]);
+  useEffect(() => {
+    let cancelled = false;
+    void api.getChapters(book.book.id).then((loaded) => {
+      if (cancelled || loaded.chapters.length === 0) return;
+      setCurrentChapters(loaded.chapters.filter((chapter) => chapter.revision > 0));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [api, book.book.id]);
   const filteredChapters = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return currentChapters;
