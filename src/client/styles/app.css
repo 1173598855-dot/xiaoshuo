@@ -5497,6 +5497,90 @@ select:focus-visible,
 
 /* Ink Atlas: a night publishing desk for the author-facing surfaces. */
 @layer studio {
+  .auth-gate {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 14% 18%, rgb(0 113 227 / 10%), transparent 30%),
+      radial-gradient(circle at 86% 82%, rgb(231 133 82 / 10%), transparent 28%),
+      var(--canvas);
+  }
+
+  .auth-gate::before {
+    position: absolute;
+    z-index: -1;
+    top: -22vh;
+    right: -12vw;
+    width: 52vw;
+    min-width: 460px;
+    height: 52vw;
+    min-height: 460px;
+    border: 1px solid rgb(0 113 227 / 12%);
+    border-radius: 50%;
+    box-shadow: 0 0 0 34px rgb(0 113 227 / 3%), 0 0 0 70px rgb(0 113 227 / 2%);
+    content: "";
+    opacity: .7;
+    transform: rotate(-18deg);
+    animation: auth-orbit 18s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+
+  .auth-gate-shell {
+    animation: auth-shell-in 520ms var(--ease-studio) both;
+  }
+
+  .auth-form-transition {
+    animation: auth-form-in 360ms var(--ease-studio) both;
+  }
+
+  .auth-mode-switch button {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .auth-mode-switch button::after {
+    position: absolute;
+    right: 20%;
+    bottom: 0;
+    left: 20%;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent);
+    content: "";
+    opacity: 0;
+    transform: scaleX(.35);
+    transition: opacity 180ms ease, transform 220ms var(--ease-studio);
+  }
+
+  .auth-mode-switch button.is-active::after {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  @keyframes auth-shell-in {
+    from { opacity: 0; transform: translateY(14px) scale(.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes auth-form-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes auth-orbit {
+    from { transform: rotate(-18deg) translate3d(0, 0, 0); }
+    to { transform: rotate(-11deg) translate3d(-18px, 12px, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-gate::before,
+    .auth-gate-shell,
+    .auth-form-transition {
+      animation: none;
+    }
+  }
+
   :root {
     --atlas-night: #09111f;
     --atlas-night-soft: #111d2f;
@@ -5881,6 +5965,15 @@ select:focus-visible,
     border-color: var(--atlas-line);
     background: rgb(17 29 47 / 82%);
     box-shadow: 0 22px 60px rgb(0 0 0 / 22%);
+  }
+
+  .direction-spotlight-shell {
+    height: 100%;
+    border-radius: 16px;
+  }
+
+  .direction-spotlight-shell .direction-card {
+    height: 100%;
   }
 
   .direction-card {

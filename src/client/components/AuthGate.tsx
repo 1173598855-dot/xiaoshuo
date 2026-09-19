@@ -55,7 +55,7 @@ export function AuthGate({
   }, [mode]);
 
   return (
-    <main className="auth-gate" aria-labelledby="auth-title">
+    <main className={`auth-gate auth-mode-${mode}`} aria-labelledby="auth-title">
       <div className="auth-gate-shell">
         <aside className="auth-gate-rail" aria-label="工作台介绍">
           <div className="auth-gate-brand">
@@ -96,7 +96,7 @@ export function AuthGate({
             {isRegister ? "用管理员的邀请码创建账号，注册成功后会自动进入工作台。" : "输入账号即可继续整理你的作品，登录信息只在当前会话中使用。"}
           </p>
 
-          <form className="auth-form" onSubmit={onSubmit} noValidate>
+          <form className="auth-form auth-form-transition" key={mode} onSubmit={onSubmit} noValidate>
             <div className="auth-field">
               <label htmlFor="auth-username"><UserRound size={15} /> 用户名</label>
               <input
