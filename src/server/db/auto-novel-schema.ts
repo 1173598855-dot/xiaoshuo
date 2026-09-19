@@ -141,6 +141,14 @@ const AUTO_NOVEL_SCHEMA = `
     updated_at TEXT NOT NULL
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS authoring_workspaces (
+    book_id TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
   CREATE INDEX IF NOT EXISTS books_updated_idx
     ON books(updated_at DESC, id);
   CREATE INDEX IF NOT EXISTS story_directions_book_idx

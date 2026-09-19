@@ -27,6 +27,8 @@
 - 时间线每章使用作品 revision 乐观锁保存；保存成功后后续生成、审核和记忆上下文都会读取新标题、摘要、章节目标、钩子与伏笔，冲突时保留当前编辑草稿；
 - 生产调用对限流和上游暂不可用执行有限次、可取消的重试，不重试鉴权、参数或取消错误；
 - 正式正文支持 Markdown、TXT 和可直接打开的 DOCX 导出，并提供正文搜索与章节目录；
+- 正式正文新增 ePub 导出、打印排版（浏览器保存 PDF）和 Markdown/TXT/DOCX 批量导入；导入与全文替换都按作品 revision 写入，锁定章节会拒绝覆盖；
+- “创作中枢”集中提供作品健康度、场景编辑器、人物知识边界、伏笔生命周期、作者笔记、每日目标、术语锁定、系列资料库、Prompt 版本与生产配方；工作区数据与作品分离持久化，冲突时不会静默覆盖；
 - 支持 OpenAI、Anthropic、Google、DeepSeek、通义千问、OpenRouter、SiliconFlow、Ollama 和自定义 OpenAI-compatible Provider。
 - 企业部署可开启账号邀请码模式：管理员创建带最大注册次数和过期时间的邀请码；没有邀请码不能注册账号，注册后使用用户名和密码登录。密码哈希和会话令牌只保存安全摘要，账号只能看到自己的作品，管理员令牌保留运维权限。
 - 注册用户可以在浏览器“模型设置”中自行填写 Provider、模型、端点和 API Key；用户 Key 只保存在当前浏览器会话并随当前请求使用，不要求管理员把用户 Key 注入服务端。`XIAOYI_SERVER_PROVIDERS_JSON` 仅用于可选的服务端托管 Provider 和重启后的后台恢复。
@@ -96,6 +98,9 @@ npm run dev
 | `POST` | `/api/books/:bookId/timeline/preview` | 生成 AI 时间线 Diff 预览 |
 | `GET` | `/api/books/:bookId/search` | 搜索资料卡、章纲和正文 |
 | `GET` | `/api/books/:bookId/consistency` | 检查故事一致性 |
+| `GET` / `PATCH` | `/api/books/:bookId/authoring-workspace` | 读取 / revision-safe 保存创作中枢资料 |
+| `POST` | `/api/books/:bookId/replace` | revision-safe 批量替换章纲和正文 |
+| `POST` | `/api/books/:bookId/import` | 导入 Markdown / TXT / DOCX 正文 |
 | `GET` | `/api/usage` | 读取当前周期 Token 与费用统计 |
 | `POST` | `/api/books/:bookId/production` | 启动整本生产 |
 | `GET` | `/api/production-runs/:runId` | 查询生产进度、候选和检查点 |
@@ -106,7 +111,7 @@ npm run dev
 | `POST` | `/api/chapter-candidates/:candidateId/accept\|discard` | 原子采纳或丢弃候选 |
 | `GET` | `/api/books/:bookId/memory`、`/api/books/:bookId/memory/context/:chapterNumber` | 读取记忆账本 / 预览注入上下文 |
 | `GET` / `PATCH` / `POST` | `/api/memory/:entryId/history`、`/api/memory/:entryId`、`/api/memory/:entryId/rollback` | 查看历史、手动修正和回滚记忆 |
-| `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT / DOCX |
+| `POST` | `/api/books/:bookId/export` | 导出 Markdown / TXT / DOCX / ePub |
 | `POST` | `/api/auth/register` | 使用邀请码注册账号并登录 |
 | `POST` | `/api/auth/login` | 账号登录 |
 | `POST` | `/api/auth/logout` | 退出当前账号会话 |

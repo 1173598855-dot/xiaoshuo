@@ -79,6 +79,41 @@ export const SearchQuerySchema = z.object({
 }).strict();
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
 
+export const BatchReplaceInputSchema = z.object({
+  bookId: UuidSchema,
+  expectedBookRevision: z.number().int().nonnegative(),
+  query: z.string().trim().min(1).max(200),
+  replacement: z.string().max(2_000),
+  includePlans: z.boolean().default(true),
+  includeChapters: z.boolean().default(true),
+}).strict();
+export type BatchReplaceInput = z.infer<typeof BatchReplaceInputSchema>;
+
+export const BatchReplaceResultSchema = z.object({
+  bookId: UuidSchema,
+  bookRevision: z.number().int().nonnegative(),
+  planCount: z.number().int().nonnegative(),
+  chapterCount: z.number().int().nonnegative(),
+  replacementCount: z.number().int().nonnegative(),
+}).strict();
+export type BatchReplaceResult = z.infer<typeof BatchReplaceResultSchema>;
+
+export const ManuscriptImportInputSchema = z.object({
+  bookId: UuidSchema,
+  expectedBookRevision: z.number().int().nonnegative(),
+  format: z.enum(["markdown", "txt", "docx"]),
+  content: z.string().min(1).max(12_000_000),
+}).strict();
+export type ManuscriptImportInput = z.infer<typeof ManuscriptImportInputSchema>;
+
+export const ManuscriptImportResultSchema = z.object({
+  bookId: UuidSchema,
+  bookRevision: z.number().int().nonnegative(),
+  chapterCount: z.number().int().nonnegative(),
+  importedCharacters: z.number().int().nonnegative(),
+}).strict();
+export type ManuscriptImportResult = z.infer<typeof ManuscriptImportResultSchema>;
+
 export const SearchResultSchema = z.object({
   id: UuidSchema,
   kind: z.enum(["plan", "chapter", "memory", "direction"]),

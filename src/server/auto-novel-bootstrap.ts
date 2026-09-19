@@ -6,6 +6,7 @@ import { ProviderRegistry } from "./providers/provider-registry";
 import type { ProviderResolver } from "./providers/resolver";
 import type { ProviderConfig } from "../shared/contracts";
 import { BookRepository } from "./repositories/book-repository";
+import { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
 import { ProductionRepository } from "./repositories/production-repository";
 import { MemoryRepository } from "./repositories/memory-repository";
 import { DirectorService } from "./services/director-service";
@@ -52,6 +53,7 @@ export interface AutoNovelRuntimeOptions {
 export interface AutoNovelRuntime {
   readonly database: DatabaseSync;
   readonly bookRepository: BookRepository;
+  readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
@@ -77,6 +79,7 @@ export function createAutoNovelRuntime(
     migrate(database);
     new WorkspaceRepository(database);
     const bookRepository = new BookRepository(database);
+    const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
     const productionRepository = new ProductionRepository(database);
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
@@ -99,6 +102,7 @@ export function createAutoNovelRuntime(
     });
     const shared = {
       bookRepository,
+      authoringWorkspaceRepository,
       productionRepository,
       providerResolver,
       memoryService,
@@ -124,6 +128,7 @@ export function createAutoNovelRuntime(
     return {
       database,
       bookRepository,
+      authoringWorkspaceRepository,
       productionRepository,
       memoryRepository,
       directorService: new DirectorService(shared),
@@ -145,4 +150,3 @@ export function createAutoNovelRuntime(
     throw error;
   }
 }
-

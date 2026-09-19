@@ -42,7 +42,8 @@ import {
   type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
-import { ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema } from "../shared/authoring";
+import { BatchReplaceInputSchema, BatchReplaceResultSchema, ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ManuscriptImportInputSchema, ManuscriptImportResultSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema, type BatchReplaceInput, type ManuscriptImportInput } from "../shared/authoring";
+import { AuthoringWorkspaceSchema, SaveAuthoringWorkspaceInputSchema } from "../shared/authoring-workspace";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -72,6 +73,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async restoreStorySnapshot(bookId, snapshotId, expectedBookRevision) {
       return parseResult(await api.books.restoreSnapshot({ bookId, snapshotId, expectedBookRevision }), BookDetailsSchema);
+    },
+    async getAuthoringWorkspace(bookId) {
+      return parseResult(await api.books.getAuthoringWorkspace(bookId), AuthoringWorkspaceSchema);
+    },
+    async saveAuthoringWorkspace(input) {
+      return parseResult(await api.books.saveAuthoringWorkspace(SaveAuthoringWorkspaceInputSchema.parse(input)), AuthoringWorkspaceSchema);
     },
     async createBook(input, provider, idempotencyKey) {
       return parseResult(
@@ -103,6 +110,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async checkConsistency(bookId) {
       return parseResult(await api.books.consistency(bookId), ConsistencyReportSchema);
+    },
+    async batchReplaceText(input: BatchReplaceInput) {
+      return parseResult(await api.books.replaceText(BatchReplaceInputSchema.parse(input)), BatchReplaceResultSchema);
+    },
+    async importManuscript(input: ManuscriptImportInput) {
+      return parseResult(await api.books.importManuscript(ManuscriptImportInputSchema.parse(input)), ManuscriptImportResultSchema);
     },
     async previewChapterPlans(bookId, provider) {
       return parseResult(await api.books.previewTimeline({ bookId, providerId: providerId(provider) }), ChapterPlanPreviewEnvelopeSchema);

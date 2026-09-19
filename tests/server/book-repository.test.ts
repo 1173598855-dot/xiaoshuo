@@ -281,4 +281,43 @@ describe("BookRepository", () => {
     expect(repository.listStorySnapshots(book.id)).toHaveLength(1);
     expect(() => repository.restoreStorySnapshot(book.id, snapshot.id, 1)).toThrow(BookRevisionConflictError);
   });
+
+  it("batch-replaces plans and正文 in one book revision", () => {
+    const { database, repository } = createRepository();
+    const book = repository.createBook({ idea: "批量替换测试" });
+    repository.saveChapterPlans(book.id, [{
+      volumeNumber: 1,
+      volumeTitle: "第一卷",
+      chapterNumber: 1,
+      title: "旧称呼",
+      summary: "旧称呼会出现在章纲",
+      objective: "目标",
+      hook: "旧称呼钩子",
+      foreshadowing: ["旧称呼伏笔"],
+    }]);
+    const production = new ProductionRepository(database);
+    const chapter = production.getOrCreateChapter(book.id, "第一章", 0);
+    database.prepare("UPDATE chapters SET content = ? WHERE id = ?").run("正文里的旧称呼。", chapter.id);
+
+    const result = repository.batchReplaceText({
+      bookId: book.id,
+      expectedBookRevision: 0,
+      query: "旧称呼",
+      replacement: "新称呼",
+      includePlans: true,
+      includeChapters: true,
+    });
+
+    expect(result).toMatchObject({ bookRevision: 1, planCount: 1, chapterCount: 1, replacementCount: 5 });
+    expect(repository.getBook(book.id).chapterPlans[0]?.title).toBe("新称呼");
+    expect(production.getChapters(book.id)[0]?.content).toBe("正文里的新称呼。" );
+    expect(() => repository.batchReplaceText({
+      bookId: book.id,
+      expectedBookRevision: 0,
+      query: "新称呼",
+      replacement: "冲突",
+      includePlans: true,
+      includeChapters: true,
+    })).toThrow(BookRevisionConflictError);
+  });
 });

@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import type { ProviderResolver } from "../server/providers/resolver";
 import { BookRepository } from "../server/repositories/book-repository";
+import { AuthoringWorkspaceRepository } from "../server/repositories/authoring-workspace-repository";
 import { ProductionRepository } from "../server/repositories/production-repository";
 import { MemoryRepository } from "../server/repositories/memory-repository";
 import { DirectorService } from "../server/services/director-service";
@@ -16,6 +17,7 @@ import { createOperationalProviderResolver } from "../server/enterprise/provider
 
 export interface AutoNovelServices {
   readonly bookRepository: BookRepository;
+  readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
@@ -34,6 +36,7 @@ export function createAutoNovelServices(
   providerResolver?: ProviderResolver,
 ): AutoNovelServices {
   const bookRepository = new BookRepository(database);
+  const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
   const productionRepository = new ProductionRepository(database);
   const memoryRepository = new MemoryRepository(database);
   const memoryService = new MemoryService(memoryRepository);
@@ -50,6 +53,7 @@ export function createAutoNovelServices(
   });
   const shared = {
     bookRepository,
+    authoringWorkspaceRepository,
     productionRepository,
     providerResolver: operationalProviderResolver,
     memoryService,
@@ -60,6 +64,7 @@ export function createAutoNovelServices(
   };
   return {
     bookRepository,
+    authoringWorkspaceRepository,
     productionRepository,
     memoryRepository,
     directorService: new DirectorService(shared),
@@ -73,4 +78,3 @@ export function createAutoNovelServices(
     logger,
   };
 }
-

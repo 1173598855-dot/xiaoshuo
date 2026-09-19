@@ -13,7 +13,7 @@ export interface ExportServiceDependencies {
 export function exportBook(
   dependencies: ExportServiceDependencies,
   bookId: string,
-  format: "markdown" | "txt" | "docx",
+  format: "markdown" | "txt" | "docx" | "epub",
 ): string {
   const details = dependencies.bookRepository.getBook(bookId);
   // A chapter with revision 0 is only a generated placeholder. It is not part
@@ -22,6 +22,7 @@ export function exportBook(
     .getChapters(bookId)
     .filter(({ revision }) => revision > 0);
   if (format === "docx") return toDocxDataUrl(details.book.title, chapters);
+  if (format === "epub") return toEpubDataUrl(details.book.title, chapters);
   if (format === "markdown") {
     return [
       "# " + details.book.title,
@@ -89,6 +90,40 @@ function toDocxDataUrl(title: string, chapters: readonly { title: string; conten
     ["word/styles.xml", styles],
   ]);
   return `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${archive.toString("base64")}`;
+}
+
+function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
+  const chapterFiles = chapters.map((chapter, index) => ({
+    id: `chapter-${index + 1}`,
+    href: `chapter-${index + 1}.xhtml`,
+    title: chapter.title,
+    content: chapter.content,
+  }));
+  const body = [
+    `<?xml version="1.0" encoding="utf-8"?>`,
+    `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="zh-CN">`,
+    `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">xiaoyi-${hashForExport(title)}</dc:identifier><dc:title>${escapeXml(title)}</dc:title><dc:language>zh-CN</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}</meta></metadata>`,
+    `<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${chapterFiles.map((chapter) => `<item id="${chapter.id}" href="${chapter.href}" media-type="application/xhtml+xml"/>`).join("")}</manifest>`,
+    `<spine>${chapterFiles.map((chapter) => `<itemref idref="${chapter.id}"/>`).join("")}</spine>`,
+    `</package>`,
+  ].join("");
+  const nav = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh-CN"><head><title>${escapeXml(title)}</title></head><body><nav epub:type="toc" id="toc"><h1>${escapeXml(title)}</h1><ol>${chapterFiles.map((chapter) => `<li><a href="${chapter.href}">${escapeXml(chapter.title)}</a></li>`).join("")}</ol></nav></body></html>`;
+  const files: Array<[string, string]> = [
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", `<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`],
+    ["OEBPS/content.opf", body],
+    ["OEBPS/nav.xhtml", nav],
+  ];
+  for (const chapter of chapterFiles) {
+    files.push([`OEBPS/${chapter.href}`, `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN"><head><title>${escapeXml(chapter.title)}</title></head><body><h1>${escapeXml(chapter.title)}</h1>${chapter.content.split(/\r?\n/).map((line) => `<p>${escapeXml(line)}</p>`).join("")}</body></html>`]);
+  }
+  return `data:application/epub+zip;base64,${zipStore(files).toString("base64")}`;
+}
+
+function hashForExport(value: string): string {
+  let hash = 2166136261;
+  for (const character of value) hash = Math.imul(hash ^ character.codePointAt(0)!, 16777619);
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function paragraph(value: string, style?: string): string {

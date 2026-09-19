@@ -24,6 +24,7 @@ import {
   type UpdateCandidateTextInput,
   type ModelWorkflowConfig,
 } from "../../shared/auto-novel";
+import type { ManuscriptImportResult } from "../../shared/authoring";
 import {
   DEFAULT_MEMORY_CONTEXT_CONFIG,
   filterMemoryDelta,
@@ -256,6 +257,15 @@ export class CandidateReviewRequiredError extends Error {
   constructor(candidateId: string) {
     super(`Chapter candidate ${candidateId} has not passed review`);
     this.name = "CandidateReviewRequiredError";
+  }
+}
+
+export class ChapterLockedError extends Error {
+  readonly code = "CHAPTER_LOCKED";
+
+  constructor(readonly chapterId: string) {
+    super(`Chapter ${chapterId} is locked`);
+    this.name = "ChapterLockedError";
   }
 }
 
@@ -1549,6 +1559,74 @@ export class ProductionRepository {
       )
       .all(project.projectId) as unknown as ChapterRow[];
     return rows.map(toChapter);
+  }
+
+  importChapters(
+    bookId: string,
+    expectedBookRevision: number,
+    drafts: readonly { title: string; content: string }[],
+  ): ManuscriptImportResult {
+    return this.withTransaction(() => {
+      const book = this.bookRepository.getBook(bookId).book;
+      if (book.revision !== expectedBookRevision) {
+        throw new ProductionRevisionConflictError(expectedBookRevision, book.revision);
+      }
+      const project = this.database
+        .prepare("SELECT project_id AS projectId FROM books WHERE id = ?")
+        .get(bookId) as { projectId: string } | undefined;
+      if (!project) throw new Error("Book project is missing");
+      const existing = this.database
+        .prepare(
+          `SELECT id, project_id, title, content, status, position, revision,
+                  created_at, updated_at
+             FROM chapters WHERE project_id = ? ORDER BY position, id`,
+        )
+        .all(project.projectId) as unknown as ChapterRow[];
+      const timestamp = this.now();
+      let changed = 0;
+      let importedCharacters = 0;
+      const insertRevision = this.database.prepare(
+        `INSERT INTO chapter_revisions (id, chapter_id, revision, title, content, status, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'edit', ?)`,
+      );
+      const update = this.database.prepare(
+        `UPDATE chapters SET title = ?, content = ?, revision = revision + 1, updated_at = ?
+          WHERE id = ? AND revision = ?`,
+      );
+      const insert = this.database.prepare(
+        `INSERT INTO chapters (id, project_id, title, content, status, position, revision, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'draft', ?, 1, ?, ?)`,
+      );
+      for (const [index, draft] of drafts.slice(0, 500).entries()) {
+        const title = draft.title.trim().slice(0, 200) || `第${index + 1}章`;
+        const content = draft.content.slice(0, 2_000_000);
+        importedCharacters += content.length;
+        const current = existing[index];
+        if (!current) {
+          insert.run(this.createId(), project.projectId, title, content, index, timestamp, timestamp);
+          changed += 1;
+          continue;
+        }
+        if (current.title === title && current.content === content) continue;
+        if (current.status === "locked") throw new ChapterLockedError(current.id);
+        insertRevision.run(this.createId(), current.id, current.revision, current.title, current.content, current.status, timestamp);
+        const result = update.run(title, content, timestamp, current.id, current.revision);
+        if (result.changes !== 1) throw new ProductionRevisionConflictError(expectedBookRevision, book.revision);
+        changed += 1;
+      }
+      if (changed > 0) {
+        const result = this.database
+          .prepare("UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
+          .run(timestamp, bookId, expectedBookRevision);
+        if (result.changes !== 1) throw new ProductionRevisionConflictError(expectedBookRevision, book.revision);
+      }
+      return {
+        bookId,
+        bookRevision: book.revision + (changed > 0 ? 1 : 0),
+        chapterCount: Math.min(drafts.length, 500),
+        importedCharacters,
+      };
+    });
   }
 
   private getQueueRunRow(runId: string): QueueRunRow {

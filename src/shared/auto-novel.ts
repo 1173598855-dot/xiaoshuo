@@ -503,6 +503,6 @@ export const AcceptCandidateInputSchema = z
 export type AcceptCandidateInput = z.infer<typeof AcceptCandidateInputSchema>;
 
 export const ExportBookInputSchema = z
-  .object({ format: z.enum(["markdown", "txt", "docx"]) })
+  .object({ format: z.enum(["markdown", "txt", "docx", "epub"]) })
   .strict();
 export type ExportBookInput = z.infer<typeof ExportBookInputSchema>;

@@ -18,7 +18,8 @@ import type {
   UpdateChapterPlanInput,
   DesktopModelWorkflowSelection,
 } from "../shared/auto-novel";
-import type { ChapterPlanPreviewEnvelope, ConsistencyReport, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
+import type { BatchReplaceInput, BatchReplaceResult, ChapterPlanPreviewEnvelope, ConsistencyReport, ManuscriptImportInput, ManuscriptImportResult, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
+import type { AuthoringWorkspace, SaveAuthoringWorkspaceInput } from "../shared/authoring-workspace";
 import type { UsageSummary } from "../shared/authoring";
 import type {
   MemoryBookSnapshot,
@@ -51,6 +52,8 @@ export interface AutoNovelDesktopApiV2 {
     createSnapshot(input: { bookId: string; name: string }): Promise<DesktopResult<StorySnapshot>>;
     deleteSnapshot(input: { bookId: string; snapshotId: string }): Promise<DesktopResult<{ deleted: boolean }>>;
     restoreSnapshot(input: { bookId: string; snapshotId: string; expectedBookRevision: number }): Promise<DesktopResult<BookDetails>>;
+    getAuthoringWorkspace(bookId: string): Promise<DesktopResult<AuthoringWorkspace>>;
+    saveAuthoringWorkspace(input: SaveAuthoringWorkspaceInput): Promise<DesktopResult<AuthoringWorkspace>>;
     create(input: {
       input: CreateBookInput;
       providerId?: ProviderId;
@@ -64,11 +67,13 @@ export interface AutoNovelDesktopApiV2 {
     previewTimeline(input: { bookId: string; providerId: ProviderId }): Promise<DesktopResult<ChapterPlanPreviewEnvelope>>;
     search(input: { bookId: string; query: SearchQuery }): Promise<DesktopResult<SearchResponse>>;
     consistency(bookId: string): Promise<DesktopResult<ConsistencyReport>>;
+    replaceText(input: BatchReplaceInput): Promise<DesktopResult<BatchReplaceResult>>;
+    importManuscript(input: ManuscriptImportInput): Promise<DesktopResult<ManuscriptImportResult>>;
     usageSummary(): Promise<DesktopResult<UsageSummary>>;
     chapters(bookId: string): Promise<DesktopResult<BookChapters>>;
     export(input: {
       bookId: string;
-      format: "markdown" | "txt" | "docx";
+      format: "markdown" | "txt" | "docx" | "epub";
     }): Promise<DesktopResult<{ format: string; content: string }>>;
   };
   readonly directions: {
@@ -125,6 +130,8 @@ export function createAutoNovelPreloadApiV2(
       createSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotCreate, input),
       deleteSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotDelete, input),
       restoreSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotRestore, input),
+      getAuthoringWorkspace: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringWorkspaceGet, { bookId }),
+      saveAuthoringWorkspace: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringWorkspaceSave, input),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
       updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),
@@ -133,6 +140,8 @@ export function createAutoNovelPreloadApiV2(
       previewTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelinePreview, input),
       search: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringSearch, input),
       consistency: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringConsistency, { bookId }),
+      replaceText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringReplace, input),
+      importManuscript: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringImport, input),
       usageSummary: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.usageSummary),
       chapters: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksChapters, { bookId }),
       export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),

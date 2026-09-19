@@ -18,6 +18,8 @@ import {
   type UpdateChapterPlanInput,
 } from "../../shared/auto-novel";
 import type {
+  BatchReplaceInput,
+  BatchReplaceResult,
   StorySnapshot,
   StorySnapshotPayload,
   ReorderChapterPlansInput,
@@ -796,6 +798,114 @@ export class BookRepository {
     });
   }
 
+  batchReplaceText(input: BatchReplaceInput): BatchReplaceResult {
+    return this.withTransaction(() => {
+      const book = this.requireBookRow(input.bookId);
+      if (book.revision !== input.expectedBookRevision) {
+        throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+      }
+      if (!input.includePlans && !input.includeChapters) {
+        return {
+          bookId: input.bookId,
+          bookRevision: book.revision,
+          planCount: 0,
+          chapterCount: 0,
+          replacementCount: 0,
+        };
+      }
+
+      let planCount = 0;
+      let chapterCount = 0;
+      let replacementCount = 0;
+      const timestamp = this.now();
+      const replace = (value: string): { value: string; count: number } => replaceLiteral(value, input.query, input.replacement);
+
+      if (input.includePlans) {
+        const rows = this.database.prepare(
+          `SELECT id, title, summary, objective, hook, foreshadowing_json
+             FROM chapter_plans WHERE book_id = ? ORDER BY chapter_number, id`,
+        ).all(input.bookId) as unknown as Array<{
+          id: string;
+          title: string;
+          summary: string;
+          objective: string;
+          hook: string;
+          foreshadowing_json: string;
+        }>;
+        const update = this.database.prepare(
+          `UPDATE chapter_plans
+              SET title = ?, summary = ?, objective = ?, hook = ?, foreshadowing_json = ?, updated_at = ?
+            WHERE id = ? AND book_id = ?`,
+        );
+        for (const row of rows) {
+          const title = replace(row.title);
+          const summary = replace(row.summary);
+          const objective = replace(row.objective);
+          const hook = replace(row.hook);
+          const foreshadowing = JSON.parse(row.foreshadowing_json) as string[];
+          const nextForeshadowing = foreshadowing.map((item) => replace(item));
+          const count = title.count + summary.count + objective.count + hook.count + nextForeshadowing.reduce((sum, item) => sum + item.count, 0);
+          if (count === 0) continue;
+          update.run(
+            title.value,
+            summary.value,
+            objective.value,
+            hook.value,
+            JSON.stringify(nextForeshadowing.map((item) => item.value)),
+            timestamp,
+            row.id,
+            input.bookId,
+          );
+          planCount += 1;
+          replacementCount += count;
+        }
+      }
+
+      if (input.includeChapters) {
+        const project = this.database.prepare("SELECT project_id AS projectId FROM books WHERE id = ?").get(input.bookId) as { projectId: string } | undefined;
+        if (!project) throw new BookNotFoundError(input.bookId);
+        const rows = this.database.prepare(
+          `SELECT id, title, content, status, position, revision
+             FROM chapters WHERE project_id = ? ORDER BY position, id`,
+        ).all(project.projectId) as unknown as Array<{
+          id: string;
+          title: string;
+          content: string;
+          status: string;
+          position: number;
+          revision: number;
+        }>;
+        const insertRevision = this.database.prepare(
+          `INSERT INTO chapter_revisions (id, chapter_id, revision, title, content, status, source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'edit', ?)`,
+        );
+        const update = this.database.prepare(
+          `UPDATE chapters SET title = ?, content = ?, revision = revision + 1, updated_at = ?
+            WHERE id = ? AND revision = ?`,
+        );
+        for (const row of rows) {
+          const title = replace(row.title);
+          const content = replace(row.content);
+          if (title.count === 0 && content.count === 0) continue;
+          insertRevision.run(this.createId(), row.id, row.revision, row.title, row.content, row.status, timestamp);
+          const result = update.run(title.value, content.value, timestamp, row.id, row.revision);
+          if (result.changes !== 1) throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+          chapterCount += 1;
+          replacementCount += title.count + content.count;
+        }
+      }
+
+      const nextRevision = book.revision + (replacementCount > 0 ? 1 : 0);
+      if (replacementCount > 0) {
+        const result = this.database
+          .prepare("UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
+          .run(timestamp, input.bookId, input.expectedBookRevision);
+        if (result.changes !== 1) throw new BookRevisionConflictError(input.expectedBookRevision, book.revision);
+      }
+      return { bookId: input.bookId, bookRevision: nextRevision, planCount, chapterCount, replacementCount };
+    });
+  }
+
   reorderChapterPlans(bookId: string, input: ReorderChapterPlansInput): readonly ChapterPlan[] {
     return this.withTransaction(() => {
       const book = this.requireBookRow(bookId);
@@ -1005,6 +1115,19 @@ function toRun(row: RunRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   } as const;
+}
+
+function replaceLiteral(value: string, query: string, replacement: string): { value: string; count: number } {
+  if (query.length === 0) return { value, count: 0 };
+  let count = 0;
+  let cursor = 0;
+  while (true) {
+    const index = value.indexOf(query, cursor);
+    if (index < 0) break;
+    count += 1;
+    cursor = index + query.length;
+  }
+  return { value: count === 0 ? value : value.split(query).join(replacement), count };
 }
 
 function parseJson<T>(value: string): T {

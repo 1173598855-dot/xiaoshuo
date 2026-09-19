@@ -28,7 +28,7 @@ function createFixture() {
 async function exportBook(
   app: ReturnType<typeof createAutoNovelApp>,
   bookId: string,
-  format: "markdown" | "txt" | "docx",
+  format: "markdown" | "txt" | "docx" | "epub",
 ) {
   return app.request(`/api/books/${bookId}/export`, {
     method: "POST",
@@ -62,5 +62,20 @@ describe("book export formats", () => {
     expect(body.format).toBe("docx");
     expect(body.content).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document;base64,/);
     expect(Buffer.from(body.content.split(",")[1] ?? "", "base64").readUInt32LE(0)).toBe(0x04034b50);
+  });
+
+  it("exports an EPUB package with the required mimetype entry", async () => {
+    const fixture = createFixture();
+    const response = await exportBook(fixture.app, fixture.book.id, "epub");
+    const body = (await response.json()) as { format: string; content: string };
+    expect(response.status).toBe(200);
+    expect(body.format).toBe("epub");
+    expect(body.content).toMatch(/^data:application\/epub\+zip;base64,/);
+    const archive = Buffer.from(body.content.split(",")[1] ?? "", "base64");
+    expect(archive.readUInt32LE(0)).toBe(0x04034b50);
+    const nameLength = archive.readUInt16LE(26);
+    const dataStart = 30 + nameLength + archive.readUInt16LE(28);
+    expect(archive.subarray(30, dataStart).toString("utf8")).toBe("mimetype");
+    expect(archive.subarray(dataStart, dataStart + archive.readUInt32LE(18)).toString("utf8")).toBe("application/epub+zip");
   });
 });

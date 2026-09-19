@@ -15,7 +15,9 @@ import {
 } from "../../shared/auto-novel";
 import { ProviderIdSchema, type ProviderId, type ApiError, type DesktopResult } from "../../shared/contracts";
 import {
+  BatchReplaceInputSchema,
   CreateStorySnapshotInputSchema,
+  ManuscriptImportInputSchema,
   ReorderChapterPlansInputSchema,
   RestoreStorySnapshotInputSchema,
   SearchQuerySchema,
@@ -27,11 +29,13 @@ import {
   RollbackMemoryInputSchema,
   UpdateMemoryInputSchema,
 } from "../../shared/memory";
+import { SaveAuthoringWorkspaceInputSchema } from "../../shared/authoring-workspace";
 import type { ProviderVault } from "../provider-vault";
 import type { DesktopAuthService } from "../desktop-auth";
 import type { AutoNovelServices } from "../auto-novel-access";
 import { toAutoNovelPublicError } from "../../server/auto-novel-errors";
 import { exportBook } from "../../server/services/export-service";
+import { parseManuscriptImport } from "../../server/services/manuscript-import-service";
 import { AUTO_NOVEL_CHANNELS, type AutoNovelDesktopChannel } from "./auto-novel-channels";
 import type { DesktopIpcMain } from "./handlers";
 
@@ -152,6 +156,14 @@ export function registerAutoNovelIpcHandlers(
     dependencies.authService?.assertBookAccess(input.bookId);
     return dependencies.getServices().bookRepository.restoreStorySnapshot(input.bookId, input.snapshotId, input.expectedBookRevision);
   });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringWorkspaceGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().authoringWorkspaceRepository.get(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringWorkspaceSave, SaveAuthoringWorkspaceInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().authoringWorkspaceRepository.save(input);
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
     const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());
@@ -208,6 +220,16 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringConsistency, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
     dependencies.authService?.assertBookAccess(bookId);
     return dependencies.getServices().authoringService.consistency(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringReplace, BatchReplaceInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().bookRepository.batchReplaceText(input);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringImport, ManuscriptImportInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    const chapters = parseManuscriptImport(input);
+    if (chapters.length === 0) throw new Error("文件中没有可导入的章节。");
+    return dependencies.getServices().productionRepository.importChapters(input.bookId, input.expectedBookRevision, chapters);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.usageSummary, z.undefined(), () => dependencies.getServices().usageRepository.getMonthlySummary());
   register(
