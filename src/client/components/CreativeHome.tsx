@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BookOpen, Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
+import { Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
+import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
@@ -71,35 +72,7 @@ export function CreativeHome({
         </div>
       </section>
 
-      <section className="library-section" aria-labelledby="library-title">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">YOUR STORIES</span>
-            <h2 id="library-title">继续你的故事</h2>
-          </div>
-          <div className="library-count"><strong>{String(books.length).padStart(2, "0")}</strong><span>本地作品</span></div>
-        </div>
-        {books.length === 0 ? (
-          <div className="empty-library">
-            <span className="empty-library-index">—</span>
-            <BookOpen size={20} />
-            <span>还没有作品，从上面的想法开始。</span>
-          </div>
-        ) : (
-          <div className="book-grid">
-            {books.map((book) => {
-              const stage = bookStage(book);
-              return (
-                <button className="book-card" key={book.id} type="button" onClick={() => onOpenBook(book)}>
-                  <span className="book-card-icon"><BookOpen size={18} /></span>
-                  <span className="book-card-copy"><strong>{book.title}</strong><small>{book.idea}</small><span className={`book-card-stage ${stage.tone}`}>{stage.label}</span></span>
-                  <ArrowUpRight size={16} />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <BookShelf books={books} onOpenBook={onOpenBook} />
     </main>
   );
 }
@@ -261,13 +234,4 @@ function isStoryPreset(value: unknown): value is StoryPreset {
   if (!value || typeof value !== "object") return false;
   const preset = value as Partial<StoryPreset>;
   return typeof preset.id === "string" && typeof preset.label === "string" && typeof preset.idea === "string" && typeof preset.genre === "string" && typeof preset.targetChapters === "number" && typeof preset.targetChapterCharacters === "number" && typeof preset.style === "string";
-}
-
-function bookStage(book: Book): { label: string; tone: "quiet" | "active" | "warning" | "done" } {
-  if (book.status === "completed") return { label: "已完成", tone: "done" };
-  if (book.status === "failed") return { label: "需要处理", tone: "warning" };
-  if (book.status === "paused") return { label: "已暂停", tone: "quiet" };
-  if (book.selectedDirectionId === null) return { label: "等待选方向", tone: "active" };
-  if (["drafting", "reviewing", "repairing"].includes(book.status)) return { label: "生产中", tone: "active" };
-  return { label: "规划中", tone: "quiet" };
 }

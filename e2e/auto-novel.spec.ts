@@ -28,6 +28,20 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
 
   await page.getByRole("button", { name: /选择这条路/ }).first().click();
   await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "章节上下文" })).toBeVisible();
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole("button", { name: "专注模式" }).click();
+  await expect(page.getByRole("complementary", { name: "作品章节" })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "章节上下文" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
   await page.getByRole("button", { name: "故事时间线" }).click();
   await expect(page.getByRole("complementary", { name: "故事时间线" })).toBeVisible();
   await page.getByRole("button", { name: "AI 重新规划" }).click();

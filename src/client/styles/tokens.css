@@ -31,8 +31,24 @@
   --shadow: 0 18px 42px rgb(0 0 0 / 24%);
   --shadow-soft: 0 22px 60px rgb(0 0 0 / 28%);
   --shadow-card: 0 14px 32px rgb(0 0 0 / 24%);
-  --radius-lg: 14px;
-  --radius-md: 12px;
+  --surface-raised: #1a1826;
+  --surface-inset: #211f2e;
+  --focus-ring: rgb(169 157 255 / 42%);
+  --overlay: rgb(4 3 8 / 76%);
+  --control-height: 38px;
+  --transition-fast: 160ms ease;
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  --atlas-night: var(--canvas);
+  --atlas-night-soft: var(--paper);
+  --atlas-ink: var(--ink);
+  --atlas-muted: var(--ink-soft);
+  --atlas-line: var(--line);
+  --atlas-copper: var(--accent);
+  --atlas-copper-dark: var(--accent-dark);
+  --atlas-teal: var(--accent);
+  --atlas-paper: var(--paper);
+  --atlas-paper-ink: var(--ink);
   --ease-studio: cubic-bezier(.22, 1, .36, 1);
   }
 
