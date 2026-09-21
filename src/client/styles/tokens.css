@@ -4,8 +4,8 @@
   :root {
   color-scheme: dark;
   font-family: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
-  color: #f4f2fb;
-  background: #111019;
+  color: var(--text-primary);
+  background: var(--surface-canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
@@ -27,47 +27,11 @@
   --state-warning: #d9bd7d;
   --surface-rail: #0d0c13;
 
-  /* Compatibility aliases for the legacy and atlas layers. */
-  --ink: var(--text-primary);
-  --ink-soft: var(--text-secondary);
-  --canvas: var(--surface-canvas);
-  --paper: var(--surface-panel);
-  --paper-muted: var(--surface-panel-muted);
-  --line: var(--border-default);
-  --line-strong: var(--border-strong);
-  --pine: var(--state-success);
-  --pine-soft: var(--surface-success);
-  --coral: var(--state-danger);
-  --coral-soft: var(--surface-danger);
-  --violet: var(--action-primary);
-  --violet-soft: var(--surface-accent);
-  --amber: var(--state-warning);
-  --rail: var(--surface-rail);
-  --accent: var(--action-primary);
-  --accent-dark: var(--action-primary-hover);
-  --success: var(--state-success);
-  --danger: var(--state-danger);
   --shadow: 0 18px 42px rgb(0 0 0 / 24%);
   --shadow-soft: 0 22px 60px rgb(0 0 0 / 28%);
   --shadow-card: 0 14px 32px rgb(0 0 0 / 24%);
-  --surface-raised: var(--surface-panel);
-  --surface-inset: var(--surface-panel-muted);
-  --focus-ring: rgb(169 157 255 / 42%);
-  --overlay: rgb(4 3 8 / 76%);
-  --control-height: 38px;
-  --transition-fast: 160ms ease;
   --radius-lg: 8px;
   --radius-md: 6px;
-  --atlas-night: var(--surface-canvas);
-  --atlas-night-soft: var(--surface-panel);
-  --atlas-ink: var(--text-primary);
-  --atlas-muted: var(--text-secondary);
-  --atlas-line: var(--border-default);
-  --atlas-copper: var(--action-primary);
-  --atlas-copper-dark: var(--action-primary-hover);
-  --atlas-teal: var(--action-primary);
-  --atlas-paper: var(--surface-panel);
-  --atlas-paper-ink: var(--text-primary);
   --ease-studio: cubic-bezier(.22, 1, .36, 1);
   }
 

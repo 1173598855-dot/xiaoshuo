@@ -20,12 +20,13 @@ describe("frontend design-token hygiene", () => {
     }
   });
 
-  it("keeps compatibility aliases pointed at canonical roles", () => {
+  it("defines canonical roles without dead compatibility aliases", () => {
     const tokens = readFileSync(resolve(process.cwd(), "src/client/styles/tokens.css"), "utf8");
 
-    expect(tokens).toContain("--ink: var(--text-primary)");
-    expect(tokens).toContain("--paper: var(--surface-panel)");
-    expect(tokens).toContain("--line: var(--border-default)");
-    expect(tokens).toContain("--accent: var(--action-primary)");
+    expect(tokens).toContain("--surface-canvas: #111019");
+    expect(tokens).toContain("--text-primary: #f4f2fb");
+    expect(tokens).toContain("--border-default: #332f43");
+    expect(tokens).toContain("--action-primary: #a99dff");
+    expect(tokens).not.toMatch(/--(?:ink|paper|line|accent|atlas)-/);
   });
 });
