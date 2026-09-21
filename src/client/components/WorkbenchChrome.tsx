@@ -285,7 +285,7 @@ export function WorkbenchNavigationDrawer({
         <header className="workbench-drawer-header">
           <div className="workbench-drawer-brand">
             <span className="brand-mark small" aria-hidden="true">奕</span>
-            <div><span className="eyebrow">XIAOYI WORKBENCH</span><h2 id="workbench-nav-title">工作区导航</h2></div>
+            <div><span className="eyebrow">小奕 · 作者工作台</span><h2 id="workbench-nav-title">工作区导航</h2></div>
           </div>
           <button className="icon-button" type="button" aria-label="关闭工作区导航" title="关闭" onClick={onClose}><X size={18} /></button>
         </header>

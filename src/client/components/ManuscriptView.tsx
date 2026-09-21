@@ -108,7 +108,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
           { id: "output", label: "导出", detail: "DOCX · ePub · Markdown · TXT", tone: "accent" },
         ]}
       />
-      <section className="manuscript-heading"><span className="eyebrow">FINAL MANUSCRIPT</span><h1>{book.book.title}</h1><p>{book.book.idea}</p></section>
+      <section className="manuscript-heading"><span className="eyebrow">正式正文</span><h1>{book.book.title}</h1><p>{book.book.idea}</p></section>
       {exportError ? <p className="form-error manuscript-export-error" role="alert">{exportError}</p> : null}
       {importMessage ? <p className="manuscript-import-message" role="status">{importMessage}</p> : null}
       {currentChapters.length > 0 ? <div className="manuscript-toolbar"><label htmlFor="manuscript-search">搜索正文</label><input id="manuscript-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜章节标题或正文" /><span>{filteredChapters.length} / {currentChapters.length} 章</span></div> : null}

@@ -95,22 +95,23 @@ export function ProviderDialog({
     if (!open) return;
     const entry =
       providers.find(({ id }) => id === settings?.providerId) ?? providers[0];
+    const matchesSavedProvider = Boolean(settings && settings.providerId === entry?.id);
     setProviderId(entry?.id ?? "");
     setModel(
-      settings?.providerId === entry?.id
+      matchesSavedProvider && settings
         ? settings.model
         : entry?.defaultModel ?? "",
     );
     setApiKey(
-      settings?.providerId === entry?.id && isWebSettings(settings)
+      matchesSavedProvider && isWebSettings(settings)
         ? settings.apiKey
         : "",
     );
     setApiKeyLoadedFromSettings(
-      settings?.providerId === entry?.id && isWebSettings(settings),
+      matchesSavedProvider && isWebSettings(settings),
     );
     setBaseUrl(
-      settings?.providerId === entry?.id
+      matchesSavedProvider && settings
         ? settings.baseUrl ?? entry?.baseUrl ?? ""
         : entry?.baseUrl ?? "",
     );

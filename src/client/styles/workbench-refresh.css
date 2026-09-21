@@ -894,4 +894,199 @@
       transition: none;
     }
   }
+
+  /* Second-pass product polish: one quiet control language across the desk. */
+  :root {
+    --radius-md: 8px;
+    --radius-lg: 8px;
+    --surface-control: #211f2e;
+    --surface-control-hover: #292442;
+  }
+
+  .creative-header,
+  .page-topbar,
+  .idea-spotlight-shell,
+  .idea-form,
+  .writing-workspace,
+  .workbench-status-item,
+  .workbench-quick-action,
+  .workbench-drawer-current,
+  .workbench-drawer-item {
+    border-radius: 8px;
+  }
+
+  .workbench-quick-action {
+    border-color: var(--border-strong);
+  }
+
+  :where(.form-field input, .form-field select, .secret-input input, .workflow-assignment input, .workflow-assignment select, .manuscript-template-select select, .memory-toolbar select) {
+    min-height: 40px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+    color-scheme: dark;
+  }
+
+  :where(.form-field input, .form-field select, .secret-input input, .workflow-assignment input, .workflow-assignment select, .manuscript-template-select select, .memory-toolbar select):focus {
+    border-color: var(--action-primary);
+    outline: 0;
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 14%);
+  }
+
+  :where(.form-field select, .workflow-assignment select, .manuscript-template-select select, .memory-toolbar select) option {
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  .dialog-backdrop {
+    z-index: 90;
+    background: rgb(4 3 8 / 78%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .provider-dialog,
+  .command-palette {
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-panel);
+    box-shadow: 0 28px 80px rgb(0 0 0 / 48%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .dialog-header,
+  .dialog-actions {
+    border-color: var(--border-default);
+  }
+
+  .dialog-header h2 {
+    font-size: 21px;
+    letter-spacing: -.035em;
+  }
+
+  .workflow-assignment {
+    padding: 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .workflow-assignment input,
+  .workflow-assignment select {
+    border-radius: 8px;
+  }
+
+  .workflow-mode-picker {
+    position: relative;
+  }
+
+  .workflow-mode-trigger {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 62px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  }
+
+  .workflow-mode-trigger:hover,
+  .workflow-mode-trigger:focus-visible,
+  .workflow-mode-trigger[aria-expanded="true"] {
+    border-color: var(--action-primary);
+    background: var(--surface-control-hover);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 12%);
+  }
+
+  .workflow-mode-trigger-copy,
+  .workflow-mode-option > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .workflow-mode-trigger-copy strong,
+  .workflow-mode-option strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workflow-mode-trigger-copy small,
+  .workflow-mode-option small {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workflow-mode-trigger > svg {
+    color: var(--text-secondary);
+    transition: transform 160ms ease;
+  }
+
+  .workflow-mode-trigger > svg.is-open { transform: rotate(180deg); }
+
+  .workflow-mode-menu {
+    position: fixed;
+    z-index: 95;
+    display: grid;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-panel);
+    box-shadow: 0 24px 60px rgb(0 0 0 / 48%);
+  }
+
+  .workflow-mode-option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 54px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .workflow-mode-option:hover,
+  .workflow-mode-option:focus-visible,
+  .workflow-mode-option.is-selected {
+    border-color: rgb(169 157 255 / 28%);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .workflow-mode-option > svg { color: var(--action-primary); }
+
+  @media (max-width: 620px) {
+    .workflow-mode-menu { max-width: calc(100vw - 32px); }
+    .workflow-mode-option { min-height: 58px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .workflow-mode-trigger,
+    .workflow-mode-trigger > svg {
+      transition: none;
+    }
+  }
 }

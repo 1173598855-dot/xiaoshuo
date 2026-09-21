@@ -43,12 +43,12 @@ export function CreativeHome({
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">奕</span>
           <div className="brand-wordmark">
-            <span className="eyebrow">XIAOYI NOVEL LAB</span>
+            <span className="eyebrow">本地创作工作台</span>
             <h1>小奕小说工作台</h1>
           </div>
         </div>
         <div className="creative-header-actions">
-          <span className="header-note">LOCAL FIRST / AUTHOR MODE</span>
+          <span className="header-note">本地优先 · 作者模式</span>
           <WorkbenchQuickActions
             actions={[
               { id: "provider", label: "模型设置", icon: Settings2, onSelect: onConfigureProvider },
@@ -70,17 +70,17 @@ export function CreativeHome({
 
       <section className="idea-stage" aria-labelledby="idea-title">
         <div className="stage-copy">
-          <div className="stage-topline"><span>01</span><i /><span>IDEA → NOVEL</span></div>
+          <div className="stage-topline"><span>01</span><i /><span>从想法到正文</span></div>
           <span className="stage-label"><Sparkles size={14} /> 自动导演</span>
           <h2 id="idea-title">你只需要<br /><span>一个想法。</span></h2>
           <p>AI 会替你完成开书、规划、分章、写作和审核。先给你几条完全不同的路，再让你挑一条走下去。</p>
-          <div className="stage-notes"><span>NO CARDS</span><span>NO BUSYWORK</span><span>JUST START</span></div>
+          <div className="stage-notes"><span>不用填卡</span><span>少做杂务</span><span>直接开始</span></div>
         </div>
         <div className="idea-column">
           <SpotlightCard className="idea-spotlight-shell">
             <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onSubmit={onCreateIdea} />
           </SpotlightCard>
-          <div className="idea-caption"><span>01 / 1–12</span><span>输入 → 方向 → 正文</span></div>
+          <div className="idea-caption"><span>方向数 1–12</span><span>输入 → 方向 → 正文</span></div>
         </div>
       </section>
 
@@ -226,7 +226,7 @@ function IdeaForm({
 
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
-      <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>START WITH A SENTENCE</span></div>
+      <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div>
       <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
@@ -245,7 +245,7 @@ function IdeaForm({
       </label>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="idea-form-footer">
-        <span><i className="status-dot" /> 一句话就够，细节交给导演</span>
+        <span><i className="status-dot" /> 一句话就够，细节交给自动导演</span>
         <div className="idea-form-actions">
           <button className="secondary-button" type="submit" disabled={busy || !idea.trim()}>{busy ? "处理中…" : "开始开书"}</button>
           <button className="primary-button" type="button" disabled={busy || !idea.trim()} onClick={() => submit(true)}><Plus size={17} />{busy ? "导演正在思考…" : "一键开写"}</button>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { Check, ChevronDown, X } from "lucide-react";
 
 import {
   MODEL_ROLES,
@@ -31,6 +31,144 @@ interface WorkflowDialogProps {
 }
 
 type AssignmentDraft = { providerId: string; model: string };
+
+const WORKFLOW_MODES = [
+  {
+    value: "single" as const,
+    label: "单模型",
+    description: "全部阶段使用同一模型",
+  },
+  {
+    value: "collaborative" as const,
+    label: "多模型协作",
+    description: "按规划、写作、审核和修复分工",
+  },
+];
+
+function WorkflowModePicker({
+  value,
+  onChange,
+}: {
+  value: "single" | "collaborative";
+  onChange: (value: "single" | "collaborative") => void;
+}) {
+  const menuId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const selectedIndex = Math.max(0, WORKFLOW_MODES.findIndex((mode) => mode.value === value));
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const selectedMode = WORKFLOW_MODES[selectedIndex];
+
+  const positionMenu = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuStyle({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(selectedIndex);
+    const frame = requestAnimationFrame(() => {
+      positionMenu();
+      optionRefs.current[selectedIndex]?.focus();
+    });
+    const reposition = () => positionMenu();
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !triggerRef.current?.parentElement?.contains(event.target)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+      if (event.key === "Tab") {
+        setOpen(false);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((current) => event.key === "ArrowDown"
+          ? (current + 1) % WORKFLOW_MODES.length
+          : (current - 1 + WORKFLOW_MODES.length) % WORKFLOW_MODES.length);
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const next = WORKFLOW_MODES[activeIndex];
+        onChange(next.value);
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [activeIndex, onChange, open, positionMenu, selectedIndex]);
+
+  useEffect(() => {
+    if (open) optionRefs.current[activeIndex]?.focus();
+  }, [activeIndex, open]);
+
+  return (
+    <div className="workflow-mode-picker">
+      <button
+        ref={triggerRef}
+        className="workflow-mode-trigger"
+        type="button"
+        role="combobox"
+        aria-label="模型工作流模式"
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) return;
+          event.preventDefault();
+          setActiveIndex(selectedIndex);
+          setOpen(true);
+        }}
+      >
+        <span className="workflow-mode-trigger-copy"><strong>{selectedMode.label}</strong><small>{selectedMode.description}</small></span>
+        <ChevronDown className={open ? "is-open" : undefined} size={18} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="workflow-mode-menu" id={menuId} role="listbox" aria-label="可选工作流模式" style={menuStyle}>
+          {WORKFLOW_MODES.map((mode, index) => (
+            <button
+              ref={(element) => { optionRefs.current[index] = element; }}
+              className={`workflow-mode-option${mode.value === value ? " is-selected" : ""}`}
+              type="button"
+              role="option"
+              aria-selected={mode.value === value}
+              key={mode.value}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => {
+                onChange(mode.value);
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              <span><strong>{mode.label}</strong><small>{mode.description}</small></span>
+              {mode.value === value ? <Check size={16} aria-hidden="true" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function WorkflowDialog({ open, platform, providers, settings, value, onSave, onClose }: WorkflowDialogProps) {
   const defaultProvider = settings?.providerId ?? providers[0]?.id ?? "";
@@ -118,7 +256,7 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
           <button className="icon-button" type="button" aria-label="关闭模型工作流" title="关闭" onClick={onClose}><X size={18} /></button>
         </header>
         <div className="dialog-body">
-          <label className="form-field"><span>模式</span><select aria-label="模型工作流模式" value={mode} onChange={(event) => setMode(event.target.value as "single" | "collaborative")}><option value="single">单模型（全部阶段使用同一模型）</option><option value="collaborative">多模型协作（按角色分工）</option></select></label>
+          <div className="form-field"><span>工作方式</span><WorkflowModePicker value={mode} onChange={setMode} /></div>
           {mode === "single" ? (
             <>
               <label className="form-field"><span>服务商</span><select aria-label="工作流服务商" value={providerId} onChange={(event) => setProviderId(event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
@@ -127,7 +265,7 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
           ) : (
             <div className="workflow-assignment-list">
               {MODEL_ROLES.map((role) => <div className="workflow-assignment" key={role}><strong>{roleLabels[role]}</strong><select aria-label={`${roleLabels[role]}服务商`} value={assignments[role].providerId} onChange={(event) => updateAssignment(role, "providerId", event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select><input aria-label={`${roleLabels[role]}模型 ID`} value={assignments[role].model} onChange={(event) => updateAssignment(role, "model", event.target.value)} placeholder="模型 ID" /></div>)}
-              <small className="muted-label">至少配置两个角色；需密钥的跨 Provider 角色先在模型设置中分别保存凭据。</small>
+              <small className="muted-label">至少配置两个角色；需要密钥的跨服务商角色，请先在模型设置中分别保存凭据。</small>
             </div>
           )}
           {error ? <p className="form-error" role="alert">{error}</p> : null}

@@ -32,6 +32,26 @@ const ollamaProvider = {
 };
 
 describe("WorkflowDialog", () => {
+  it("lets keyboard users switch into collaborative mode", () => {
+    render(
+      <WorkflowDialog
+        open
+        platform="web"
+        providers={[provider]}
+        settings={{ platform: "web", providerId: "custom", model: "writer-model", apiKey: "", hasApiKey: false, baseUrl: provider.baseUrl }}
+        value={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const mode = screen.getByRole("combobox", { name: "模型工作流模式" });
+    fireEvent.keyDown(mode, { key: "ArrowDown" });
+    expect(mode).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(mode).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("creates a four-role collaborative workflow from the renderer", () => {
     const onSave = vi.fn();
     render(
@@ -45,7 +65,8 @@ describe("WorkflowDialog", () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("模型工作流模式"), { target: { value: "collaborative" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "模型工作流模式" }));
+    fireEvent.click(screen.getByRole("option", { name: /多模型协作/ }));
     fireEvent.click(screen.getByRole("button", { name: "应用工作流" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0]).toMatchObject({ mode: "collaborative" });
@@ -65,7 +86,8 @@ describe("WorkflowDialog", () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("模型工作流模式"), { target: { value: "collaborative" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "模型工作流模式" }));
+    fireEvent.click(screen.getByRole("option", { name: /多模型协作/ }));
     fireEvent.change(screen.getByLabelText("内容审核服务商"), { target: { value: "ollama" } });
     fireEvent.click(screen.getByRole("button", { name: "应用工作流" }));
     expect(onSave).toHaveBeenCalledTimes(1);

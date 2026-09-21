@@ -39,6 +39,21 @@ const compatibleProvider = {
 };
 
 describe("ProviderDialog", () => {
+  it("stays usable while the provider catalog is temporarily empty", () => {
+    render(
+      <ProviderDialog
+        open
+        providers={[]}
+        settings={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "模型配置" })).toBeVisible();
+    expect(screen.queryByText("请选择可用的模型服务商。")).not.toBeInTheDocument();
+  });
+
   it("lists models from the current unsaved compatible form", async () => {
     const onListModels = vi.fn().mockResolvedValue([
       { id: "model-a" },

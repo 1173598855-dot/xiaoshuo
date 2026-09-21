@@ -122,7 +122,7 @@ export function ProductionRoom({
           <h1>{status === "completed" ? "这本书已经写完了" : "导演正在把它写出来"}</h1>
           <p>{book.book.idea}</p>
           <small className="memory-mode-note">
-            Provider 记忆：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`}
+            记忆注入：{memoryContextConfig.mode === "automatic" ? "自动推荐相关内容" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`}
           </small>
           {run ? <small className="production-telemetry">生产版本：{run.run.version} · 估算 Token {estimatedTokens.toLocaleString()} · 本周期 Token {usage?.totalTokens.toLocaleString() ?? "—"} · 缓存命中率 {usage ? `${Math.round(usage.cacheHitRate * 100)}%` : "—"} · 费用 ¥{usage ? (usage.estimatedCostMicros / 100_000_000).toFixed(4) : "—"}</small> : null}
         </div>

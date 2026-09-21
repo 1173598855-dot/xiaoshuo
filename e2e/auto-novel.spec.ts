@@ -105,7 +105,8 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await page.goto("/");
   await page.getByRole("button", { name: "工作流" }).click();
   await expect(page.getByRole("dialog", { name: "模型工作流" })).toBeVisible();
-  await page.getByLabel("模型工作流模式").selectOption("collaborative");
+  await page.getByRole("combobox", { name: "模型工作流模式" }).click();
+  await page.getByRole("option", { name: /多模型协作/ }).click();
   await page.getByRole("button", { name: "应用工作流" }).click();
   await page.getByRole("textbox", { name: "故事想法" }).fill("一个会在凌晨移动的城市");
   await page.getByLabel("方向数量").fill("5");

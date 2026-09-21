@@ -163,7 +163,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
             );
           })}
         </div>
-        <footer className="command-palette-footer"><span>↑↓ 选择</span><span>↵ 执行</span><span>⌘K 关闭</span></footer>
+        <footer className="command-palette-footer"><span>↑↓ 选择</span><span>↵ 执行</span><span>⌘K 打开/关闭</span></footer>
       </section>
     </div>
   );
