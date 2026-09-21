@@ -51,8 +51,10 @@ const ReviewOutputSchema = z
   .strict();
 
 const MAX_REPAIR_ATTEMPTS = 2;
-const MAX_TRANSIENT_RETRIES = 2;
-const TRANSIENT_RETRY_DELAYS_MS = [250, 500] as const;
+const MAX_TRANSIENT_RETRIES = 3;
+const TRANSIENT_RETRY_DELAYS_MS = [250, 500, 1000] as const;
+
+const PROVIDER_TIMEOUT_MS = 60_000;
 const PERSISTED_ERROR_CODES = new Set([
   "AUTHENTICATION_FAILED",
   "RATE_LIMITED",
@@ -127,7 +129,7 @@ export class ProductionService {
   constructor(private readonly dependencies: ProductionServiceDependencies) {
     this.maxConcurrentRuns = Math.max(
       1,
-      Math.min(8, Math.trunc(dependencies.maxConcurrentRuns ?? 1)),
+      Math.min(8, Math.trunc(dependencies.maxConcurrentRuns ?? 4)),
     );
     this.updateQueueMetrics();
   }
@@ -847,7 +849,7 @@ async function generateDraft(
       ].join("\n"),
       maxOutputTokens: 12_000,
       reasoningLevel,
-  }, signal);
+  }, signal, DRAFT_STAGE_TIMEOUT_MS);
   const text = result.text.trim();
   if (!text) {
     throw new NormalizedProviderError(
@@ -891,7 +893,7 @@ async function reviewDraft(
       ].join("\n"),
       maxOutputTokens: 2_000,
       reasoningLevel,
-  }, signal);
+  }, signal, REVIEW_STAGE_TIMEOUT_MS);
   return parseStructuredProviderResult(result.text, ReviewOutputSchema);
 }
 
@@ -923,7 +925,7 @@ async function repairDraft(
       ].join("\n"),
       maxOutputTokens: 12_000,
       reasoningLevel,
-  }, signal);
+  }, signal, REPAIR_STAGE_TIMEOUT_MS);
   const text = result.text.trim();
   if (!text) {
     throw new NormalizedProviderError(
@@ -955,12 +957,20 @@ async function generateWithRetry(
   provider: ReturnType<ProviderResolver["resolve"]>,
   input: Parameters<ReturnType<ProviderResolver["resolve"]>["generate"]>[0],
   signal?: AbortSignal,
+  stageTimeoutMs: number = PROVIDER_TIMEOUT_MS,
 ): ReturnType<ReturnType<ProviderResolver["resolve"]>["generate"]> {
   for (let attempt = 0; ; attempt += 1) {
     throwIfAborted(signal);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), stageTimeoutMs);
+    const abortHandler = () => controller.abort();
+    signal?.addEventListener("abort", abortHandler);
     try {
-      return await provider.generate(input, signal);
+      const result = await provider.generate(input, controller.signal);
+      return result;
     } catch (error) {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortHandler);
       if (
         !isTransientProviderError(error) ||
         attempt >= MAX_TRANSIENT_RETRIES

@@ -7,6 +7,9 @@ import { UnsupportedExportFormatError } from "../export-errors";
 export interface ExportServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
+  readonly memoryService?: {
+    list: (bookId: string, filter?: Partial<{ kind: string }>) => readonly unknown[];
+  };
 }
 
 /** Build the same export payload for HTTP and Electron. */
@@ -21,12 +24,13 @@ export function exportBook(
   const chapters = dependencies.productionRepository
     .getChapters(bookId)
     .filter(({ revision }) => revision > 0);
-  if (format === "docx") return toDocxDataUrl(details.book.title, chapters);
-  if (format === "epub") return toEpubDataUrl(details.book.title, chapters);
+  if (format === "docx") return toDocxDataUrl(details.book.title, chapters, details.book.description);
+  if (format === "epub") return toEpubDataUrl(details.book.title, chapters, details.book.description);
   if (format === "markdown") {
     return [
       "# " + details.book.title,
       "",
+      details.book.description ? details.book.description + "\n\n---\n\n" : "",
       ...chapters.flatMap((chapter) => [
         "## " + chapter.title,
         "",
@@ -38,14 +42,18 @@ export function exportBook(
   if (format === "txt") {
     return [
       details.book.title,
-      "",
-      ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
+      details.book.description ? details.book.description : "",
+      ...chapters.flatMap((chapter) => [
+        chapter.title,
+        chapter.content,
+        "",
+      ]),
     ].join("\n");
   }
   throw new UnsupportedExportFormatError();
 }
 
-function toDocxDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
+function toDocxDataUrl(title: string, chapters: readonly { title: string; content: string }[], description?: string): string {
   const document = [
     xmlHeader(),
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
@@ -92,7 +100,7 @@ function toDocxDataUrl(title: string, chapters: readonly { title: string; conten
   return `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${archive.toString("base64")}`;
 }
 
-function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
+function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[], description?: string): string {
   const chapterFiles = chapters.map((chapter, index) => ({
     id: `chapter-${index + 1}`,
     href: `chapter-${index + 1}.xhtml`,
@@ -102,7 +110,13 @@ function toEpubDataUrl(title: string, chapters: readonly { title: string; conten
   const body = [
     `<?xml version="1.0" encoding="utf-8"?>`,
     `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="zh-CN">`,
-    `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">xiaoyi-${hashForExport(title)}</dc:identifier><dc:title>${escapeXml(title)}</dc:title><dc:language>zh-CN</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}</meta></metadata>`,
+    `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">`,
+    `<dc:identifier id="book-id">xiaoyi-${hashForExport(title)}</dc:identifier>`,
+    `<dc:title>${escapeXml(title)}</dc:title>`,
+    `<dc:language>zh-CN</dc:language>`,
+    ...(description ? [`<dc:description>${escapeXml(description)}</dc:description>`] : []),
+    `<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}</meta>`,
+    `</metadata>`,
     `<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${chapterFiles.map((chapter) => `<item id="${chapter.id}" href="${chapter.href}" media-type="application/xhtml+xml"/>`).join("")}</manifest>`,
     `<spine>${chapterFiles.map((chapter) => `<itemref idref="${chapter.id}"/>`).join("")}</spine>`,
     `</package>`,

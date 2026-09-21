@@ -478,13 +478,19 @@ export class MemoryRepository {
     ]
       .join(" ")
       .toLocaleLowerCase();
-    const ranked = eligibleEntries
-      .map((entry) => ({
-        entry,
-        score: scoreEntry(entry, chapterText, plan.chapterNumber),
-      }))
-      .sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id));
+    const scored = eligibleEntries.map((entry) => ({
+      entry,
+      score: scoreEntry(entry, chapterText, plan.chapterNumber),
+    }));
+    const priorityOrder = ["world_rule", "character_state", "fact", "location", "timeline_event", "foreshadowing", "style_constraint"];
+    const ranked = scored.sort((a, b) => {
+      const priorityA = priorityOrder.indexOf(a.entry.kind);
+      const priorityB = priorityOrder.indexOf(b.entry.kind);
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return b.score - a.score || a.entry.id.localeCompare(b.entry.id);
+    });
 
+    // Phase 1: greedy capacity-fill
     const selected: Array<{ entry: MemoryEntry; score: number }> = [];
     for (const item of ranked) {
       const nextCount = JSON.stringify([
@@ -494,8 +500,38 @@ export class MemoryRepository {
       if (nextCount > MAX_MEMORY_CONTEXT_CHARACTERS) continue;
       selected.push(item);
     }
-    const selectedEntries = selected.map(({ entry }) => entry);
-    const serialized = JSON.stringify(selectedEntries);
+
+    // Phase 2: if still over budget, aggressively trim by importance
+    let serialized = JSON.stringify(selected.map(({ entry }) => entry));
+    if (serialized.length > MAX_MEMORY_CONTEXT_CHARACTERS && selected.length > 5) {
+      selected.sort((a, b) => b.entry.importance - a.entry.importance);
+      while (serialized.length > MAX_MEMORY_CONTEXT_CHARACTERS && selected.length > 2) {
+        selected.pop();
+        serialized = JSON.stringify(selected.map(({ entry }) => entry));
+      }
+    }
+
+    // Phase 3: compression — replace long facts with keywords if still over
+    let compressedSelected = [...selected];
+    if (JSON.stringify(compressedSelected.map(({ entry }) => entry)).length > MAX_MEMORY_CONTEXT_CHARACTERS) {
+      compressedSelected = compressedSelected.map(({ entry, score }) => {
+        if (entry.kind === "fact" && entry.content.statement.length > 200) {
+          const truncated: MemoryEntry = {
+            ...entry,
+            content: {
+              ...entry.content,
+              statement: entry.content.statement.slice(0, 150) + "...",
+            },
+          };
+          return { entry: truncated, score };
+        }
+        return { entry, score };
+      });
+      serialized = JSON.stringify(compressedSelected.map(({ entry }) => entry));
+    }
+
+    const selectedEntries = compressedSelected.map(({ entry }) => entry);
+    const finalSerialized = JSON.stringify(selectedEntries);
     const memoryRevision = this.getBookRevision(bookId).memory_revision;
     const contextHash = createHash("sha256")
       .update(JSON.stringify({
@@ -509,14 +545,14 @@ export class MemoryRepository {
       .digest("hex");
     return MemoryContextSchema.parse({
       entries: selectedEntries,
-      selectionReasons: selected.map(({ entry, score }) => ({
+      selectionReasons: compressedSelected.map(({ entry, score }) => ({
         entryId: entry.id,
         score,
         reason: selectionReason(entry, chapterText, plan.chapterNumber),
       })),
       memoryRevision,
       contextHash,
-      characterCount: serialized.length,
+      characterCount: finalSerialized.length,
     });
   }
 

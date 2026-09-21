@@ -18,6 +18,7 @@ import {
   toPersistedWorkflowDescriptor,
 } from "../repositories/production-repository";
 
+const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_LEASE_DURATION_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
@@ -116,7 +117,7 @@ export class ProductionWorker {
     options: ProductionWorkerOptions = {},
   ) {
     this.workerId = options.workerId?.trim() || randomUUID();
-    this.concurrency = clampInteger(options.concurrency ?? 1, 1, 8);
+    this.concurrency = clampInteger(options.concurrency ?? DEFAULT_CONCURRENCY, 1, 8);
     this.leaseDurationMs = clampInteger(
       options.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS,
       100,
