@@ -52,4 +52,33 @@ describe("CreativeHome author entry", () => {
     expect(screen.getByText("逐章生产")).toBeInTheDocument();
     expect(screen.getByText("审核成书")).toBeInTheDocument();
   });
+
+  it("gives clear feedback when a preset is adopted", () => {
+    renderHome();
+    fireEvent.click(screen.getByRole("button", { name: /灵感册翻一页/ }));
+    fireEvent.click(screen.getByRole("button", { name: "采用这套写法" }));
+
+    expect(screen.getByRole("textbox", { name: "故事想法" })).toHaveValue("一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……");
+    expect(screen.getAllByRole("status").find((status) => status.textContent?.includes("已载入"))).toBeDefined();
+  });
+
+  it("turns a local service failure into an actionable retry state", () => {
+    const onRetry = vi.fn();
+    render(
+      <CreativeHome
+        books={[]}
+        busy={false}
+        error="本地服务无法完成请求。"
+        onCreateIdea={vi.fn()}
+        onOpenBook={vi.fn()}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("本地服务暂时没连上");
+    fireEvent.click(screen.getByRole("button", { name: "重新连接" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
 });

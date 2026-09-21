@@ -1491,4 +1491,60 @@
     }
     .preset-book-reader { transform: none; }
   }
+
+  .idea-service-error,
+  .preset-feedback {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px 11px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .idea-service-error {
+    color: #f0b5c2;
+    background: rgb(238 140 158 / 9%);
+  }
+
+  .idea-service-error > svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--state-danger);
+  }
+
+  .idea-service-error > span {
+    display: grid;
+    flex: 1;
+    gap: 2px;
+  }
+
+  .idea-service-error strong { color: #f6d4db; font-size: 12px; }
+  .idea-service-error small { color: #d3adb8; }
+
+  .idea-service-retry {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 0 9px;
+    border: 1px solid rgb(238 140 158 / 35%);
+    border-radius: 6px;
+    color: #f6d4db;
+    background: rgb(238 140 158 / 10%);
+    cursor: pointer;
+  }
+
+  .idea-service-retry:hover:not(:disabled),
+  .idea-service-retry:focus-visible {
+    border-color: var(--state-danger);
+    background: rgb(238 140 158 / 16%);
+  }
+
+  .idea-service-retry:disabled { opacity: .5; cursor: not-allowed; }
+
+  .preset-feedback {
+    color: var(--state-success);
+    background: rgb(123 216 181 / 8%);
+  }
 }

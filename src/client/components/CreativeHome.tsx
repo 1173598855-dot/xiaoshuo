@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
@@ -20,6 +20,7 @@ interface CreativeHomeProps {
   onOpenAssetLibrary?: () => void;
   onOpenCommandPalette?: () => void;
   onOpenNavigation?: () => void;
+  onRetry?: () => void;
   assetDraft?: { id: string; text: string } | null;
 }
 
@@ -34,6 +35,7 @@ export function CreativeHome({
   onOpenAssetLibrary,
   onOpenCommandPalette,
   onOpenNavigation,
+  onRetry,
   assetDraft,
 }: CreativeHomeProps) {
   return (
@@ -79,7 +81,7 @@ export function CreativeHome({
         </div>
         <div className="idea-column">
           <SpotlightCard className="idea-spotlight-shell">
-            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onSubmit={onCreateIdea} />
+            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onRetry={onRetry} onSubmit={onCreateIdea} />
           </SpotlightCard>
           <div className="idea-caption"><span>方向数 1–12</span><span>输入 → 方向 → 正文</span></div>
         </div>
@@ -114,7 +116,7 @@ type StoryPreset = {
 };
 
 const BUILT_IN_PRESETS: readonly StoryPreset[] = [
-  { id: "mystery", label: "悬疑短篇", idea: "一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……", genre: "悬疑", targetChapters: 8, targetChapterCharacters: 2_000, style: "冷峻、紧凑，每章结尾留下一个可追查的新线索。" },
+  { id: "mystery", label: "悬疑短篇", idea: "一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……", genre: "悬疑", targetChapters: 8, targetChapterCharacters: 2_000, style: "冷峻、紧凑，每章结尾留下一个可追查的新线索。" },
   { id: "urban", label: "都市连载", idea: "一座会在凌晨移动的城市，只有一个快递员记得它原来的位置。", genre: "都市异闻", targetChapters: 24, targetChapterCharacters: 2_500, style: "节奏明快，场景具体，章末保留强钩子。" },
   { id: "fantasy", label: "东方幻想", idea: "落魄的纸扎匠发现，给死人烧的每一封信都会在第二天收到回信。", genre: "东方幻想", targetChapters: 16, targetChapterCharacters: 2_800, style: "克制、诡丽，用民俗细节推动人物选择。" },
 ];
@@ -126,11 +128,13 @@ function IdeaForm({
   busy,
   error,
   assetDraft,
+  onRetry,
   onSubmit,
 }: {
   busy: boolean;
   error: string | null;
   assetDraft?: { id: string; text: string } | null;
+  onRetry?: () => void;
   onSubmit: (input: CreateBookInput, autoStart?: boolean) => void;
 }) {
   const [idea, setIdea] = useState("");
@@ -138,6 +142,7 @@ function IdeaForm({
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [customPresets, setCustomPresets] = useState<StoryPreset[]>([]);
   const [presetName, setPresetName] = useState("");
+  const [presetFeedback, setPresetFeedback] = useState<string | null>(null);
   const [presetEditorOpen, setPresetEditorOpen] = useState(false);
   const [draftState, setDraftState] = useState<"empty" | "restored" | "saved">("empty");
   const [draftReady, setDraftReady] = useState(false);
@@ -196,6 +201,7 @@ function IdeaForm({
     setDirectionCount(3);
     setSelectedPresetId(null);
     setDraftState("empty");
+    setPresetFeedback(null);
     window.localStorage.removeItem(IDEA_DRAFT_KEY);
   };
 
@@ -225,10 +231,19 @@ function IdeaForm({
     onSubmit({ idea: idea.trim(), directionCount, ...(selectedPreset ? { genre: selectedPreset.genre, targetChapters: selectedPreset.targetChapters, targetChapterCharacters: selectedPreset.targetChapterCharacters, style: selectedPreset.style } : {}) }, autoStart);
   };
 
+  const applyPreset = (preset: StoryPreset) => {
+    setIdea(preset.idea);
+    setSelectedPresetId(preset.id);
+    setDraftState("saved");
+    setPresetFeedback(`已载入「${preset.label}」写法，可以在上方继续修改。`);
+  };
+
+  const serviceUnavailable = Boolean(error && /(本地服务|无法打开|连接失败|请求失败)/.test(error));
+
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
       <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div>
-      <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的日期每天都在提前……" disabled={busy} />
+      <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); setPresetFeedback(null); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……" disabled={busy} />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
         {idea ? <button className="text-button" type="button" disabled={busy} onClick={clearDraft}>清除草稿</button> : null}
@@ -237,7 +252,7 @@ function IdeaForm({
         presets={presets}
         selectedPresetId={selectedPresetId}
         disabled={busy}
-        onSelect={(preset) => { setIdea(preset.idea); setSelectedPresetId(preset.id); }}
+        onSelect={applyPreset}
         onOpenSavePreset={() => setPresetEditorOpen(true)}
         canSavePreset={Boolean(idea.trim())}
       />
@@ -245,7 +260,14 @@ function IdeaForm({
       <label className="direction-count-control" htmlFor="direction-count">方向数量
         <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
       </label>
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {serviceUnavailable ? (
+        <div className="idea-service-error" role="alert">
+          <TriangleAlert size={17} aria-hidden="true" />
+          <span><strong>本地服务暂时没连上</strong><small>请确认服务已启动，再重新连接。当前请求没有写入作品。</small></span>
+          {onRetry ? <button className="idea-service-retry" type="button" disabled={busy} onClick={onRetry}>重新连接</button> : null}
+        </div>
+      ) : error ? <p className="form-error" role="alert">{error}</p> : null}
+      {presetFeedback ? <p className="preset-feedback" role="status">{presetFeedback}</p> : null}
       <div className="idea-form-footer">
         <span><i className="status-dot" /> 一句话就够，细节交给自动导演</span>
         <div className="idea-form-actions">
@@ -302,6 +324,10 @@ function PresetFlipbook({
       setTurning(null);
     }, 340);
   };
+  const applySelection = (preset: StoryPreset) => {
+    onSelect(preset);
+    setOpen(false);
+  };
 
   return (
     <section
@@ -328,11 +354,11 @@ function PresetFlipbook({
         <div className="preset-book-reader" aria-hidden={!open}>
           <ThreeBookModel open={open} turnDirection={turning?.direction ?? null} coverTitle="灵感册" />
           <div className="preset-book-page-layer preset-book-under-page">
-            <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={onSelect} />
+            <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={applySelection} />
           </div>
           {turning ? (
             <div className={`preset-book-page-layer preset-book-turn-page turn-${turning.direction}`}>
-              <PresetBookPage preset={turning.from} pageNumber={pageIndex + 1} pageCount={presets.length} interactive={false} disabled={disabled} onSelect={onSelect} />
+              <PresetBookPage preset={turning.from} pageNumber={pageIndex + 1} pageCount={presets.length} interactive={false} disabled={disabled} onSelect={applySelection} />
             </div>
           ) : null}
         </div>
