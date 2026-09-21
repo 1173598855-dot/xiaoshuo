@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Maximize2, Minimize2, PanelLeft, PanelRight, RotateCcw } from "lucide-react";
 import "./WorkspaceLayout.css";
 
@@ -36,9 +36,25 @@ export function WorkspaceLayout({ navigation, context, children }: {
   children: ReactNode;
 }) {
   const id = useId();
+  const compact = useCompactWorkspace();
+  const compactSnapshotRef = useRef<{ leftOpen: boolean; rightOpen: boolean } | null>(null);
   const [layout, setLayout] = useState<WorkspaceLayoutState>(readWorkspaceLayout);
   const leftVisible = layout.leftOpen && !layout.focused;
   const rightVisible = layout.rightOpen && !layout.focused;
+
+  useEffect(() => {
+    if (compact) {
+      setLayout((current) => {
+        compactSnapshotRef.current ??= { leftOpen: current.leftOpen, rightOpen: current.rightOpen };
+        return current.focused ? current : { ...current, leftOpen: false, rightOpen: false };
+      });
+      return;
+    }
+    const snapshot = compactSnapshotRef.current;
+    if (!snapshot) return;
+    compactSnapshotRef.current = null;
+    setLayout((current) => ({ ...current, leftOpen: snapshot.leftOpen, rightOpen: snapshot.rightOpen }));
+  }, [compact]);
 
   useEffect(() => {
     window.sessionStorage.setItem(WORKSPACE_LAYOUT_KEY, JSON.stringify(layout));
@@ -54,6 +70,7 @@ export function WorkspaceLayout({ navigation, context, children }: {
       <button className="workspace-reset" type="button" aria-label="恢复默认工作区布局" title="恢复默认布局" onClick={() => setLayout(DEFAULT_LAYOUT)}><RotateCcw size={15} /></button>
     </div>
     <div className="workspace-columns" style={{ "--workspace-left": leftVisible ? `${layout.leftWidth}px` : "0px", "--workspace-right": rightVisible ? `${layout.rightWidth}px` : "0px" } as CSSProperties}>
+      {compact && (leftVisible || rightVisible) ? <button className="workspace-drawer-backdrop" type="button" aria-label="关闭工作区侧栏" onClick={() => setLayout((current) => ({ ...current, leftOpen: false, rightOpen: false }))} /> : null}
       <aside className="workspace-navigation" id={`${id}-chapters`} hidden={!leftVisible} aria-label="作品章节">
         {navigation}
         <label className="workspace-resize">章节栏宽度<input aria-label="章节栏宽度" type="range" min={180} max={300} step={10} value={layout.leftWidth} onChange={(event) => setLayout((current) => ({ ...current, leftWidth: Number(event.target.value) }))} /></label>
@@ -65,4 +82,23 @@ export function WorkspaceLayout({ navigation, context, children }: {
       </aside>
     </div>
   </section>;
+}
+
+function useCompactWorkspace(): boolean {
+  const [compact, setCompact] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1100px)").matches);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 1100px)");
+    const update = () => setCompact(query.matches);
+    update();
+    if (typeof query.addEventListener === "function") query.addEventListener("change", update);
+    else query.addListener?.(update);
+    return () => {
+      if (typeof query.removeEventListener === "function") query.removeEventListener("change", update);
+      else query.removeListener?.(update);
+    };
+  }, []);
+
+  return compact;
 }

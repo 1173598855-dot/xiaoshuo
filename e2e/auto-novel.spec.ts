@@ -61,7 +61,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await page.getByRole("button", { name: "取消预览" }).click();
   await page.locator(".timeline-card input").nth(1).fill("第一章·作者修订");
   await page.getByRole("button", { name: "保存第 1 章" }).click();
-  await expect(page.getByRole("status")).toContainText("后续 AI 生产会读取新设定");
+  await expect(page.locator(".timeline-notice")).toContainText("后续 AI 生产会读取新设定");
   await page.getByRole("button", { name: "关闭故事时间线" }).click();
   await page.getByRole("button", { name: "故事资料卡" }).click();
   await expect(page.getByRole("complementary", { name: "故事资料卡" })).toBeVisible();
@@ -80,7 +80,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await page.getByRole("button", { name: "搜索", exact: true }).click();
   await expect(page.locator(".search-result").first()).toBeVisible();
   await page.getByRole("button", { name: "关闭全局搜索" }).click();
-  await page.getByRole("button", { name: "记忆中心" }).click();
+  await page.getByRole("complementary", { name: "章节上下文" }).getByRole("button", { name: "记忆中心" }).click();
   await expect(page.getByRole("complementary", { name: "长篇记忆中心" })).toBeVisible();
   const worldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
   await expect(worldRule).toBeVisible();
@@ -93,7 +93,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("main", { name: "正式正文" })).toBeVisible();
   await expect(page.getByText("异常物件").first()).toBeVisible();
   await page.getByRole("button", { name: "返回生产室" }).click();
-  await page.getByRole("button", { name: "记忆中心" }).click();
+  await page.getByRole("complementary", { name: "章节上下文" }).getByRole("button", { name: "记忆中心" }).click();
   const persistedWorldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
   await expect(persistedWorldRule).toContainText("手动修正");
   await expect(persistedWorldRule.getByRole("button", { name: "解锁" })).toBeVisible();
@@ -111,6 +111,42 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await page.getByLabel("方向数量").fill("5");
   await page.getByRole("button", { name: "开始开书" }).click();
   await expect(page.getByText("自动方向 5")).toBeVisible();
+});
+
+test("opens the author navigation drawer and preserves focus on close", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "打开工作区导航" });
+  await trigger.click();
+
+  const drawer = page.getByRole("dialog", { name: "工作区导航" });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "故事起点" })).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("keeps quick actions and reduced motion usable on mobile", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const navigationTrigger = page.getByRole("button", { name: "打开工作区导航" });
+  await expect(navigationTrigger).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开快速操作" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await navigationTrigger.click();
+  const drawer = page.getByRole("dialog", { name: "工作区导航" });
+  await expect(drawer).toBeVisible();
+  await expect.poll(() => page.locator(".workbench-navigation-drawer").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "更多" }).click();
+  await expect(page.getByRole("menu", { name: "更多快捷操作" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "资产库" }).click();
+  await expect(page.getByRole("complementary", { name: "创作资产库" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭创作资产库" }).click();
+  await expect(page.getByRole("complementary", { name: "创作资产库" })).toHaveCount(0);
 });
 
 for (const viewport of [

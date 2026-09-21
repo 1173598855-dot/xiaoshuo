@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Command, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
+import { CheckCircle2, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
 import { CursorGrid } from "./CursorGrid";
 import { SpotlightCard } from "./SpotlightCard";
+import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 
 interface CreativeHomeProps {
   books: readonly Book[];
@@ -17,6 +18,7 @@ interface CreativeHomeProps {
   onConfigureWorkflow: () => void;
   onOpenAssetLibrary?: () => void;
   onOpenCommandPalette?: () => void;
+  onOpenNavigation?: () => void;
   assetDraft?: { id: string; text: string } | null;
 }
 
@@ -30,6 +32,7 @@ export function CreativeHome({
   onConfigureWorkflow,
   onOpenAssetLibrary,
   onOpenCommandPalette,
+  onOpenNavigation,
   assetDraft,
 }: CreativeHomeProps) {
   return (
@@ -46,15 +49,24 @@ export function CreativeHome({
         </div>
         <div className="creative-header-actions">
           <span className="header-note">LOCAL FIRST / AUTHOR MODE</span>
-          <button className="ghost-button" type="button" onClick={onConfigureProvider}>
-            <Settings2 size={16} />
-            模型设置
-          </button>
-          <button className="ghost-button" type="button" aria-label="配置模型工作流" title="配置模型工作流" onClick={onConfigureWorkflow}><Workflow size={15} /> 工作流</button>
-          {onOpenAssetLibrary ? <button className="ghost-button" type="button" aria-label="打开资产库" title="打开资产库" onClick={onOpenAssetLibrary}><Library size={15} /> 资产库</button> : null}
-          {onOpenCommandPalette ? <button className="command-trigger" type="button" aria-label="打开快速操作" title="快速操作（Ctrl/Cmd + K）" onClick={onOpenCommandPalette}><Command size={15} /><kbd>⌘K</kbd></button> : null}
+          <WorkbenchQuickActions
+            actions={[
+              { id: "provider", label: "模型设置", icon: Settings2, onSelect: onConfigureProvider },
+              { id: "workflow", label: "工作流", icon: Workflow, onSelect: onConfigureWorkflow },
+              ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
+            ]}
+            onOpenNavigation={onOpenNavigation}
+            onOpenCommandPalette={onOpenCommandPalette}
+          />
         </div>
       </header>
+      <WorkbenchStatusStrip
+        items={[
+          { id: "local", label: "本地优先", detail: "草稿只保存在当前浏览器", tone: "success", icon: CheckCircle2 },
+          { id: "review", label: "作者掌舵", detail: "候选必须审核后进入正文", tone: "accent", icon: Sparkles },
+          { id: "shortcut", label: "随时可查", detail: "Ctrl/Cmd + K 打开快速操作", tone: "neutral" },
+        ]}
+      />
 
       <section className="idea-stage" aria-labelledby="idea-title">
         <div className="stage-copy">

@@ -3,6 +3,7 @@ import { ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
 import { SpotlightCard } from "./SpotlightCard";
+import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 
 interface DirectionPickerProps {
   directions: readonly StoryDirection[];
@@ -10,16 +11,28 @@ interface DirectionPickerProps {
   onSelect: (direction: StoryDirection) => void;
   onAutoSelect?: () => void;
   onBack: () => void;
+  onOpenNavigation?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
-export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack }: DirectionPickerProps) {
+export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack, onOpenNavigation, onOpenCommandPalette }: DirectionPickerProps) {
   const [peekDirection, setPeekDirection] = useState<StoryDirection | null>(null);
   return (
     <main className="director-page">
       <header className="page-topbar">
         <button className="text-button" type="button" onClick={onBack}>← 返回想法</button>
-        <span className="stage-progress"><span className="stage-progress-active" /> 自动导演 · {directions.length} 个方向</span>
+        <div className="page-topbar-actions">
+          <span className="stage-progress"><span className="stage-progress-active" /> 自动导演 · {directions.length} 个方向</span>
+          <WorkbenchQuickActions actions={[]} onOpenNavigation={onOpenNavigation} onOpenCommandPalette={onOpenCommandPalette} />
+        </div>
       </header>
+      <WorkbenchStatusStrip
+        items={[
+          { id: "directions", label: "可选方向", detail: `${directions.length} 条整本故事走向`, tone: "accent", icon: Compass },
+          { id: "peek", label: "先审后选", detail: "聚焦卡片后按 Space 预览", tone: "neutral" },
+          { id: "next", label: "下一步", detail: "选定后才会进入生产室", tone: "success" },
+        ]}
+      />
       <section className="direction-intro">
         <span className="stage-label"><Compass size={14} /> {directions.length} 条路，选一条</span>
         <h1>你的故事可以这样开始</h1>

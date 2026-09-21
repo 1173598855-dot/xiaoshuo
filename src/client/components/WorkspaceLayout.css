@@ -4,7 +4,7 @@
 .workspace-toolbar button[aria-pressed="true"] { background: var(--surface-accent); border-color: var(--action-primary); }
 .workspace-toolbar .workspace-reset { margin-left: auto; width: 34px; padding: 0; }
 .workspace-toolbar { padding-right: 16px; padding-left: 16px; background: rgb(255 255 255 / 2%); }
-.workspace-columns { display: grid; grid-template-columns: var(--workspace-left) minmax(0, 1fr) var(--workspace-right); align-items: stretch; min-height: 560px; }
+.workspace-columns { position: relative; display: grid; grid-template-columns: var(--workspace-left) minmax(0, 1fr) var(--workspace-right); align-items: stretch; min-height: 560px; }
 .workspace-navigation { grid-column: 1; }
 .workspace-document { grid-column: 2; min-width: 0; padding: 24px; }
 .workspace-context { grid-column: 3; }
@@ -34,5 +34,19 @@
 .workspace-reading-toolbar button:hover:not(:disabled), .workspace-reading-toolbar button:focus-visible { border-color: var(--border-default); color: var(--text-primary); background: rgb(255 255 255 / 4%); }
 .workspace-reading-toolbar button:disabled { opacity: .4; cursor: not-allowed; }
 .workspace-document .review-panel { width: 100%; max-width: none; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
-@media (max-width: 1100px) { .writing-workspace { width: min(calc(100% - 32px), 760px); } .workspace-columns { grid-template-columns: minmax(0, 1fr); } .workspace-navigation, .workspace-document, .workspace-context { grid-column: 1; } .workspace-navigation { max-height: 240px; overflow: auto; } .workspace-resize { display: none; } }
+.workspace-drawer-backdrop { display: none; }
+@keyframes workspace-drawer-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 1100px) {
+  .writing-workspace { width: min(calc(100% - 32px), 760px); }
+  .workspace-columns { display: block; min-height: 560px; }
+  .workspace-navigation, .workspace-document, .workspace-context { grid-column: auto; }
+  .workspace-document { min-height: 560px; }
+  .workspace-navigation, .workspace-context { position: absolute; inset-block: 0; z-index: 4; width: min(330px, calc(100% - 24px)); max-height: none; overflow: auto; border: 1px solid var(--border-strong); background: var(--surface-panel); box-shadow: 0 22px 52px rgb(0 0 0 / 42%); animation: workspace-drawer-in 180ms var(--ease-studio); }
+  .workspace-navigation { inset-inline-start: 0; }
+  .workspace-context { inset-inline-end: 0; animation-name: workspace-drawer-in-right; }
+  .workspace-resize { display: none; }
+  .workspace-drawer-backdrop { position: absolute; inset: 0; z-index: 3; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: rgb(5 4 10 / 58%); cursor: pointer; }
+}
+@keyframes workspace-drawer-in-right { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
 @media (max-width: 620px) { .writing-workspace { width: calc(100% - 32px); margin-top: 28px; } .workspace-document { padding: 16px 0; } .workspace-toolbar button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .workspace-navigation, .workspace-context { animation: none; } }

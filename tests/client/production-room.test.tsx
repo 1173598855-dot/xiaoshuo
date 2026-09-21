@@ -53,7 +53,9 @@ describe("ProductionRoom queue health", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("自动重试 2 / 3");
-    expect(screen.getByRole("status")).toHaveTextContent("将在");
+    const queueStatus = screen.getAllByRole("status").find((element) => element.textContent?.includes("自动重试"));
+    expect(queueStatus).toBeDefined();
+    expect(queueStatus).toHaveTextContent("自动重试 2 / 3");
+    expect(queueStatus).toHaveTextContent("将在");
   });
 });

@@ -14,6 +14,7 @@ import type { UsageSummary } from "../../shared/authoring";
 import { AssetLibraryPanel, type CreativeAsset } from "./AssetLibraryPanel";
 import { ProductionTaskPanel } from "./ProductionTaskPanel";
 import { ChapterWorkspace } from "./ChapterWorkspace";
+import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 
 interface ProductionRoomProps {
   review?: ReactNode;
@@ -41,6 +42,7 @@ interface ProductionRoomProps {
   api?: AutoNovelApi;
   onOpenRun?: (runId: string) => void;
   onOpenCommandPalette?: () => void;
+  onOpenNavigation?: () => void;
   connectionState?: ProductionConnectionState;
   onRetryConnection?: () => void;
 }
@@ -71,6 +73,7 @@ export function ProductionRoom({
   api,
   onOpenRun,
   onOpenCommandPalette,
+  onOpenNavigation,
   connectionState = "connected",
   onRetryConnection,
 }: ProductionRoomProps) {
@@ -92,8 +95,27 @@ export function ProductionRoom({
     <main className="production-page">
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
-        <button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button>
+        <div className="page-topbar-actions">
+          <WorkbenchQuickActions
+            actions={[
+              { id: "review", label: "候选审核", icon: CheckCircle2, onSelect: () => document.getElementById("chapter-review-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
+              { id: "memory", label: "记忆中心", icon: History, onSelect: onOpenMemory },
+              { id: "timeline", label: "故事时间线", icon: GitBranch, onSelect: onOpenTimeline },
+            ]}
+            onOpenNavigation={onOpenNavigation}
+            onOpenCommandPalette={onOpenCommandPalette}
+          />
+          <button className="text-button" type="button" onClick={onOpenManuscript}>查看正文 →</button>
+        </div>
       </header>
+      <WorkbenchStatusStrip
+        live
+        items={[
+          { id: "run", label: "生产状态", detail: statusLabel(status), tone: status === "failed" ? "warning" : status === "completed" ? "success" : "accent", icon: status === "completed" ? CheckCircle2 : Activity },
+          { id: "progress", label: "正文进度", detail: `${accepted} / ${total || "—"} 章已完成`, tone: "neutral" },
+          { id: "memory", label: "上下文", detail: memoryContextConfig.mode === "automatic" ? "自动推荐记忆" : `仅发送已选 ${memoryContextConfig.entryIds.length} 条`, tone: "neutral" },
+        ]}
+      />
       <section className="production-hero">
         <div>
           <span className="stage-label"><Terminal size={14} /> 自动生产室</span>
@@ -157,6 +179,10 @@ export function ProductionRoom({
 function StatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = { ready: "待开始", queued: "排队中", running: "生产中", paused: "已暂停", completed: "已完成", failed: "需要处理", cancelled: "已停止" };
   return <span className={`status-badge ${status}`}>{labels[status] ?? status}</span>;
+}
+
+function statusLabel(status: string): string {
+  return { ready: "待开始", queued: "排队中", running: "生产中", paused: "已暂停", completed: "已完成", failed: "需要处理", cancelled: "已停止" }[status] ?? status;
 }
 
 function QueueHealth({ run }: { run: NonNullable<ProductionRoomProps["run"]> }) {
