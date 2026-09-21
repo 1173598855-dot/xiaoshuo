@@ -1548,3 +1548,788 @@
     background: rgb(123 216 181 / 8%);
   }
 }
+
+/* Unified surface pass: auth, drawers, dialogs and secondary workspaces share one desk. */
+@layer polish {
+  :root {
+    --surface-control: #211f2e;
+    --surface-control-hover: #292442;
+    --surface-elevated: #26223a;
+    --border-focus: rgb(169 157 255 / 68%);
+    --shadow-surface: 0 24px 72px rgb(0 0 0 / 42%);
+  }
+
+  /* Auth and activation are the first screen of the same product, not a separate theme. */
+  .auth-gate {
+    min-height: 100dvh;
+    padding: clamp(18px, 4vw, 64px);
+    overflow: auto;
+    background:
+      radial-gradient(circle at 8% 8%, rgb(169 157 255 / 11%), transparent 26%),
+      radial-gradient(circle at 94% 88%, rgb(123 216 181 / 6%), transparent 24%),
+      var(--surface-canvas);
+  }
+
+  .auth-gate::before {
+    top: -28vh;
+    right: -14vw;
+    width: 54vw;
+    height: 54vw;
+    border-color: rgb(169 157 255 / 12%);
+    box-shadow: 0 0 0 34px rgb(169 157 255 / 3%), 0 0 0 70px rgb(169 157 255 / 2%);
+    animation-duration: 30s;
+  }
+
+  .auth-gate-shell {
+    width: min(1040px, 100%);
+    min-height: 620px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-panel);
+    box-shadow: var(--shadow-surface);
+  }
+
+  .auth-gate-rail {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(24px, 4vw, 48px);
+    border-right: 1px solid var(--border-default);
+    background:
+      linear-gradient(150deg, rgb(169 157 255 / 11%), transparent 44%),
+      var(--surface-rail);
+  }
+
+  .auth-gate-rail::after {
+    position: absolute;
+    right: -42px;
+    bottom: -54px;
+    width: 170px;
+    height: 170px;
+    border: 1px solid rgb(169 157 255 / 18%);
+    border-radius: 50%;
+    box-shadow: 0 0 0 18px rgb(169 157 255 / 3%);
+    content: "";
+    pointer-events: none;
+  }
+
+  .auth-gate-brand,
+  .auth-gate-rail-copy,
+  .auth-gate-steps {
+    position: relative;
+    z-index: 1;
+  }
+
+  .auth-gate-brand {
+    color: var(--text-primary);
+  }
+
+  .auth-gate-brand .brand-mark {
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgb(169 157 255 / 38%);
+    border-radius: 8px;
+    color: var(--surface-canvas);
+    background: var(--text-primary);
+    box-shadow: 3px 3px 0 var(--action-primary);
+  }
+
+  .auth-gate-rail-copy {
+    margin-bottom: 42px;
+  }
+
+  .auth-gate-rail .auth-gate-kicker,
+  .auth-gate-kicker {
+    color: var(--action-primary);
+  }
+
+  .auth-gate-rail h1 {
+    color: var(--text-primary);
+    font-size: clamp(34px, 4vw, 54px);
+    line-height: 1.12;
+  }
+
+  .auth-gate-rail p {
+    color: var(--text-secondary);
+  }
+
+  .auth-gate-steps {
+    gap: 10px;
+  }
+
+  .auth-gate-steps li {
+    min-height: 48px;
+    padding: 8px 9px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    background: transparent;
+  }
+
+  .auth-gate-steps li.is-active {
+    border-color: rgb(169 157 255 / 22%);
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 8%);
+  }
+
+  .auth-gate-steps li > span {
+    color: var(--action-primary);
+    font-family: var(--font-mono);
+  }
+
+  .auth-gate-card {
+    padding: clamp(24px, 5vw, 58px);
+    border: 0;
+    background: var(--surface-panel);
+  }
+
+  .auth-gate-header h2 {
+    color: var(--text-primary);
+    font-size: clamp(25px, 3vw, 31px);
+  }
+
+  .auth-security-note {
+    border-color: var(--border-default);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .auth-mode-switch {
+    gap: 3px;
+    margin-top: 26px;
+    padding: 3px;
+    border-color: var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-control);
+  }
+
+  .auth-mode-switch button {
+    min-height: 38px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+  }
+
+  .auth-mode-switch button:hover,
+  .auth-mode-switch button.is-active {
+    color: var(--text-primary);
+    background: var(--surface-elevated);
+    box-shadow: inset 0 0 0 1px rgb(169 157 255 / 20%);
+  }
+
+  .auth-gate-intro {
+    margin: 16px 0 22px;
+    color: var(--text-secondary);
+  }
+
+  .auth-field label,
+  .activation-form label {
+    color: var(--text-primary);
+  }
+
+  .auth-field input,
+  .activation-form input {
+    min-height: 44px;
+    border-color: var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  .auth-field input:hover:not(:disabled),
+  .activation-form input:hover:not(:disabled) {
+    border-color: var(--border-focus);
+    background: var(--surface-control-hover);
+  }
+
+  .auth-field input:focus,
+  .activation-form input:focus {
+    border-color: var(--action-primary);
+    background: var(--surface-control-hover);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 14%);
+  }
+
+  .auth-field input:disabled,
+  .activation-form input:disabled {
+    background: var(--surface-panel-muted);
+  }
+
+  .auth-field input::placeholder,
+  .activation-form input::placeholder {
+    color: #817c94;
+  }
+
+  .auth-field-hint,
+  .auth-gate-footer,
+  .auth-password-strength,
+  .auth-strength-checks span {
+    color: var(--text-secondary);
+  }
+
+  .auth-password-toggle:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 12%);
+  }
+
+  .auth-strength-bar {
+    background: var(--surface-panel-muted);
+  }
+
+  .auth-form-error,
+  .auth-rate-limit {
+    border-radius: 8px;
+  }
+
+  .auth-form-error {
+    border-color: rgb(238 140 158 / 32%);
+    color: #f3b9c5;
+    background: rgb(238 140 158 / 10%);
+  }
+
+  .auth-rate-limit {
+    padding: 9px 11px;
+    border: 1px solid rgb(217 189 125 / 28%);
+    color: var(--state-warning);
+    background: rgb(217 189 125 / 8%);
+  }
+
+  .auth-submit-button {
+    min-height: 44px;
+    border-color: var(--action-primary);
+    border-radius: 8px;
+    color: #171326;
+    background: var(--action-primary);
+    box-shadow: 0 10px 24px rgb(169 157 255 / 18%);
+  }
+
+  .auth-submit-button:hover:not(:disabled) {
+    background: var(--action-primary-hover);
+    box-shadow: 0 14px 30px rgb(169 157 255 / 24%);
+  }
+
+  .activation-form {
+    margin-top: 18px;
+  }
+
+  .auth-gate-footer {
+    border-top: 1px solid var(--border-default);
+    padding-top: 18px;
+  }
+
+  /* One modal language for provider setup, workflow setup, data management and command search. */
+  .dialog-backdrop,
+  .command-backdrop {
+    background: rgb(4 3 8 / 78%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog, .command-palette, .peek-preview) {
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-panel);
+    box-shadow: var(--shadow-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) .dialog-header,
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) .dialog-actions {
+    border-color: var(--border-default);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) .dialog-header h2,
+  .command-palette-title h2,
+  .peek-preview h2 {
+    color: var(--text-primary);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) .dialog-body {
+    color: var(--text-primary);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+  .command-search-wrap,
+  .story-drawer :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+    color-scheme: dark;
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus,
+  .story-drawer :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus,
+  .command-search-wrap:focus-within {
+    border-color: var(--action-primary);
+    outline: 0;
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 13%);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) :where(input, select, textarea)::placeholder,
+  .story-drawer :where(input, select, textarea)::placeholder,
+  .command-search-wrap input::placeholder {
+    color: #817c94;
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) option,
+  .story-drawer option {
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  :is(.provider-dialog, .data-dialog, .workflow-dialog) .dialog-note,
+  .data-dialog-note,
+  .memory-context-note {
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    background: rgb(169 157 255 / 7%);
+  }
+
+  .workflow-assignment,
+  .search-replace-box,
+  .data-import-preview,
+  .backup-password-field {
+    border-color: var(--border-default);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .data-actions {
+    gap: 8px;
+    background: transparent;
+  }
+
+  .data-actions > button {
+    min-height: 46px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+  }
+
+  .data-dialog-status,
+  .data-dialog-success,
+  .timeline-notice,
+  .consistency-ok,
+  .asset-library-message {
+    border-radius: 8px;
+  }
+
+  .data-dialog-status {
+    border-color: rgb(123 216 181 / 26%);
+    background: rgb(123 216 181 / 8%);
+  }
+
+  .data-dialog-success,
+  .timeline-notice,
+  .consistency-ok,
+  .asset-library-message {
+    color: var(--state-success);
+  }
+
+  .form-error,
+  .timeline-error {
+    border-radius: 8px;
+    color: #f0b5c2;
+  }
+
+  .command-palette {
+    overflow: hidden;
+  }
+
+  .command-palette-header {
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .command-palette-icon,
+  .command-row-icon {
+    border: 1px solid rgb(169 157 255 / 22%);
+    border-radius: 8px;
+    color: var(--action-primary);
+    background: rgb(169 157 255 / 10%);
+    box-shadow: none;
+  }
+
+  .command-search-wrap {
+    background: var(--surface-control);
+  }
+
+  .command-row {
+    border-radius: 8px;
+  }
+
+  .command-row:hover,
+  .command-row.is-selected {
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .command-palette-footer {
+    border-color: var(--border-default);
+    color: var(--text-secondary);
+  }
+
+  /* Drawers keep the same panel, control, card and state vocabulary everywhere. */
+  .story-drawer,
+  .memory-drawer {
+    width: min(640px, calc(100vw - 12px));
+    padding: 22px;
+    border: 1px solid var(--border-strong);
+    border-right: 0;
+    border-radius: 8px 0 0 8px;
+    color: var(--text-primary);
+    background: var(--surface-panel);
+    box-shadow: -18px 0 52px rgb(0 0 0 / 30%);
+  }
+
+  .memory-drawer {
+    width: min(460px, calc(100vw - 12px));
+  }
+
+  .memory-drawer-header {
+    padding-bottom: 16px;
+    border-color: var(--border-default);
+  }
+
+  .memory-drawer-header h2 {
+    margin-top: 6px;
+    color: var(--text-primary);
+    font-size: 25px;
+  }
+
+  .story-drawer-subtitle,
+  .story-drawer p,
+  .story-drawer small,
+  .memory-drawer p,
+  .memory-drawer small {
+    color: var(--text-secondary);
+  }
+
+  .story-drawer :where(.memory-entry, .memory-selection-control, .memory-content, .memory-editor, .memory-history, .timeline-card, .timeline-preview, .consistency-issue, .search-result, .asset-card, .story-branch-detail, .story-branch-item, .hub-scene-card, .hub-context-entry, .hub-relation-node, .hub-recipe-row, .hub-workspace-hero, .hub-workspace-section, .hub-data-row, .search-replace-box) {
+    border-color: var(--border-default);
+    border-radius: 8px;
+    background: var(--surface-control);
+  }
+
+  .story-drawer .memory-content,
+  .story-drawer .memory-editor {
+    color: var(--text-secondary);
+    background: #181624;
+  }
+
+  .story-drawer .memory-entry.locked {
+    border-color: var(--state-success);
+    box-shadow: inset 3px 0 0 var(--state-success);
+  }
+
+  .story-drawer .memory-selection-modes button,
+  .story-drawer .story-branch-item,
+  .story-drawer .authoring-hub-tabs button,
+  .story-drawer .story-branch-detail,
+  .story-drawer .hub-health-hero,
+  .story-drawer .hub-workspace-hero {
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .story-drawer .memory-selection-modes button.active,
+  .story-drawer .story-branch-item:hover,
+  .story-drawer .story-branch-item.active,
+  .story-drawer .authoring-hub-tabs button.active,
+  .story-drawer .authoring-hub-tabs button:hover {
+    border-color: rgb(169 157 255 / 52%);
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 11%);
+  }
+
+  .story-drawer .timeline-toolbar,
+  .story-drawer .timeline-volume-heading {
+    border-color: var(--border-default);
+  }
+
+  .story-drawer .timeline-card,
+  .story-drawer .timeline-preview,
+  .story-drawer .consistency-issue,
+  .story-drawer .search-result,
+  .story-drawer .asset-card {
+    box-shadow: 0 8px 18px rgb(0 0 0 / 12%);
+  }
+
+  .story-drawer .consistency-issue.error {
+    border-color: rgb(238 140 158 / 36%);
+    background: rgb(238 140 158 / 8%);
+  }
+
+  .story-drawer .consistency-issue.warning {
+    border-color: rgb(217 189 125 / 36%);
+    background: rgb(217 189 125 / 8%);
+  }
+
+  .story-drawer .consistency-issue.info {
+    border-color: var(--border-default);
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .story-drawer .hub-health-hero,
+  .story-drawer .hub-workspace-hero {
+    border-color: rgb(169 157 255 / 28%);
+    background: linear-gradient(135deg, rgb(169 157 255 / 12%), rgb(123 216 181 / 5%));
+  }
+
+  .story-drawer .hub-context-rules span,
+  .story-drawer .status-chip {
+    border-color: rgb(169 157 255 / 28%);
+    color: var(--action-primary);
+    background: rgb(169 157 255 / 7%);
+  }
+
+  .story-drawer .hub-select-label select,
+  .story-drawer .hub-recipe-create input,
+  .story-drawer .hub-recipe-create textarea,
+  .story-drawer .hub-inline-form input,
+  .story-drawer .hub-goal-controls input,
+  .story-drawer .hub-note-form textarea,
+  .story-drawer .hub-prompt-form input,
+  .story-drawer .hub-prompt-form textarea,
+  .story-drawer .search-replace-box > input {
+    border-color: var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-control);
+  }
+
+  .story-drawer .production-task-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .story-drawer .production-task-toolbar select {
+    min-width: 0;
+    flex: 1;
+    min-height: 36px;
+    padding: 0 10px;
+  }
+
+  .story-drawer .production-task-list {
+    display: grid;
+    gap: 8px;
+    padding-top: 14px;
+    overflow-y: auto;
+  }
+
+  .story-drawer .production-task-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 56px;
+    padding: 9px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+    text-align: left;
+  }
+
+  .story-drawer .production-task-row:hover,
+  .story-drawer .production-task-row.is-current {
+    border-color: rgb(169 157 255 / 52%);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .story-drawer .production-task-copy {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .story-drawer .production-task-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .story-drawer .production-task-arrow {
+    color: var(--action-primary);
+    font-size: 11px;
+  }
+
+  .story-drawer .asset-library-toolbar {
+    grid-template-columns: minmax(0, 1fr) 120px auto;
+    padding: 14px 0 0;
+  }
+
+  .story-drawer .asset-library-list {
+    padding: 14px 0 24px;
+  }
+
+  .story-drawer .asset-card p {
+    color: var(--text-secondary);
+  }
+
+  .story-drawer .asset-editor {
+    padding: 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .story-drawer .asset-editor input,
+  .story-drawer .asset-editor select,
+  .story-drawer .asset-editor textarea {
+    background: var(--surface-control);
+  }
+
+  /* Keep the main reading and authoring routes on the same radius and focus language. */
+  :is(.creative-home, .director-page, .production-page, .manuscript-page) :where(.direction-card, .run-panel, .chapter-feed, .review-panel, .library-section, .production-queue-card, .candidate-history-preview) {
+    border-radius: 8px;
+  }
+
+  :is(.creative-home, .director-page, .production-page, .manuscript-page) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    color-scheme: dark;
+  }
+
+  @media (max-width: 760px) {
+    .auth-gate {
+      padding: 12px;
+    }
+
+    .auth-gate-shell {
+      grid-template-columns: 1fr;
+      min-height: auto;
+      max-width: 560px;
+    }
+
+    .auth-gate-rail {
+      min-height: 0;
+      padding: 22px;
+      border-right: 0;
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .auth-gate-rail-copy {
+      margin: 24px 0 0;
+    }
+
+    .auth-gate-rail h1 {
+      margin: 10px 0 12px;
+      font-size: 34px;
+    }
+
+    .auth-gate-rail p {
+      max-width: 48ch;
+      font-size: 12px;
+    }
+
+    .auth-gate-steps {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 22px;
+    }
+
+    .auth-gate-steps li {
+      grid-template-columns: 1fr;
+      gap: 4px;
+      min-height: 0;
+    }
+
+    .auth-gate-steps strong {
+      font-size: 11px;
+    }
+
+    .auth-gate-steps small {
+      font-size: 10px;
+    }
+
+    .auth-gate-card {
+      padding: 24px 20px 20px;
+    }
+
+    .auth-gate-footer {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .dialog-backdrop {
+      align-items: end;
+      padding: 12px;
+    }
+
+    :is(.provider-dialog, .data-dialog, .workflow-dialog) {
+      width: 100%;
+      max-height: calc(100dvh - 24px);
+    }
+
+    .story-drawer,
+    .memory-drawer {
+      width: 100vw;
+      border-radius: 0;
+    }
+
+    .story-drawer .asset-library-toolbar {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .story-drawer .asset-library-toolbar .primary-button,
+    .story-drawer .asset-library-toolbar .asset-extract-button {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .auth-gate-rail p {
+      display: none;
+    }
+
+    .auth-gate-steps small {
+      display: none;
+    }
+
+    .auth-gate-steps li {
+      padding: 7px;
+    }
+
+    .auth-gate-header {
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .auth-security-note {
+      align-self: flex-start;
+    }
+
+    .story-drawer,
+    .memory-drawer {
+      padding: 18px 16px;
+    }
+
+    .story-drawer .asset-library-toolbar,
+    .story-drawer .production-task-toolbar {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .story-drawer .asset-library-toolbar > *,
+    .story-drawer .production-task-toolbar > * {
+      width: 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-gate::before,
+    .auth-gate-shell,
+    .auth-form-transition,
+    .auth-spinner,
+    .command-palette,
+    .peek-preview,
+    .workflow-mode-trigger,
+    .workflow-mode-trigger > svg,
+    .preset-book-reader,
+    .preset-book-turn-page {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}

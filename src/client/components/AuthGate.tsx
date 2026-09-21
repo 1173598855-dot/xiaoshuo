@@ -88,7 +88,7 @@ export function AuthGate({
               登录
             </button>
             <button type="button" aria-pressed={isRegister} className={isRegister ? "is-active" : ""} onClick={() => onModeChange("register")}>
-              {isRegister ? "已有账号，返回登录" : "没有账号？使用邀请码注册"}
+              注册
             </button>
           </div>
 

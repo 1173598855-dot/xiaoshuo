@@ -22,7 +22,7 @@ test("runs the full idea director and production room in Electron", async () => 
     const invitationCode = createTestInvitationCode();
     await window.getByPlaceholder("输入桌面邀请码").fill(invitationCode);
     await window.getByRole("button", { name: "激活" }).click();
-    await window.getByRole("button", { name: "没有账号？使用邀请码注册" }).click();
+    await window.getByRole("button", { name: "注册" }).click();
     await window.getByPlaceholder("用户名").fill("desktop-writer");
     await window.getByPlaceholder("密码（至少 12 位）").fill("desktop-test-password-123");
     await window.getByPlaceholder("邀请码").fill(invitationCode);

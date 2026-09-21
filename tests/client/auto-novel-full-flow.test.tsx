@@ -265,7 +265,7 @@ describe("auto-novel full client flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "没有账号？使用邀请码注册" }));
+    fireEvent.click(await screen.findByRole("button", { name: "注册" }));
     fireEvent.change(screen.getByPlaceholderText("用户名"), { target: { value: "writer" } });
     fireEvent.change(screen.getByPlaceholderText("密码（至少 12 位）"), { target: { value: "a-strong-password-123" } });
     fireEvent.change(screen.getByPlaceholderText("邀请码"), { target: { value: "xiaoyi-test-code" } });

@@ -28,7 +28,7 @@ test("loads the packaged application into the new idea director", async () => {
     const invitationCode = createTestInvitationCode();
     await window.getByPlaceholder("输入桌面邀请码").fill(invitationCode);
     await window.getByRole("button", { name: "激活" }).click();
-    await window.getByRole("button", { name: "没有账号？使用邀请码注册" }).click();
+    await window.getByRole("button", { name: "注册" }).click();
     await window.getByPlaceholder("用户名").fill("packaged-writer");
     await window.getByPlaceholder("密码（至少 12 位）").fill("packaged-test-password-123");
     await window.getByPlaceholder("邀请码").fill(invitationCode);
@@ -52,4 +52,3 @@ function createTestInvitationCode(): string {
   const signature = sign(null, Buffer.from(payloadPart), privateKey).toString("base64url");
   return `XIAOYI1.${payloadPart}.${signature}`;
 }
-
