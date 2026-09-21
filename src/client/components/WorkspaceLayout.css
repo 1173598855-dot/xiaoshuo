@@ -2,6 +2,7 @@
 .workspace-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border-default); }
 .workspace-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 0 12px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--surface-panel); color: var(--text-primary); cursor: pointer; }
 .workspace-toolbar button[aria-pressed="true"] { background: var(--surface-accent); border-color: var(--action-primary); }
+.workspace-toolbar .workspace-reset { margin-left: auto; width: 34px; padding: 0; }
 .workspace-toolbar { padding-right: 16px; padding-left: 16px; background: rgb(255 255 255 / 2%); }
 .workspace-columns { display: grid; grid-template-columns: var(--workspace-left) minmax(0, 1fr) var(--workspace-right); align-items: stretch; min-height: 560px; }
 .workspace-navigation { grid-column: 1; }
