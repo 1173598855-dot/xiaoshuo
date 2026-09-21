@@ -78,4 +78,17 @@ describe("CommandPalette", () => {
     fireEvent.pointerDown(screen.getByRole("presentation"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("supports fuzzy matching for command labels", () => {
+    render(
+      <CommandPalette
+        open
+        onClose={vi.fn()}
+        actions={[{ id: "timeline", label: "打开故事时间线", description: "查看伏笔", icon: FileText, onSelect: vi.fn() }]}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索操作" }), { target: { value: "故时线" } });
+    expect(screen.getByRole("option", { name: /打开故事时间线/ })).toBeVisible();
+  });
 });

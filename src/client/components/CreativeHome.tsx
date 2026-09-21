@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
@@ -238,14 +238,21 @@ function IdeaForm({
     setPresetFeedback(`已载入「${preset.label}」写法，可以在上方继续修改。`);
   };
 
+  const surpriseMe = () => {
+    if (presets.length === 0) return;
+    const currentIndex = selectedPresetId ? presets.findIndex((preset) => preset.id === selectedPresetId) : -1;
+    applyPreset(presets[(currentIndex + 1 + presets.length) % presets.length]);
+  };
+
   const serviceUnavailable = Boolean(error && /(本地服务|无法打开|连接失败|请求失败)/.test(error));
 
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
-      <div className="idea-form-heading"><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div>
+      <div className="idea-form-heading"><div><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div><button className="idea-surprise-button" type="button" disabled={busy || presets.length === 0} onClick={surpriseMe}><Dices size={14} /> 换个灵感</button></div>
       <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); setPresetFeedback(null); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……" disabled={busy} />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
+        <small className="idea-length">{idea.length.toLocaleString()} 字</small>
         {idea ? <button className="text-button" type="button" disabled={busy} onClick={clearDraft}>清除草稿</button> : null}
       </div>
       <PresetFlipbook

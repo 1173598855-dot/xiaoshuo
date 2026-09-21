@@ -25,6 +25,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [readingProgress, setReadingProgress] = useState(0);
   useEffect(() => {
     if (preserveImportedChapters.current) {
       preserveImportedChapters.current = false;
@@ -45,6 +46,19 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
     if (!needle) return currentChapters;
     return currentChapters.filter((chapter) => `${chapter.title}\n${chapter.content}`.toLowerCase().includes(needle));
   }, [currentChapters, query]);
+  useEffect(() => {
+    const updateProgress = () => {
+      const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+      setReadingProgress(Math.round(Math.min(1, Math.max(0, window.scrollY / scrollable)) * 100));
+    };
+    updateProgress();
+    window.addEventListener("scroll", updateProgress, { passive: true });
+    window.addEventListener("resize", updateProgress);
+    return () => {
+      window.removeEventListener("scroll", updateProgress);
+      window.removeEventListener("resize", updateProgress);
+    };
+  }, [currentChapters.length, filteredChapters.length]);
   const exportBook = async (format: "markdown" | "txt" | "docx" | "epub") => {
     setExporting(format);
     setExportError(null);
@@ -101,6 +115,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
           <div className="manuscript-actions"><label className="secondary-button manuscript-import-button"><Upload size={15} /> {importing ? "导入中…" : "导入文本"}<input type="file" accept=".md,.markdown,.txt,.docx" disabled={importing || exporting !== null} onChange={(event) => void importManuscript(event)} /></label><label className="manuscript-template-select">排版<select aria-label="排版模板" value={printTemplate} onChange={(event) => setPrintTemplate(event.target.value as "paper" | "compact")}><option value="paper">典藏纸张</option><option value="compact">紧凑审校</option></select></label><button className="primary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("docx")}><Download size={15} /> {exporting === "docx" ? "导出中…" : "导出 DOCX"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("epub")}><Download size={15} /> {exporting === "epub" ? "导出中…" : "ePub"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("markdown")}><Download size={15} /> Markdown</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("txt")}><Download size={15} /> TXT</button><button className="ghost-button" type="button" onClick={() => window.print()}><Printer size={15} /> 打印 / PDF</button></div>
         </div>
       </header>
+      <div className="manuscript-reading-progress" role="progressbar" aria-label="正文阅读进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readingProgress}><span style={{ transform: `scaleX(${readingProgress / 100})` }} /></div>
       <WorkbenchStatusStrip
         items={[
           { id: "manuscript", label: "正式正文", detail: `${currentChapters.length} 章已采纳`, tone: "success", icon: FileText },

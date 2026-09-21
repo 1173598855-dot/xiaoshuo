@@ -15,12 +15,14 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Zap,
   Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
 
 export type WorkbenchPage = "home" | "directions" | "production" | "manuscript";
+export type MotionMode = "full" | "quiet";
 
 export interface WorkbenchQuickAction {
   id: string;
@@ -183,6 +185,8 @@ interface WorkbenchNavigationDrawerProps {
   onOpenSearch: () => void;
   onOpenMemory: () => void;
   onOpenCommandPalette: () => void;
+  motionMode?: MotionMode;
+  onToggleMotionMode?: () => void;
 }
 
 export function WorkbenchNavigationDrawer({
@@ -207,9 +211,13 @@ export function WorkbenchNavigationDrawer({
   onOpenSearch,
   onOpenMemory,
   onOpenCommandPalette,
+  motionMode = "full",
+  onToggleMotionMode,
 }: WorkbenchNavigationDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -218,6 +226,7 @@ export function WorkbenchNavigationDrawer({
       restoreFocusRef.current = null;
       return;
     }
+    setFilter("");
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = requestAnimationFrame(() => {
       drawerRef.current?.querySelector<HTMLElement>("button:not([disabled]), input, [href]")?.focus();
@@ -236,6 +245,11 @@ export function WorkbenchNavigationDrawer({
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
+        return;
+      }
+      if (event.key === "/" && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable))) {
+        event.preventDefault();
+        filterRef.current?.focus();
         return;
       }
       if (event.key !== "Tab") return;
@@ -277,6 +291,20 @@ export function WorkbenchNavigationDrawer({
     { id: "search", label: "全局搜索", detail: "搜索资料、章纲和正文", icon: Search, action: onOpenSearch },
     { id: "memory", label: "长篇记忆中心", detail: "审阅会注入生成的记忆", icon: Database, action: onOpenMemory },
   ];
+  const maintenanceItems: Array<{ id: string; label: string; detail: string; icon: LucideIcon; action: () => void }> = [
+    { id: "provider", label: "模型设置", detail: "Provider、模型与会话配置", icon: Settings2, action: onOpenProvider },
+    { id: "workflow", label: "工作流", detail: "单模型或多模型协作", icon: Workflow, action: onOpenWorkflow },
+    { id: "data", label: "数据管理", detail: "导入、导出与桌面备份", icon: Database, action: onOpenData },
+  ];
+  const normalizedFilter = filter.trim().toLocaleLowerCase();
+  const matches = (item: { label: string; detail: string }) => !normalizedFilter || `${item.label} ${item.detail}`.toLocaleLowerCase().includes(normalizedFilter);
+  const visiblePageItems = pageItems.filter(matches);
+  const visibleToolItems = toolItems.filter(matches);
+  const visibleMaintenanceItems = maintenanceItems.filter(matches);
+  const motionLabel = motionMode === "quiet" ? "安静动效" : "完整动效";
+  const motionDetail = motionMode === "quiet" ? "已降低装饰动画，保留状态反馈" : "保留书页、光晕和状态转场";
+  const motionVisible = Boolean(onToggleMotionMode) && matches({ label: motionLabel, detail: motionDetail });
+  const hasFilteredItems = visiblePageItems.length > 0 || visibleToolItems.length > 0 || visibleMaintenanceItems.length > 0 || motionVisible;
 
   return (
     <>
@@ -297,30 +325,39 @@ export function WorkbenchNavigationDrawer({
           <small>{runStatus ? `${statusLabel(runStatus)} · ${bookIdea ?? "生产状态已同步"}` : "从一句故事想法开始，所有草稿先留在本地。"}</small>
         </section>
 
+        <label className="workbench-drawer-filter">
+          <Search size={15} aria-hidden="true" />
+          <input ref={filterRef} aria-label="筛选工作区工具" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="筛选工具…（/）" />
+          {filter ? <button type="button" aria-label="清除工具筛选" onClick={() => { setFilter(""); filterRef.current?.focus(); }}>清除</button> : null}
+        </label>
+
         <nav className="workbench-drawer-scroll" aria-label="工作台页面">
-          <span className="workbench-drawer-section-label">工作台</span>
+          {visiblePageItems.length > 0 ? <><span className="workbench-drawer-section-label">工作台</span>
           <div className="workbench-drawer-list">
-            {pageItems.map((item) => {
+            {visiblePageItems.map((item) => {
               const Icon = item.icon;
               return <button className={`workbench-drawer-item${currentPage === item.page ? " is-active" : ""}`} type="button" key={item.page} disabled={item.disabled} aria-current={currentPage === item.page ? "page" : undefined} onClick={() => closeAnd(() => onNavigate(item.page))}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
             })}
-          </div>
+          </div></> : null}
 
-          <span className="workbench-drawer-section-label">作者工具</span>
+          {visibleToolItems.length > 0 ? <><span className="workbench-drawer-section-label">作者工具</span>
           <div className="workbench-drawer-list">
-            {toolItems.map((item) => {
+            {visibleToolItems.map((item) => {
               const Icon = item.icon;
               return <button className="workbench-drawer-item" type="button" key={item.id} disabled={!hasBook} onClick={() => closeAnd(item.action)}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
             })}
-            <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenAssetLibrary)}><span className="workbench-drawer-item-icon"><Library size={16} /></span><span><strong>资产库</strong><small>保存可复用的人物、世界与文风</small></span><ChevronRight size={15} aria-hidden="true" /></button>
-          </div>
+            {matches({ label: "资产库", detail: "保存可复用的人物、世界与文风" }) ? <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenAssetLibrary)}><span className="workbench-drawer-item-icon"><Library size={16} /></span><span><strong>资产库</strong><small>保存可复用的人物、世界与文风</small></span><ChevronRight size={15} aria-hidden="true" /></button> : null}
+          </div></> : null}
 
-          <span className="workbench-drawer-section-label">设置与维护</span>
+          {visibleMaintenanceItems.length > 0 ? <><span className="workbench-drawer-section-label">设置与维护</span>
           <div className="workbench-drawer-list">
-            <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenProvider)}><span className="workbench-drawer-item-icon"><Settings2 size={16} /></span><span><strong>模型设置</strong><small>Provider、模型与会话配置</small></span><ChevronRight size={15} aria-hidden="true" /></button>
-            <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenWorkflow)}><span className="workbench-drawer-item-icon"><Workflow size={16} /></span><span><strong>工作流</strong><small>单模型或多模型协作</small></span><ChevronRight size={15} aria-hidden="true" /></button>
-            <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenData)}><span className="workbench-drawer-item-icon"><Database size={16} /></span><span><strong>数据管理</strong><small>导入、导出与桌面备份</small></span><ChevronRight size={15} aria-hidden="true" /></button>
-          </div>
+            {visibleMaintenanceItems.map((item) => {
+              const Icon = item.icon;
+              return <button className="workbench-drawer-item" type="button" key={item.id} onClick={() => closeAnd(item.action)}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
+            })}
+            {motionVisible && onToggleMotionMode ? <button className={`workbench-drawer-item workbench-motion-item${motionMode === "quiet" ? " is-active" : ""}`} type="button" aria-pressed={motionMode === "quiet"} onClick={onToggleMotionMode}><span className="workbench-drawer-item-icon"><Zap size={16} /></span><span><strong>{motionLabel}</strong><small>{motionDetail}</small></span><ChevronRight size={15} aria-hidden="true" /></button> : null}
+          </div></> : null}
+          {!hasFilteredItems ? <p className="workbench-drawer-empty">没有匹配的工作区工具。</p> : null}
         </nav>
         <footer className="workbench-drawer-footer">
           <button className="workbench-drawer-command" type="button" onClick={() => closeAnd(onOpenCommandPalette)}><Command size={15} /><span>打开快速操作</span><kbd>⌘K</kbd></button>

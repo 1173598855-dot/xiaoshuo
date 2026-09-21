@@ -1549,6 +1549,231 @@
   }
 }
 
+@layer polish {
+  .workflow-assignment-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .workflow-assignment-tools .ghost-button {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+
+  .workflow-assignment-tools small {
+    color: var(--text-secondary);
+    font-size: 10px;
+  }
+
+  .reasoning-presets {
+    display: inline-flex;
+    align-self: start;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .reasoning-presets button {
+    min-height: 27px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 5px;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    font-size: 10px;
+  }
+
+  .reasoning-presets button:hover,
+  .reasoning-presets button:focus-visible,
+  .reasoning-presets button.is-active {
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 14%);
+  }
+
+  @media (max-width: 620px) {
+    .workflow-assignment-tools { align-items: stretch; flex-direction: column; }
+    .workflow-assignment-tools .ghost-button { align-self: start; }
+  }
+}
+
+@layer polish {
+  /* Contextual navigation: searchable like a command surface, still readable like a drawer. */
+  .workbench-drawer-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0 4px;
+    padding: 0 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    background: var(--surface-control);
+  }
+
+  .workbench-drawer-filter:focus-within {
+    border-color: var(--action-primary);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 12%);
+  }
+
+  .workbench-drawer-filter input {
+    min-width: 0;
+    flex: 1;
+    min-height: 38px;
+    border: 0;
+    outline: 0;
+    color: var(--text-primary);
+    background: transparent;
+    font-size: 12px;
+  }
+
+  .workbench-drawer-filter input::placeholder { color: #817c94; }
+
+  .workbench-drawer-filter button {
+    min-height: 24px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    font-size: 10px;
+  }
+
+  .workbench-drawer-filter button:hover,
+  .workbench-drawer-filter button:focus-visible {
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 12%);
+  }
+
+  .workbench-drawer-item.workbench-motion-item.is-active {
+    border-color: rgb(169 157 255 / 42%);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .workbench-drawer-empty {
+    margin: 22px 4px;
+    padding: 12px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  .command-list-heading {
+    padding: 2px 20px 7px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .idea-form-heading {
+    align-items: center;
+  }
+
+  .idea-form-heading > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .idea-form-heading > div > span {
+    color: var(--text-secondary);
+    font-size: 10px;
+  }
+
+  .idea-surprise-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    font-size: 10px;
+  }
+
+  .idea-surprise-button:hover:not(:disabled),
+  .idea-surprise-button:focus-visible {
+    border-color: var(--action-primary);
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .idea-surprise-button:disabled { cursor: not-allowed; opacity: .42; }
+
+  .idea-draft-status {
+    align-items: center;
+  }
+
+  .idea-length {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+  }
+
+  .manuscript-reading-progress {
+    position: sticky;
+    z-index: 19;
+    top: 72px;
+    width: min(1200px, calc(100% - 32px));
+    height: 3px;
+    margin: -1px auto 0;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 7%);
+    pointer-events: none;
+  }
+
+  .manuscript-reading-progress span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--action-primary);
+    box-shadow: 0 0 12px rgb(169 157 255 / 55%);
+    transform-origin: left center;
+    transition: transform 180ms ease-out;
+  }
+
+  html[data-motion-mode="quiet"] .creative-cursor-grid,
+  html[data-motion-mode="quiet"] .black-hole-backdrop {
+    opacity: .035;
+  }
+
+  html[data-motion-mode="quiet"] .preset-book-turn-page,
+  html[data-motion-mode="quiet"] .preset-book-cover,
+  html[data-motion-mode="quiet"] .shelf-book,
+  html[data-motion-mode="quiet"] .book-object,
+  html[data-motion-mode="quiet"] .manuscript-reading-progress span {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  @media (max-width: 620px) {
+    .idea-form-heading { align-items: flex-start; gap: 8px; }
+    .idea-surprise-button { min-height: 34px; }
+    .manuscript-reading-progress { top: 68px; width: calc(100% - 24px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .manuscript-reading-progress span { transition: none; }
+  }
+}
+
 /* Unified surface pass: auth, drawers, dialogs and secondary workspaces share one desk. */
 @layer polish {
   /* Login and registration stay one responsive surface; registration only adds fields. */

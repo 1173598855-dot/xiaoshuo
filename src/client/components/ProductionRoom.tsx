@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
@@ -15,6 +15,9 @@ import { AssetLibraryPanel, type CreativeAsset } from "./AssetLibraryPanel";
 import { ProductionTaskPanel } from "./ProductionTaskPanel";
 import { ChapterWorkspace } from "./ChapterWorkspace";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
+import type { StoryPulseState } from "./StoryPulse";
+
+const StoryPulse = lazy(() => import("./StoryPulse").then(({ StoryPulse: component }) => ({ default: component })));
 
 interface ProductionRoomProps {
   review?: ReactNode;
@@ -90,6 +93,15 @@ export function ProductionRoom({
   const total = book.chapterPlans.length;
   const status = run?.run.status ?? "ready";
   const progress = total > 0 ? Math.round((accepted / total) * 100) : 0;
+  const stageOrder = ["foundation", "outline", "draft", "accept"] as const;
+  const currentStage = run?.run.stage ?? "foundation";
+  const currentStageIndex = Math.max(0, stageOrder.indexOf(currentStage as typeof stageOrder[number]));
+  const pulseItems = stageOrder.map((stage, index) => ({
+    id: stage,
+    label: { foundation: "基础设定", outline: "卷章规划", draft: "逐章写作", accept: "正式成书" }[stage],
+    detail: stage === currentStage && run?.run.status === "failed" ? "需要作者处理" : stage === currentStage ? statusLabel(status) : index < currentStageIndex ? "已完成" : "等待进入",
+    state: (run?.run.status === "failed" && stage === currentStage ? "blocked" : index < currentStageIndex ? "done" : stage === currentStage ? "active" : "upcoming") as StoryPulseState,
+  }));
   const estimatedTokens = Math.ceil((run?.acceptedChapters.reduce((sum, chapter) => sum + chapter.content.length, 0) ?? 0) / 4);
   return (
     <main className="production-page">
@@ -128,6 +140,7 @@ export function ProductionRoom({
         </div>
         <div className="production-stat"><strong>{progress}%</strong><span>{accepted} / {total || "—"} 章已完成</span></div>
       </section>
+      <Suspense fallback={<div className="story-pulse story-pulse-loading" aria-hidden="true" />}><StoryPulse items={pulseItems} /></Suspense>
       <section className="production-grid">
         <div className="run-panel">
           <div className="panel-heading"><h2>生产进度</h2><StatusBadge status={status} /></div>

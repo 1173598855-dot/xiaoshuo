@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type PointerEvent } from "react";
 import { ArrowUpRight, BookOpen, Library, List } from "lucide-react";
 import type { Book } from "../../shared/auto-novel";
 import "./BookShelf.css";
@@ -14,6 +14,18 @@ export function BookShelf({ books, onOpenBook }: {
     const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.setTimeout(() => onOpenBook(book), reducedMotion ? 0 : 220);
   };
+  const tiltBook = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "touch") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5;
+    const y = (event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5;
+    event.currentTarget.style.setProperty("--book-tilt-x", `${y * -3.5}deg`);
+    event.currentTarget.style.setProperty("--book-tilt-y", `${x * 4}deg`);
+  };
+  const resetTilt = (event: PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.style.setProperty("--book-tilt-x", "0deg");
+    event.currentTarget.style.setProperty("--book-tilt-y", "0deg");
+  };
   return <section className="library-section" aria-labelledby="library-title">
     <div className="section-heading">
       <div><h2 id="library-title">继续你的故事</h2><p className="shelf-description">{books.length} 部作品 · 每一个世界，都从这里继续</p></div>
@@ -24,7 +36,7 @@ export function BookShelf({ books, onOpenBook }: {
     </div>
     {books.length === 0 ? <div className="empty-library"><BookOpen size={20} /><span>还没有作品，从上面的想法开始。</span></div> :
       <div className={`story-shelf story-shelf--${view}`}>
-        {books.map((book) => <button className={`shelf-book${openingId === book.id ? " is-opening" : ""}`} type="button" key={book.id} aria-label={`打开作品：${book.title}`} aria-busy={openingId === book.id} onClick={() => openBook(book)}>
+        {books.map((book) => <button className={`shelf-book${openingId === book.id ? " is-opening" : ""}`} type="button" key={book.id} aria-label={`打开作品：${book.title}`} aria-busy={openingId === book.id} onPointerMove={tiltBook} onPointerLeave={resetTilt} onClick={() => openBook(book)}>
           <span className="book-object" aria-hidden="true">
             <span className="book-object-pages" />
             <span className="book-object-spine">{book.title}</span>

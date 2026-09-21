@@ -28,6 +28,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
 
   await page.getByRole("button", { name: /选择这条路/ }).first().click();
   await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "故事生产路径" })).toBeVisible();
   await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "章节上下文" })).toBeVisible();
@@ -107,6 +108,8 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await expect(page.getByRole("dialog", { name: "模型工作流" })).toBeVisible();
   await page.getByRole("combobox", { name: "模型工作流模式" }).click();
   await page.getByRole("option", { name: /多模型协作/ }).click();
+  await expect(page.getByRole("button", { name: /用当前模型填充全部角色/ })).toBeVisible();
+  await page.getByRole("button", { name: /用当前模型填充全部角色/ }).click();
   await page.getByRole("button", { name: "应用工作流" }).click();
   await page.getByRole("textbox", { name: "故事想法" }).fill("一个会在凌晨移动的城市");
   await page.getByLabel("方向数量").fill("5");
@@ -122,6 +125,9 @@ test("opens the author navigation drawer and preserves focus on close", async ({
   const drawer = page.getByRole("dialog", { name: "工作区导航" });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole("button", { name: "故事起点" })).toHaveAttribute("aria-current", "page");
+  await drawer.getByRole("textbox", { name: "筛选工作区工具" }).fill("模型");
+  await expect(drawer.getByRole("button", { name: /模型设置/ })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: /故事时间线/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
   await expect(trigger).toBeFocused();

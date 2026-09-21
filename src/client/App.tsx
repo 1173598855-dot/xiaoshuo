@@ -39,12 +39,13 @@ import { AuthGate, type AuthMode, type AuthStatus } from "./components/AuthGate"
 import { ActivationGate } from "./components/ActivationGate";
 import { AssetLibraryPanel, type CreativeAsset } from "./components/AssetLibraryPanel";
 import { storeAccessToken } from "./access-token";
-import { WorkbenchNavigationDrawer, type WorkbenchPage } from "./components/WorkbenchChrome";
+import { WorkbenchNavigationDrawer, type MotionMode, type WorkbenchPage } from "./components/WorkbenchChrome";
 
 const ManuscriptView = lazy(() => import("./components/ManuscriptView").then(({ ManuscriptView: component }) => ({ default: component })));
 const AuthoringHubPanel = lazy(() => import("./components/AuthoringHubPanel").then(({ AuthoringHubPanel: component }) => ({ default: component })));
 
 type Page = WorkbenchPage;
+const MOTION_MODE_KEY = "xiaoyi.motion-mode.v1";
 
 export function App() {
   const autoApi = useMemo(() => {
@@ -89,11 +90,20 @@ export function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [invitationCodeInput, setInvitationCodeInput] = useState("");
   const [invitationError, setInvitationError] = useState<string | null>(null);
+  const [motionMode, setMotionMode] = useState<MotionMode>(readMotionMode);
   useEffect(() => {
     if (authRetryAfter <= 0) return;
     const timer = window.setInterval(() => setAuthRetryAfter((current) => Math.max(0, current - 1)), 1_000);
     return () => window.clearInterval(timer);
   }, [authRetryAfter]);
+  useEffect(() => {
+    document.documentElement.dataset.motionMode = motionMode;
+    try {
+      window.localStorage.setItem(MOTION_MODE_KEY, motionMode);
+    } catch {
+      // Motion preference is an enhancement; a storage failure must not block the desk.
+    }
+  }, [motionMode]);
   const providerConfig = useMemo<ProviderConfig | null>(() => {
     if (!providerSettings || providerSettings.platform !== "web") return null;
     return resolveProviderSettings(providerSettings, providers)?.config ?? null;
@@ -526,6 +536,7 @@ export function App() {
   const commandActions: readonly CommandAction[] = [
     { id: "workflow", label: "配置模型工作流", description: "选择单模型或多模型角色编排", icon: Workflow, shortcut: "W", onSelect: () => setWorkflowOpen(true) },
     { id: "provider", label: "打开模型设置", description: "管理 Provider、模型与会话凭据", icon: Settings2, shortcut: "P", onSelect: () => setProviderOpen(true) },
+    { id: "motion", label: motionMode === "quiet" ? "开启完整动效" : "切换安静动效", description: "控制书页、光晕和状态转场的强度", icon: Sparkles, onSelect: () => setMotionMode((current) => current === "quiet" ? "full" : "quiet") },
     ...(page === "home" ? [{ id: "new-story", label: "开始新故事", description: "把一个想法交给自动导演", icon: Sparkles, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() }] : []),
     ...(page === "directions" ? [
       { id: "auto-select", label: "自动选择方向", description: "采用排名第一的方向并开始生产", icon: GitBranch, shortcut: "A", onSelect: () => void autoSelectDirection() },
@@ -567,6 +578,8 @@ export function App() {
     onOpenSearch={() => openProductionTool(() => setSearchOpen(true))}
     onOpenMemory={() => openProductionTool(() => setMemoryOpen(true))}
     onOpenCommandPalette={() => { setNavigationOpen(false); setCommandOpen(true); }}
+    motionMode={motionMode}
+    onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
   />;
   const assetPanel = assetOpen ? <AssetLibraryPanel sourceBook={page === "home" ? null : bookDetails} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => {
     if (page === "home") {
@@ -614,4 +627,15 @@ function errorMessage(error: unknown, fallback = "操作失败，请稍后重试
 function makeId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function readMotionMode(): MotionMode {
+  if (typeof window === "undefined") return "full";
+  try {
+    const saved = window.localStorage.getItem(MOTION_MODE_KEY);
+    if (saved === "quiet" || saved === "full") return saved;
+  } catch {
+    // Fall through to the system preference.
+  }
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "quiet" : "full";
 }

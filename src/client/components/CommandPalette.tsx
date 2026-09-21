@@ -16,6 +16,8 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
+const RECENT_ACTIONS_KEY = "xiaoyi.command-recent.v1";
+
 export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -27,12 +29,31 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
   } | null>(null);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [recentIds, setRecentIds] = useState<string[]>(readRecentActionIds);
 
   const filtered = useMemo(() => actions.filter((action) =>
-    `${action.label} ${action.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-  ), [actions, query]);
+    scoreCommand(action, query) > 0,
+  ).sort((left, right) => {
+    const leftRecent = recentIds.indexOf(left.id);
+    const rightRecent = recentIds.indexOf(right.id);
+    if (leftRecent >= 0 || rightRecent >= 0) {
+      if (leftRecent < 0) return 1;
+      if (rightRecent < 0) return -1;
+      if (leftRecent !== rightRecent) return leftRecent - rightRecent;
+    }
+    return scoreCommand(right, query) - scoreCommand(left, query);
+  }), [actions, query, recentIds]);
   const execute = (action: CommandAction | undefined) => {
     if (!action) return;
+    setRecentIds((current) => {
+      const next = [action.id, ...current.filter((id) => id !== action.id)].slice(0, 5);
+      try {
+        window.localStorage.setItem(RECENT_ACTIONS_KEY, JSON.stringify(next));
+      } catch {
+        // Recent actions are a convenience; execution must not depend on storage.
+      }
+      return next;
+    });
     onClose();
     action.onSelect();
   };
@@ -139,6 +160,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
           />
           <kbd>ESC</kbd>
         </div>
+        <div className="command-list-heading" aria-live="polite">{query.trim() ? `${filtered.length} 个匹配操作` : recentIds.length > 0 ? "最近使用优先" : "全部操作"}</div>
         <div className="command-list" id="command-palette-options" role="listbox" aria-label="可用操作">
           {filtered.length === 0 ? (
             <div className="command-empty">没有匹配的操作</div>
@@ -167,4 +189,28 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
       </section>
     </div>
   );
+}
+
+function readRecentActionIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(RECENT_ACTIONS_KEY) ?? "[]") as unknown;
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function scoreCommand(action: CommandAction, query: string): number {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return 1;
+  const haystack = `${action.label} ${action.description}`.toLocaleLowerCase();
+  if (haystack.includes(needle)) return 3;
+  let cursor = 0;
+  for (const character of needle) {
+    cursor = haystack.indexOf(character, cursor);
+    if (cursor < 0) return 0;
+    cursor += 1;
+  }
+  return 1;
 }

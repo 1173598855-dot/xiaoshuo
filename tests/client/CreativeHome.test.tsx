@@ -62,6 +62,14 @@ describe("CreativeHome author entry", () => {
     expect(screen.getAllByRole("status").find((status) => status.textContent?.includes("已载入"))).toBeDefined();
   });
 
+  it("can seed a new idea without leaving the author form", () => {
+    renderHome();
+    fireEvent.click(screen.getByRole("button", { name: /换个灵感/ }));
+
+    expect(screen.getByRole("textbox", { name: "故事想法" })).not.toHaveValue("");
+    expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("字"))).toBe(true);
+  });
+
   it("turns a local service failure into an actionable retry state", () => {
     const onRetry = vi.fn();
     render(

@@ -518,6 +518,9 @@ export function ProviderDialog({
               <option value="medium">中</option>
               <option value="high">高（更慢、更耗额度）</option>
             </select>
+            <div className="reasoning-presets" role="group" aria-label="思考等级快捷选择">
+              {([['off', '快速'], ['medium', '平衡'], ['high', '深思']] as const).map(([value, label]) => <button className={reasoningLevel === value ? "is-active" : ""} type="button" key={value} aria-pressed={reasoningLevel === value} onClick={() => setReasoningLevel(value)}>{label}</button>)}
+            </div>
           </label>
 
           {selectedProvider?.requiresApiKey || selectedProvider?.apiKeyOptional ? (

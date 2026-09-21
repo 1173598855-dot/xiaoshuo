@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Copy, X } from "lucide-react";
 
 import {
   MODEL_ROLES,
@@ -212,6 +212,11 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
     setAssignments((current) => ({ ...current, [role]: { ...current[role], [field]: next } }));
   };
 
+  const fillAllAssignments = () => {
+    setAssignments(Object.fromEntries(MODEL_ROLES.map((role) => [role, { providerId, model }])) as Record<ModelRole, AssignmentDraft>);
+    setError(null);
+  };
+
   const submit = async () => {
     try {
       if (platform === "desktop") {
@@ -265,6 +270,7 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
           ) : (
             <div className="workflow-assignment-list">
               {MODEL_ROLES.map((role) => <div className="workflow-assignment" key={role}><strong>{roleLabels[role]}</strong><select aria-label={`${roleLabels[role]}服务商`} value={assignments[role].providerId} onChange={(event) => updateAssignment(role, "providerId", event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select><input aria-label={`${roleLabels[role]}模型 ID`} value={assignments[role].model} onChange={(event) => updateAssignment(role, "model", event.target.value)} placeholder="模型 ID" /></div>)}
+              <div className="workflow-assignment-tools"><button className="ghost-button" type="button" onClick={fillAllAssignments}><Copy size={14} /> 用当前模型填充全部角色</button><small>先统一跑通，再按角色微调</small></div>
               <small className="muted-label">至少配置两个角色；需要密钥的跨服务商角色，请先在模型设置中分别保存凭据。</small>
             </div>
           )}

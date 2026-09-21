@@ -48,6 +48,8 @@
 
 登录、注册、桌面激活、模型设置、工作流、数据管理、命令面板和作者抽屉统一复用近黑 surface、紫色 action、8px 控件圆角、暗色状态反馈和一致的 `focus-visible` 焦点环；注册态仅保留“登录 / 注册”双标签，邀请码与密码强度说明放在表单上下文中。详细的本轮界面收敛记录见 [`2026-09-21-auth-surface-unification.md`](docs/superpowers/plans/2026-09-21-auth-surface-unification.md)。
 
+前端动效继续采用“有状态才动”的原则：工作区导航可筛选、快速操作会记录最近使用、首页灵感册支持一键换灵感、书架提供触摸安全的指针景深、生产室展示 Anime.js 故事脉冲、正文显示阅读进度；作者可以在导航抽屉切换完整/安静动效。五个公开参考库的检索、许可边界和落地清单见 [`2026-09-21-motion-library-upgrade.md`](docs/superpowers/plans/2026-09-21-motion-library-upgrade.md)。
+
 参考的产品方向是 [AI-Novel-Writing-Assistant](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant)，本项目没有复制其代码或资源。
 
 ## 环境

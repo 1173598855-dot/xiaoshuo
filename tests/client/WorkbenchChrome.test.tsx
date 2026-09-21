@@ -33,6 +33,8 @@ function drawerProps() {
     onOpenSearch: vi.fn(),
     onOpenMemory: vi.fn(),
     onOpenCommandPalette: vi.fn(),
+    motionMode: "full" as const,
+    onToggleMotionMode: vi.fn(),
   };
 }
 
@@ -78,5 +80,18 @@ describe("WorkbenchChrome", () => {
     render(<WorkbenchStatusStrip live items={[{ id: "run", label: "生产状态", detail: "生产中", tone: "accent" }]} />);
     expect(screen.getByRole("status")).toHaveTextContent("生产状态");
     expect(screen.getByRole("status")).toHaveTextContent("生产中");
+  });
+
+  it("filters drawer tools and exposes the motion preference", () => {
+    const props = drawerProps();
+    render(<WorkbenchNavigationDrawer {...props} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "筛选工作区工具" }), { target: { value: "时间线" } });
+    expect(screen.getByRole("button", { name: /故事时间线/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /模型设置/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /清除工具筛选/ }));
+    fireEvent.click(screen.getByRole("button", { name: /完整动效/ }));
+    expect(props.onToggleMotionMode).toHaveBeenCalledTimes(1);
   });
 });

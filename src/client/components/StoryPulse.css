@@ -1,0 +1,135 @@
+.story-pulse {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.story-pulse-heading,
+.story-pulse-track,
+.story-pulse-step,
+.story-pulse-copy {
+  display: flex;
+}
+
+.story-pulse-heading {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.story-pulse-heading span {
+  color: var(--action-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.story-pulse-heading strong {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.story-pulse-track {
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-pulse-step {
+  position: relative;
+  flex: 1;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.story-pulse-node {
+  z-index: 1;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--surface-panel);
+}
+
+.story-pulse-step.is-done .story-pulse-node {
+  border-color: rgb(123 216 181 / 48%);
+  color: var(--state-success);
+  background: rgb(123 216 181 / 10%);
+}
+
+.story-pulse-step.is-active .story-pulse-node {
+  border-color: var(--action-primary);
+  color: var(--action-primary);
+  background: rgb(169 157 255 / 12%);
+  box-shadow: 0 0 0 4px rgb(169 157 255 / 8%);
+}
+
+.story-pulse-step.is-blocked .story-pulse-node {
+  border-color: rgb(238 140 158 / 48%);
+  color: var(--state-danger);
+  background: rgb(238 140 158 / 9%);
+}
+
+.story-pulse-copy {
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 10px;
+}
+
+.story-pulse-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-pulse-step:not(.is-active):not(.is-done) .story-pulse-copy strong { color: var(--text-secondary); }
+
+.story-pulse-copy small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-pulse-connector {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+  left: 24px;
+  height: 1px;
+  background: var(--border-default);
+  transform: translateX(8px);
+}
+
+.story-pulse-step.is-done .story-pulse-connector { background: rgb(123 216 181 / 42%); }
+.story-pulse-spinner { animation: story-pulse-spin 900ms linear infinite; }
+
+@keyframes story-pulse-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+  .story-pulse-track { overflow-x: auto; padding-bottom: 3px; }
+  .story-pulse-step { min-width: 128px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-pulse-spinner { animation: none; }
+}
+
+html[data-motion-mode="quiet"] .story-pulse-spinner { animation: none; }
