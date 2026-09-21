@@ -273,7 +273,7 @@ function PresetFlipbook({
 }) {
   const [open, setOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(() => Math.max(0, presets.findIndex((preset) => preset.id === selectedPresetId)));
-  const [pageMotion, setPageMotion] = useState<"next" | "prev" | null>(null);
+  const [turning, setTurning] = useState<{ direction: "next" | "prev"; from: StoryPreset; to: StoryPreset } | null>(null);
   const current = presets[pageIndex] ?? presets[0];
 
   useEffect(() => {
@@ -285,9 +285,21 @@ function PresetFlipbook({
   if (!current) return null;
 
   const turnPage = (direction: -1 | 1) => {
-    setPageMotion(direction === 1 ? "next" : "prev");
-    setPageIndex((index) => (index + direction + presets.length) % presets.length);
-    window.setTimeout(() => setPageMotion(null), 320);
+    if (turning) return;
+    const targetIndex = pageIndex + direction;
+    const target = presets[targetIndex];
+    if (!target) return;
+    const nextTurn = { direction: direction === 1 ? "next" : "prev", from: current, to: target } as const;
+    const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      setPageIndex(targetIndex);
+      return;
+    }
+    setTurning(nextTurn);
+    window.setTimeout(() => {
+      setPageIndex(targetIndex);
+      setTurning(null);
+    }, 340);
   };
 
   return (
@@ -312,35 +324,15 @@ function PresetFlipbook({
         <small>{open ? `${pageIndex + 1} / ${presets.length}` : "点击打开"}</small>
       </header>
       <div className="preset-book-stage">
-        <div className="preset-book-spread" aria-hidden={!open}>
-          <div className="preset-book-page preset-book-index-page">
-            <span className="preset-book-page-label">写作样本</span>
-            <div className="preset-book-index-list">
-              {presets.map((preset, index) => (
-                <button
-                  className={selectedPresetId === preset.id ? "is-selected" : ""}
-                  type="button"
-                  aria-label={preset.label}
-                  tabIndex={open ? 0 : -1}
-                  key={preset.id}
-                  disabled={disabled}
-                  onClick={() => { setPageIndex(index); onSelect(preset); }}
-                >
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{preset.label}</strong>
-                </button>
-              ))}
+        <div className="preset-book-reader" aria-hidden={!open}>
+          <div className="preset-book-page-layer preset-book-under-page">
+            <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={onSelect} />
+          </div>
+          {turning ? (
+            <div className={`preset-book-page-layer preset-book-turn-page turn-${turning.direction}`}>
+              <PresetBookPage preset={turning.from} pageNumber={pageIndex + 1} pageCount={presets.length} interactive={false} disabled={disabled} onSelect={onSelect} />
             </div>
-            <button className="preset-book-save" type="button" aria-label="保存为预设" tabIndex={open ? 0 : -1} disabled={disabled || !canSavePreset} onClick={onOpenSavePreset}>＋ 保存为预设</button>
-          </div>
-          <div className={`preset-book-page preset-book-detail-page${pageMotion ? ` turn-${pageMotion}` : ""}`}>
-            <span className="preset-book-page-label">{current.genre || "自定义写法"}</span>
-            <h3>{current.label}</h3>
-            <p>{current.idea}</p>
-            <div className="preset-book-meta"><span>{current.targetChapters} 章</span><span>每章约 {current.targetChapterCharacters.toLocaleString()} 字</span></div>
-            <small>{current.style}</small>
-            <button className="preset-book-use" type="button" tabIndex={open ? 0 : -1} disabled={disabled} onClick={() => onSelect(current)}><BookOpen size={14} /> 采用这套</button>
-          </div>
+          ) : null}
         </div>
         <button className="preset-book-cover" type="button" disabled={disabled} aria-expanded={open} onClick={() => setOpen(true)}>
           <span>小奕 · IDEAS</span>
@@ -351,11 +343,38 @@ function PresetFlipbook({
       </div>
       <footer className="preset-flipbook-controls">
         <button className="preset-flipbook-inline-save" type="button" aria-label="保存为预设" disabled={disabled || !canSavePreset} onClick={onOpenSavePreset}>保存为预设</button>
-        <button className="icon-button" type="button" aria-label="上一套灵感" title="上一套" disabled={!open || disabled || presets.length < 2} onClick={() => turnPage(-1)}><ChevronLeft size={16} /></button>
+        <button className="icon-button" type="button" aria-label="上一页" title="上一页" disabled={!open || disabled || pageIndex === 0 || Boolean(turning)} onClick={() => turnPage(-1)}><ChevronLeft size={16} /></button>
         {selectedPresetId ? <button className="preset-flipbook-current" type="button" aria-label={current.label} onClick={() => setOpen(true)}>{current.label}</button> : <span>三套内置写法 · 也可保存自己的方式</span>}
-        <button className="icon-button" type="button" aria-label="下一套灵感" title="下一套" disabled={!open || disabled || presets.length < 2} onClick={() => turnPage(1)}><ChevronRight size={16} /></button>
+        <button className="icon-button" type="button" aria-label="下一页" title="下一页" disabled={!open || disabled || pageIndex === presets.length - 1 || Boolean(turning)} onClick={() => turnPage(1)}><ChevronRight size={16} /></button>
       </footer>
     </section>
+  );
+}
+
+function PresetBookPage({
+  preset,
+  pageNumber,
+  pageCount,
+  interactive,
+  disabled,
+  onSelect,
+}: {
+  preset: StoryPreset;
+  pageNumber: number;
+  pageCount: number;
+  interactive: boolean;
+  disabled: boolean;
+  onSelect: (preset: StoryPreset) => void;
+}) {
+  return (
+    <article className="preset-book-page-content">
+      <header className="preset-book-page-topline"><span>第 {pageNumber} 页 / {pageCount}</span><span>{preset.genre || "自定义写法"}</span></header>
+      <h3>{preset.label}</h3>
+      <p>{preset.idea}</p>
+      <div className="preset-book-meta"><span>{preset.targetChapters} 章</span><span>每章约 {preset.targetChapterCharacters.toLocaleString()} 字</span></div>
+      <small>{preset.style}</small>
+      <button className="preset-book-use" type="button" tabIndex={interactive ? 0 : -1} disabled={disabled || !interactive} onClick={() => onSelect(preset)}><BookOpen size={14} /> 采用这套写法</button>
+    </article>
   );
 }
 

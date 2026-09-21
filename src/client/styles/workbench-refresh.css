@@ -1138,136 +1138,6 @@
     perspective: 1200px;
   }
 
-  .preset-book-spread {
-    display: grid;
-    grid-template-columns: .88fr 1.12fr;
-    min-height: 218px;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    background: var(--surface-control);
-    box-shadow: 0 18px 36px rgb(0 0 0 / 24%);
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    transition: opacity 260ms ease, transform 420ms var(--ease-studio);
-  }
-
-  .preset-flipbook:not(.is-open) .preset-book-spread {
-    opacity: .14;
-    transform: translateX(8px) scale(.97);
-    pointer-events: none;
-  }
-
-  .preset-book-page {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    min-width: 0;
-    padding: 16px;
-    background: rgb(255 255 255 / 2%);
-  }
-
-  .preset-index-page {
-    border-right: 1px solid var(--border-default);
-  }
-
-  .preset-book-index-list {
-    display: grid;
-    gap: 4px;
-  }
-
-  .preset-book-index-list button {
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    min-height: 30px;
-    padding: 4px 6px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .preset-book-index-list button:hover,
-  .preset-book-index-list button:focus-visible,
-  .preset-book-index-list button.is-selected {
-    border-color: rgb(169 157 255 / 26%);
-    color: var(--text-primary);
-    background: rgb(169 157 255 / 10%);
-  }
-
-  .preset-book-index-list button > span {
-    color: var(--action-primary);
-    font-family: var(--font-mono);
-    font-size: 10px;
-  }
-
-  .preset-book-index-list strong {
-    overflow: hidden;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .preset-book-save {
-    justify-self: start;
-    min-height: 30px;
-    margin-top: auto;
-    padding: 0 8px;
-    border: 1px dashed var(--border-strong);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    background: transparent;
-    font-size: 10px;
-    cursor: pointer;
-  }
-
-  .preset-book-save:hover:not(:disabled),
-  .preset-book-save:focus-visible {
-    border-color: var(--action-primary);
-    color: var(--text-primary);
-  }
-
-  .preset-book-save:disabled { opacity: .42; cursor: not-allowed; }
-
-  .preset-book-detail-page {
-    position: relative;
-    background: rgb(169 157 255 / 4%);
-  }
-
-  .preset-book-detail-page h3 {
-    margin: 2px 0 0;
-    color: var(--text-primary);
-    font-size: 17px;
-    letter-spacing: -.025em;
-  }
-
-  .preset-book-detail-page p {
-    display: -webkit-box;
-    min-height: 42px;
-    margin: 0;
-    overflow: hidden;
-    color: var(--text-primary);
-    font-size: 12px;
-    line-height: 1.6;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-
-  .preset-book-detail-page small {
-    display: -webkit-box;
-    overflow: hidden;
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1.5;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-
   .preset-book-meta {
     display: flex;
     flex-wrap: wrap;
@@ -1361,19 +1231,6 @@
     transform: rotateY(-168deg);
   }
 
-  .preset-book-detail-page.turn-next { animation: preset-page-next 320ms var(--ease-studio); }
-  .preset-book-detail-page.turn-prev { animation: preset-page-prev 320ms var(--ease-studio); }
-
-  @keyframes preset-page-next {
-    from { opacity: .25; transform: translateX(14px) rotateY(-8deg); }
-    to { opacity: 1; transform: translateX(0) rotateY(0); }
-  }
-
-  @keyframes preset-page-prev {
-    from { opacity: .25; transform: translateX(-14px) rotateY(8deg); }
-    to { opacity: 1; transform: translateX(0) rotateY(0); }
-  }
-
   .preset-flipbook-controls {
     min-height: 30px;
   }
@@ -1425,22 +1282,127 @@
   .preset-flipbook-inline-save:disabled { opacity: .38; cursor: not-allowed; }
 
   @media (max-width: 620px) {
-    .preset-book-stage,
-    .preset-book-spread { min-height: 300px; }
-    .preset-book-spread { grid-template-columns: 1fr; }
-    .preset-book-index-page { border-right: 0; border-bottom: 1px solid var(--border-default); }
-    .preset-book-page { padding: 13px; }
+    .preset-book-stage { min-height: 300px; }
     .preset-book-cover strong { font-size: 23px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .preset-book-spread,
     .preset-book-cover,
-    .preset-book-detail-page,
     .preset-flipbook-controls .icon-button {
       animation: none;
       transition: none;
     }
     .preset-flipbook.is-open .preset-book-cover { transform: none; }
+  }
+
+  /* The open book is a single paper stack: each turn reveals exactly one next page. */
+  .preset-book-reader {
+    position: relative;
+    min-height: 218px;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-control);
+    box-shadow: 0 18px 36px rgb(0 0 0 / 24%);
+  }
+
+  .preset-book-page-layer {
+    position: absolute;
+    inset: 0;
+    min-width: 0;
+  }
+
+  .preset-book-under-page { z-index: 1; }
+
+  .preset-book-turn-page {
+    z-index: 2;
+    transform-origin: left center;
+    backface-visibility: hidden;
+    box-shadow: 12px 0 24px rgb(0 0 0 / 20%);
+  }
+
+  .preset-book-turn-page.turn-prev {
+    transform-origin: right center;
+    box-shadow: -12px 0 24px rgb(0 0 0 / 20%);
+  }
+
+  .preset-book-turn-page.turn-next { animation: preset-real-turn-next 340ms var(--ease-studio) both; }
+  .preset-book-turn-page.turn-prev { animation: preset-real-turn-prev 340ms var(--ease-studio) both; }
+
+  @keyframes preset-real-turn-next {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(-180deg); }
+  }
+
+  @keyframes preset-real-turn-prev {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(180deg); }
+  }
+
+  .preset-book-page-content {
+    display: grid;
+    align-content: start;
+    gap: 9px;
+    height: 100%;
+    padding: 18px 20px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  .preset-book-page-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--action-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .preset-book-page-content h3 {
+    margin: 6px 0 0;
+    color: var(--text-primary);
+    font-size: 21px;
+    letter-spacing: -.035em;
+  }
+
+  .preset-book-page-content p {
+    display: -webkit-box;
+    min-height: 42px;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.65;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .preset-book-page-content small {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.55;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .preset-book-page-content .preset-book-meta { margin-top: 2px; }
+  .preset-book-page-content .preset-book-use { margin-top: auto; }
+
+  @media (max-width: 620px) {
+    .preset-book-reader { min-height: 300px; }
+    .preset-book-page-content { padding: 16px; }
+    .preset-book-page-content h3 { font-size: 18px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .preset-book-turn-page,
+    .preset-book-reader,
+    .preset-book-cover {
+      animation: none;
+      transition: none;
+    }
   }
 }
