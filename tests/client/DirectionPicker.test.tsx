@@ -34,4 +34,12 @@ describe("DirectionPicker", () => {
     fireEvent.keyDown(selectButton, { key: " " });
     expect(screen.queryByRole("dialog", { name: "预览方向：午夜迁徙" })).toBeNull();
   });
+
+  it("opens Peek with Enter for keyboard users", () => {
+    render(<DirectionPicker directions={[direction]} busy={false} onSelect={vi.fn()} onBack={vi.fn()} />);
+
+    fireEvent.keyDown(screen.getByRole("article", { name: "预览方向：午夜迁徙" }), { key: "Enter" });
+
+    expect(screen.getByRole("dialog", { name: "预览方向：午夜迁徙" })).toBeVisible();
+  });
 });

@@ -24,13 +24,13 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
         <span className="stage-label"><Compass size={14} /> {directions.length} 条路，选一条</span>
         <h1>你的故事可以这样开始</h1>
         <p>这些不是角色卡。它们是 {directions.length} 种整本书的命运：选定以后，AI 会自动把它写下去。</p>
-        <span className="peek-hint">聚焦方向卡片后按 Space 查看详情</span>
+        <span className="peek-hint">聚焦方向卡片后按 Space / Enter 查看详情</span>
         {onAutoSelect ? <button className="primary-button direction-auto-button" type="button" disabled={busy || directions.length === 0} onClick={onAutoSelect}><Play size={15} /> 自动选第一方向并开写</button> : null}
       </section>
       <section className="direction-grid" aria-label="故事方向">
         {directions.map((direction) => (
           <SpotlightCard className="direction-spotlight-shell" key={direction.id}>
-          <article className="direction-card" tabIndex={0} aria-label={`预览方向：${direction.title}`} onKeyDown={(event) => { if (event.target !== event.currentTarget || event.key !== " ") return; event.preventDefault(); setPeekDirection(direction); }}>
+          <article className="direction-card" tabIndex={0} aria-label={`预览方向：${direction.title}`} onKeyDown={(event) => { if (event.target !== event.currentTarget || ![" ", "Enter"].includes(event.key)) return; event.preventDefault(); setPeekDirection(direction); }}>
             <div className="direction-card-top">
               <span className="direction-index">{String(direction.rank).padStart(2, "0")}</span>
               <span className="direction-type"><Sparkles size={13} /> {direction.genre}</span>
