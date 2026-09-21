@@ -7,6 +7,7 @@ import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
 import { CursorGrid } from "./CursorGrid";
 import { SpotlightCard } from "./SpotlightCard";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
+import { ThreeBookModel } from "./ThreeBookModel";
 
 interface CreativeHomeProps {
   books: readonly Book[];
@@ -325,6 +326,7 @@ function PresetFlipbook({
       </header>
       <div className="preset-book-stage">
         <div className="preset-book-reader" aria-hidden={!open}>
+          <ThreeBookModel open={open} turnDirection={turning?.direction ?? null} />
           <div className="preset-book-page-layer preset-book-under-page">
             <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={onSelect} />
           </div>
