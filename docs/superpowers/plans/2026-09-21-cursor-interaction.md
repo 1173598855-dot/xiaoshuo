@@ -13,4 +13,3 @@
 - 光晕只在 `hover: hover` + `pointer: fine` 的设备显示；触摸端不依赖 hover。
 - `prefers-reduced-motion: reduce` 下关闭光晕和脉冲；按钮原有 hover 与 focus-visible 状态继续可用。
 - 没有复制 Vibe Hub 的颜色、品牌或源码，只采用通用 pointer feedback 语义并使用小奕现有紫色 tokens。
-
