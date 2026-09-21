@@ -1,6 +1,4 @@
 .black-hole-backdrop {
-  --black-hole-x: 0px;
-  --black-hole-y: 0px;
   position: fixed;
   z-index: -1;
   top: clamp(-72px, -4vh, -32px);
@@ -13,9 +11,7 @@
   mix-blend-mode: screen;
   -webkit-mask-image: radial-gradient(ellipse at center, #000 0 48%, transparent 82%);
   mask-image: radial-gradient(ellipse at center, #000 0 48%, transparent 82%);
-  transform: translate3d(var(--black-hole-x), var(--black-hole-y), 0) rotate(-5deg) scale(1.08);
-  animation: black-hole-breathe 18s ease-in-out infinite alternate;
-  will-change: transform;
+  transform: rotate(-5deg) scale(1.08);
 }
 
 .black-hole-backdrop img {
@@ -24,11 +20,6 @@
   height: 100%;
   object-fit: cover;
   filter: saturate(.82) contrast(1.08) brightness(.82);
-}
-
-@keyframes black-hole-breathe {
-  from { transform: translate3d(var(--black-hole-x), var(--black-hole-y), 0) rotate(-5deg) scale(1.08); }
-  to { transform: translate3d(calc(var(--black-hole-x) - 10px), calc(var(--black-hole-y) + 5px), 0) rotate(-3deg) scale(1.12); }
 }
 
 @media (max-width: 620px) {
@@ -40,16 +31,8 @@
   }
 }
 
-@media (hover: none), (pointer: coarse) {
-  .black-hole-backdrop {
-    animation: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .black-hole-backdrop {
     opacity: .1;
-    animation: none;
-    transform: rotate(-5deg) scale(1.08);
   }
 }

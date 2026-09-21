@@ -72,6 +72,19 @@ export function CreativeHome({
         </div>
       </section>
 
+      <section className="home-process" aria-labelledby="home-process-title">
+        <div className="home-process-heading">
+          <span className="home-process-kicker">写作路径</span>
+          <h2 id="home-process-title">从一句话，走到正式正文</h2>
+        </div>
+        <ol className="home-process-list">
+          <li className="is-current"><span>01</span><strong>写下想法</strong><small>一句话就能开始</small></li>
+          <li><span>02</span><strong>选择方向</strong><small>先看整本书的命运</small></li>
+          <li><span>03</span><strong>逐章生产</strong><small>每一步都有检查点</small></li>
+          <li><span>04</span><strong>审核成书</strong><small>只采纳你确认的内容</small></li>
+        </ol>
+      </section>
+
       <BookShelf books={books} onOpenBook={onOpenBook} />
     </main>
   );

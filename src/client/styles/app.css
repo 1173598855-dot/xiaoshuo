@@ -53,12 +53,6 @@ button {
   align-items: center;
 }
 
-.production-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
 .creative-header,
 .page-topbar,
 .section-heading,
@@ -290,61 +284,6 @@ button:disabled {
   border: 1px dashed var(--line-strong);
   border-radius: 7px;
   font-size: 13px;
-}
-
-.book-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.book-card {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 18px;
-  gap: 12px;
-  align-items: center;
-  min-height: 86px;
-  padding: 14px;
-  text-align: left;
-  color: var(--ink);
-  background: rgb(255 255 255 / 75%);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-.book-card:hover {
-  border-color: var(--pine);
-  box-shadow: var(--shadow);
-}
-
-.book-card-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  color: var(--pine);
-  background: var(--pine-soft);
-  border-radius: 6px;
-}
-
-.book-card-copy {
-  min-width: 0;
-}
-
-.book-card-copy strong,
-.book-card-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.book-card-copy small {
-  margin-top: 5px;
-  color: var(--ink-soft);
-  font-size: 11px;
 }
 
 .director-page,
@@ -766,11 +705,6 @@ button:disabled {
   align-items: center;
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
-}
-
-.chapter-feed-row strong,
-.chapter-feed-row small {
-  display: block;
 }
 
 .chapter-feed-row small {
@@ -1522,23 +1456,9 @@ button:disabled {
     flex-direction: column;
   }
 
-  .idea-form-footer .primary-button {
-    width: 100%;
-  }
-
   .page-topbar {
     align-items: start;
     gap: 12px;
-  }
-
-  .production-top-actions {
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .memory-drawer {
-    padding: 18px 15px;
   }
 
   .stage-progress {
@@ -1997,7 +1917,6 @@ button:disabled {
 .stage-notes,
 .idea-caption,
 .muted-label,
-.library-count,
 .direction-type,
 .stage-progress,
 .pane-kicker {
@@ -2131,10 +2050,6 @@ button:disabled {
   font-weight: 850;
   line-height: .87;
   letter-spacing: -.085em;
-}
-
-.stage-copy h2 span {
-  color: var(--accent);
 }
 
 .stage-copy p,
@@ -2286,21 +2201,6 @@ button:disabled {
   letter-spacing: -.06em;
 }
 
-.library-count {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--ink-soft);
-}
-
-.library-count strong {
-  color: var(--ink);
-  font-family: "Arial Narrow", "Inter Tight", Arial, sans-serif;
-  font-size: 32px;
-  line-height: 1;
-  letter-spacing: -.06em;
-}
-
 .empty-library {
   gap: 13px;
   min-height: 112px;
@@ -2311,61 +2211,6 @@ button:disabled {
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
-}
-
-.empty-library-index {
-  color: var(--accent);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 18px;
-}
-
-.book-grid {
-  display: block;
-  margin-top: 0;
-}
-
-.book-card {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) 24px;
-  gap: 15px;
-  width: 100%;
-  min-height: 92px;
-  padding: 18px 0;
-  color: var(--ink);
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-}
-
-.book-card:hover {
-  padding-inline: 10px;
-  background: var(--paper);
-  border-color: var(--ink);
-  box-shadow: none;
-}
-
-.book-card-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--accent);
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: 0;
-}
-
-.book-card-copy strong {
-  font-size: 15px;
-}
-
-.book-card-copy small {
-  margin-top: 7px;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
-.book-card > svg {
-  color: var(--accent);
 }
 
 /* Carry the editorial system through the review and manuscript surfaces. */
@@ -2854,10 +2699,6 @@ button:disabled {
     font-size: 20px;
   }
 
-  .brand-lockup {
-    gap: 11px;
-  }
-
   .brand-wordmark .eyebrow {
     font-size: 8px;
   }
@@ -2920,10 +2761,6 @@ button:disabled {
     gap: 13px;
   }
 
-  .idea-form-footer .primary-button {
-    width: 100%;
-  }
-
   .section-heading {
     align-items: start;
     gap: 14px;
@@ -2931,10 +2768,6 @@ button:disabled {
 
   .section-heading h2 {
     font-size: 29px;
-  }
-
-  .library-count strong {
-    font-size: 26px;
   }
 
   .direction-intro,
@@ -2950,10 +2783,6 @@ button:disabled {
 
   .manuscript-heading h1 {
     font-size: 58px;
-  }
-
-  .production-hero {
-    align-items: start;
   }
 
   .production-stat {
@@ -2991,9 +2820,6 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .memory-drawer {
-    padding: 18px 15px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3246,41 +3072,6 @@ select:focus-visible,
     font-size: 12px;
   }
 
-  .book-card-copy {
-    display: grid;
-    min-width: 0;
-    gap: 4px;
-  }
-
-  .book-card-copy small {
-    margin-top: 0;
-  }
-
-  .book-card-stage {
-    width: fit-content;
-    padding: 3px 7px;
-    border-radius: 999px;
-    color: var(--ink-soft);
-    background: var(--paper-muted);
-    font-size: 10px;
-    line-height: 1.2;
-  }
-
-  .book-card-stage.active {
-    color: var(--accent-dark);
-    background: rgb(0 113 227 / 9%);
-  }
-
-  .book-card-stage.done {
-    color: var(--success);
-    background: var(--pine-soft);
-  }
-
-  .book-card-stage.warning {
-    color: var(--danger);
-    background: var(--coral-soft);
-  }
-
   .review-memory-toolbar {
     display: flex;
     gap: 12px;
@@ -3360,7 +3151,6 @@ select:focus-visible,
 .brand-lockup,
 .production-title,
 .creative-header-actions,
-.production-top-actions,
 .stage-topline,
 .stage-label,
 .direction-card-top,
@@ -3412,7 +3202,6 @@ select:focus-visible,
 .stage-label,
 .stage-notes,
 .idea-form-heading span,
-.library-count span,
 .muted-label,
 .peek-hint,
 .command-palette-kicker,
@@ -3427,8 +3216,7 @@ select:focus-visible,
   text-transform: uppercase;
 }
 
-.creative-header-actions,
-.production-top-actions {
+.creative-header-actions {
   gap: 8px;
 }
 
@@ -3800,75 +3588,6 @@ select:focus-visible,
   letter-spacing: -.04em;
 }
 
-.library-count {
-  display: grid;
-  gap: 2px;
-  text-align: right;
-}
-
-.library-count strong {
-  font-size: 25px;
-  font-weight: 650;
-}
-
-.book-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-}
-
-.book-card {
-  display: flex;
-  align-items: center;
-  min-height: 86px;
-  gap: 13px;
-  width: 100%;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: #fff;
-  color: var(--ink);
-  cursor: pointer;
-  text-align: left;
-  transition: transform 180ms var(--ease-studio), box-shadow 180ms var(--ease-studio), border-color 180ms ease;
-}
-
-.book-card:hover {
-  border-color: rgb(0 113 227 / 35%);
-  box-shadow: var(--shadow-card);
-  transform: translateY(-3px);
-}
-
-.book-card-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  border-radius: 11px;
-  background: rgb(0 113 227 / 9%);
-  color: var(--accent);
-}
-
-.book-card-copy {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 4px;
-}
-
-.book-card-copy strong,
-.book-card-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.book-card-copy small {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
 .empty-library {
   display: flex;
   align-items: center;
@@ -3879,11 +3598,6 @@ select:focus-visible,
   color: var(--ink-soft);
   font-size: 14px;
   padding: 16px;
-}
-
-.empty-library-index {
-  color: var(--accent);
-  font-size: 24px;
 }
 
 .director-page,
@@ -4201,11 +3915,6 @@ select:focus-visible,
   border: 1px solid var(--line);
   border-radius: 50%;
   font-size: 11px;
-}
-
-.stage-row strong,
-.stage-row small {
-  display: block;
 }
 
 .stage-row strong {
@@ -4562,11 +4271,6 @@ select:focus-visible,
 }
 
 @media (max-width: 900px) {
-  .idea-stage,
-  .production-grid {
-    grid-template-columns: 1fr;
-  }
-
   .idea-stage {
     min-height: auto;
     gap: 42px;
@@ -4822,13 +4526,11 @@ select:focus-visible,
   }
 
   .header-note,
-  .creative-header-actions > .ghost-button:first-of-type,
-  .production-top-actions > .text-button:not(:last-child) {
+  .creative-header-actions > .ghost-button:first-of-type {
     display: none;
   }
 
-  .creative-header-actions,
-  .production-top-actions {
+  .creative-header-actions {
     margin-top: -3px;
   }
 
@@ -4884,10 +4586,6 @@ select:focus-visible,
   .section-heading {
     align-items: start;
     flex-direction: column;
-  }
-
-  .library-count {
-    text-align: left;
   }
 
   .direction-intro {
@@ -5724,22 +5422,6 @@ select:focus-visible,
     pointer-events: none;
   }
 
-  .creative-home::after {
-    position: fixed;
-    z-index: -1;
-    top: 12vh;
-    left: 7vw;
-    width: min(36vw, 560px);
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgb(99 214 198 / 62%), transparent);
-    box-shadow: 0 0 24px rgb(99 214 198 / 36%);
-    content: "";
-    opacity: .55;
-    transform-origin: left center;
-    animation: atlas-drift 14s ease-in-out infinite alternate;
-    pointer-events: none;
-  }
-
   .creative-cursor-grid {
     opacity: .82;
   }
@@ -5769,13 +5451,12 @@ select:focus-visible,
     color: var(--atlas-ink);
   }
 
-  .eyebrow,
-  .header-note,
-  .stage-topline,
-  .stage-notes,
-  .idea-form-heading > span,
-  .library-count,
-  .muted-label,
+.eyebrow,
+.header-note,
+.stage-topline,
+.stage-notes,
+.idea-form-heading > span,
+.muted-label,
   .peek-hint,
   .stage-progress {
     color: var(--atlas-muted);
@@ -5940,8 +5621,7 @@ select:focus-visible,
   }
 
   .creative-header .ghost-button:hover,
-  .page-topbar .text-button:hover,
-  .production-top-actions .text-button:hover {
+  .page-topbar .text-button:hover {
     color: var(--atlas-ink);
     background: rgb(255 255 255 / 10%);
   }
@@ -5958,20 +5638,6 @@ select:focus-visible,
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--atlas-line));
     content: "";
-  }
-
-  .book-card {
-    color: var(--atlas-ink);
-    border-color: var(--atlas-line);
-    background: rgb(17 29 47 / 74%);
-    transition: transform 180ms var(--ease-studio), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-  }
-
-  .book-card:hover {
-    border-color: rgb(231 133 82 / 68%);
-    background: rgb(26 42 64 / 86%);
-    box-shadow: 0 18px 40px rgb(0 0 0 / 24%);
-    transform: translateY(-4px);
   }
 
   .stage-copy > * {
@@ -5992,15 +5658,6 @@ select:focus-visible,
     animation: atlas-rise-in 620ms 220ms var(--ease-studio) both;
   }
 
-  .book-card {
-    animation: atlas-card-in 520ms var(--ease-studio) both;
-  }
-
-  .book-card:nth-child(1) { animation-delay: 300ms; }
-  .book-card:nth-child(2) { animation-delay: 350ms; }
-  .book-card:nth-child(3) { animation-delay: 400ms; }
-  .book-card:nth-child(4) { animation-delay: 450ms; }
-
   .direction-card,
   .production-grid > *,
   .manuscript-chapter {
@@ -6016,31 +5673,6 @@ select:focus-visible,
   .direction-card:nth-child(3),
   .production-grid > :nth-child(3),
   .manuscript-chapter:nth-child(3) { animation-delay: 380ms; }
-
-  .book-card-icon {
-    color: var(--atlas-teal);
-    border-color: rgb(99 214 198 / 38%);
-    background: rgb(99 214 198 / 8%);
-  }
-
-  .book-card-copy small,
-  .book-card-stage.quiet {
-    color: var(--atlas-muted);
-  }
-
-  .book-card-stage.active {
-    color: var(--atlas-teal);
-    background: rgb(99 214 198 / 11%);
-  }
-
-  .book-card-stage.done {
-    color: #8ee2a8;
-    background: rgb(142 226 168 / 12%);
-  }
-
-  .book-card > svg {
-    color: var(--atlas-copper);
-  }
 
   .director-page .direction-intro,
   .production-page .production-hero,
@@ -6775,11 +6407,6 @@ select:focus-visible,
     color: var(--atlas-muted);
   }
 
-  @keyframes atlas-drift {
-    from { opacity: .25; transform: scaleX(.72) translateX(0); }
-    to { opacity: .75; transform: scaleX(1.05) translateX(8vw); }
-  }
-
   @keyframes atlas-header-in {
     from { opacity: 0; transform: translateY(-14px); }
     to { opacity: 1; transform: translateY(0); }
@@ -6802,12 +6429,7 @@ select:focus-visible,
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .creative-home::after {
-      animation: none;
-    }
-
     .idea-form,
-    .book-card,
     .direction-card,
     .creative-header,
     .stage-copy > *,
@@ -6938,7 +6560,6 @@ select:focus-visible,
   .stage-topline,
   .stage-notes,
   .idea-form-heading > span,
-  .library-count,
   .muted-label,
   .peek-hint,
   .stage-progress,
@@ -6946,7 +6567,6 @@ select:focus-visible,
   .direction-intro p,
   .production-hero p,
   .manuscript-heading p,
-  .book-card-copy small,
   .chapter-feed-row small,
   .memory-mode-note,
   .production-telemetry {
@@ -6955,7 +6575,6 @@ select:focus-visible,
 
   .stage-label,
   .direction-index,
-  .book-card > svg,
   .feed-index,
   .stage-icon {
     color: var(--atlas-copper);
@@ -7059,7 +6678,6 @@ select:focus-visible,
     background: rgb(255 255 255 / 4%);
   }
 
-  .book-card,
   .direction-card,
   .run-panel,
   .chapter-feed,
@@ -7070,17 +6688,10 @@ select:focus-visible,
     box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
   }
 
-  .book-card:hover,
   .direction-card:hover,
   .direction-card:focus-within {
     border-color: rgb(169 157 255 / 58%);
     background: rgb(34 30 52 / 90%);
-  }
-
-  .book-card-icon {
-    border-color: rgb(169 157 255 / 38%);
-    color: var(--atlas-copper);
-    background: rgb(169 157 255 / 9%);
   }
 
   .empty-library,
@@ -7156,8 +6767,4 @@ select:focus-visible,
 
   .auth-gate-rail { background: #191725; }
 
-  .authoring-dock {
-    border-color: var(--atlas-line);
-    background: rgb(20 18 30 / 94%);
-  }
 }

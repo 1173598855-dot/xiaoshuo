@@ -1,0 +1,542 @@
+@layer polish {
+  /* A calmer writer's desk: quiet canvas, warm reading surface, one clear action color. */
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) {
+    background: var(--surface-canvas);
+  }
+
+  .creative-home {
+    width: min(100%, 1440px);
+    max-width: none;
+    padding: 22px clamp(20px, 4vw, 72px) 72px;
+  }
+
+  .creative-header,
+  .page-topbar {
+    position: sticky;
+    top: 14px;
+    z-index: 20;
+    width: min(100%, 1200px);
+    min-height: 58px;
+    margin: 0 auto;
+    padding: 10px 14px;
+    border: 1px solid rgb(169 157 255 / 16%);
+    border-radius: 10px;
+    background: rgb(17 16 25 / 94%);
+    box-shadow: 0 14px 34px rgb(0 0 0 / 24%);
+    backdrop-filter: blur(16px);
+  }
+
+  .creative-header-actions {
+    gap: 6px;
+  }
+
+  .creative-header .ghost-button,
+  .creative-header .command-trigger {
+    min-height: 34px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .brand-lockup,
+  .production-title {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    box-shadow: 3px 3px 0 var(--action-primary);
+    font-size: 19px;
+  }
+
+  .brand-wordmark h1,
+  .creative-header h1 {
+    font-size: 17px;
+    letter-spacing: -.025em;
+  }
+
+  .eyebrow,
+  .header-note {
+    font-size: 9px;
+    letter-spacing: .1em;
+  }
+
+  .idea-stage {
+    grid-template-columns: minmax(280px, .84fr) minmax(420px, 1.16fr);
+    gap: clamp(36px, 7vw, 96px);
+    width: min(100%, 1200px);
+    max-width: none;
+    margin: clamp(60px, 9vh, 96px) auto 64px;
+    align-items: center;
+  }
+
+  .stage-copy h2 {
+    max-width: 560px;
+    margin-top: 18px;
+    font-size: clamp(38px, 5vw, 62px);
+    line-height: 1.02;
+    text-wrap: balance;
+  }
+
+  .stage-copy p,
+  .direction-intro p,
+  .production-hero p,
+  .manuscript-heading p {
+    max-width: 56ch;
+    line-height: 1.7;
+  }
+
+  .idea-column {
+    min-width: 0;
+  }
+
+  .idea-spotlight-shell {
+    padding: 7px;
+    border-radius: 12px;
+    background: rgb(38 33 59 / 86%);
+    box-shadow: 0 26px 72px rgb(0 0 0 / 28%);
+  }
+
+  .idea-form,
+  .idea-spotlight-shell .idea-form {
+    padding: 20px;
+    border-radius: 8px;
+    background: var(--surface-panel);
+  }
+
+  .idea-form textarea {
+    min-height: 188px;
+    padding: 16px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 4%);
+    font-size: 16px;
+    line-height: 1.8;
+  }
+
+  .idea-form textarea:focus {
+    border-color: var(--action-primary);
+    box-shadow: 0 0 0 3px rgb(169 157 255 / 12%);
+    outline: none;
+  }
+
+  .idea-form-footer {
+    align-items: flex-end;
+  }
+
+  .idea-form-footer > span {
+    max-width: 24ch;
+    line-height: 1.5;
+  }
+
+  .form-error {
+    margin-top: 12px;
+    padding: 9px 11px;
+    border: 1px solid rgb(238 140 158 / 30%);
+    border-radius: 6px;
+    color: #f3b5c0;
+    background: rgb(238 140 158 / 8%);
+  }
+
+  .home-process {
+    display: grid;
+    grid-template-columns: minmax(190px, .7fr) minmax(0, 1.8fr);
+    gap: 28px;
+    align-items: center;
+    width: min(100%, 1200px);
+    margin: 0 auto 78px;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .home-process-heading h2 {
+    max-width: 18ch;
+    margin: 5px 0 0;
+    color: var(--text-primary);
+    font-size: 17px;
+    line-height: 1.35;
+    letter-spacing: -.02em;
+  }
+
+  .home-process-kicker {
+    color: var(--action-primary);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .home-process-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .home-process-list li {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-secondary);
+  }
+
+  .home-process-list li.is-current {
+    border-color: rgb(169 157 255 / 24%);
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 8%);
+  }
+
+  .home-process-list li > span {
+    color: var(--action-primary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+  }
+
+  .home-process-list strong {
+    font-size: 13px;
+  }
+
+  .home-process-list small {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .library-section {
+    width: min(100%, 1200px);
+    max-width: none;
+    margin: 0 auto;
+  }
+
+  .section-heading h2 {
+    font-size: 21px;
+    letter-spacing: -.02em;
+  }
+
+  .shelf-description {
+    margin-top: 5px;
+    font-size: 12px;
+  }
+
+  .empty-library {
+    min-height: 104px;
+    margin-top: 16px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 1.5%);
+  }
+
+  .story-shelf {
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .story-shelf--shelf {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+
+  .shelf-book {
+    gap: 17px;
+    padding: 20px 14px 15px;
+    border-radius: 7px;
+  }
+
+  .book-object {
+    width: 132px;
+    height: 180px;
+  }
+
+  .book-object-cover {
+    padding: 16px 13px;
+  }
+
+  .book-object-cover strong {
+    font-size: 19px;
+  }
+
+  .shelf-book-info {
+    gap: 5px;
+  }
+
+  .shelf-book-info > strong {
+    font-size: 14px;
+  }
+
+  .shelf-book-idea {
+    font-size: 12px;
+  }
+
+  .writing-workspace {
+    width: min(1240px, calc(100% - 40px));
+    margin-top: 30px;
+    border-radius: 8px;
+    background: rgb(26 24 38 / 94%);
+    box-shadow: 0 24px 70px rgb(0 0 0 / 26%);
+  }
+
+  .workspace-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    min-height: 54px;
+    padding: 8px 12px;
+    background: rgb(21 19 31 / 96%);
+    backdrop-filter: blur(14px);
+  }
+
+  .workspace-toolbar button {
+    min-height: 34px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+
+  .workspace-columns {
+    min-height: 610px;
+  }
+
+  .workspace-navigation,
+  .workspace-context {
+    padding: 18px 14px;
+    background: rgb(255 255 255 / 1.5%);
+  }
+
+  .workspace-navigation {
+    border-right: 1px solid var(--border-default);
+  }
+
+  .workspace-context {
+    border-left: 1px solid var(--border-default);
+  }
+
+  .workspace-navigation h2,
+  .workspace-context h2,
+  .workspace-reading h2 {
+    margin-top: 0;
+    letter-spacing: -.02em;
+  }
+
+  .workspace-chapter-list {
+    gap: 4px;
+    margin-top: 14px;
+  }
+
+  .workspace-chapter-list button {
+    gap: 4px;
+    min-height: 48px;
+    padding: 9px 10px;
+    border-radius: 5px;
+  }
+
+  .workspace-chapter-list button:hover,
+  .workspace-chapter-list button:focus-visible {
+    background: rgb(169 157 255 / 7%);
+  }
+
+  .workspace-chapter-list button[aria-current="page"] {
+    border-color: rgb(169 157 255 / 24%);
+    background: rgb(169 157 255 / 10%);
+  }
+
+  .workspace-document {
+    padding: 28px clamp(18px, 3vw, 36px);
+  }
+
+  .workspace-reading {
+    max-width: 68ch;
+  }
+
+  .workspace-reading .chapter-body,
+  .workspace-document .review-copy {
+    color: #e9e4dc;
+    font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+    font-size: 16px;
+    line-height: 2;
+  }
+
+  .workspace-tools {
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .workspace-tools .text-button {
+    justify-content: flex-start;
+    min-height: 34px;
+    padding: 0 8px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+
+  /* Writing tools should be immediately legible; keep motion for interaction, not page entry. */
+  .stage-copy > *,
+  .idea-column,
+  .library-section,
+  .shelf-book,
+  .direction-intro,
+  .production-hero,
+  .manuscript-heading,
+  .direction-card,
+  .production-grid > *,
+  .manuscript-chapter {
+    animation: none;
+  }
+
+  @media (max-width: 1100px) {
+    .creative-home {
+      padding-right: clamp(16px, 3vw, 32px);
+      padding-left: clamp(16px, 3vw, 32px);
+    }
+
+    .idea-stage {
+      grid-template-columns: minmax(250px, .8fr) minmax(360px, 1.2fr);
+      gap: 40px;
+    }
+
+    .home-process {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .home-process-heading h2 {
+      max-width: none;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .creative-home {
+      padding-top: 12px;
+      padding-bottom: 48px;
+    }
+
+    .creative-header,
+    .page-topbar {
+      top: 8px;
+      min-height: 50px;
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      font-size: 17px;
+    }
+
+    .creative-header h1 {
+      font-size: 15px;
+    }
+
+    .creative-header .eyebrow,
+    .header-note {
+      display: none;
+    }
+
+    .idea-stage {
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+      margin-top: 54px;
+      margin-bottom: 48px;
+      align-items: stretch;
+    }
+
+    .stage-copy h2 {
+      max-width: 9ch;
+      font-size: 43px;
+    }
+
+    .stage-copy p {
+      max-width: 38ch;
+      font-size: 13px;
+    }
+
+    .idea-form,
+    .idea-spotlight-shell .idea-form {
+      padding: 16px;
+    }
+
+    .idea-form textarea {
+      min-height: 152px;
+      font-size: 15px;
+    }
+
+    .idea-form-footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .idea-form-footer > span {
+      max-width: none;
+    }
+
+    .idea-form-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .idea-form-actions button {
+      min-height: 44px;
+    }
+
+    .home-process {
+      margin-bottom: 52px;
+      padding-top: 14px;
+    }
+
+    .home-process-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .home-process-list li {
+      min-height: 76px;
+      padding: 9px;
+    }
+
+    .home-process-list small {
+      white-space: normal;
+    }
+
+    .writing-workspace {
+      width: calc(100% - 24px);
+      margin-top: 22px;
+    }
+
+    .workspace-toolbar {
+      padding: 6px 8px;
+    }
+
+    .workspace-toolbar button {
+      min-height: 42px;
+      flex: 1;
+      padding: 0 8px;
+    }
+
+    .workspace-document {
+      padding: 18px 12px;
+    }
+
+    .workspace-navigation,
+    .workspace-context {
+      border-right: 0;
+      border-left: 0;
+      padding: 16px 12px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .creative-header,
+    .page-topbar,
+    .idea-spotlight-shell,
+    .shelf-book,
+    .book-object {
+      transition: none;
+    }
+  }
+}

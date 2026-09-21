@@ -43,4 +43,13 @@ describe("CreativeHome author entry", () => {
     expect(screen.getByRole("button", { name: "雨夜车站" })).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem("xiaoyi.idea-presets.v1") ?? "[]")).toEqual(expect.arrayContaining([expect.objectContaining({ label: "雨夜车站" })]));
   });
+
+  it("explains the path from an idea to an approved manuscript", () => {
+    renderHome();
+
+    expect(screen.getByRole("heading", { name: "从一句话，走到正式正文" })).toBeInTheDocument();
+    expect(screen.getByText("选择方向")).toBeInTheDocument();
+    expect(screen.getByText("逐章生产")).toBeInTheDocument();
+    expect(screen.getByText("审核成书")).toBeInTheDocument();
+  });
 });
