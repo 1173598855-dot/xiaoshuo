@@ -90,6 +90,7 @@ export function CursorGrid({
 }: CursorGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const spotlightRef = useRef<HTMLSpanElement>(null);
   const configRef = useRef<GridConfig>({
     cellSize,
     color,
@@ -126,7 +127,8 @@ export function CursorGrid({
   useEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
-    if (!container || !canvas) return undefined;
+    const spotlight = spotlightRef.current;
+    if (!container || !canvas || !spotlight) return undefined;
     if (typeof ResizeObserver === "undefined") return undefined;
     if (typeof window.matchMedia === "function" && !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return undefined;
 
@@ -289,10 +291,19 @@ export function CursorGrid({
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      if (reducedMotion) return;
+      if (!reducedMotion) {
+        spotlight.style.setProperty("--cursor-x", `${event.clientX}px`);
+        spotlight.style.setProperty("--cursor-y", `${event.clientY}px`);
+        spotlight.classList.add("is-visible");
+      }
       const [x, y] = toLocal(event);
+      if (reducedMotion) return;
       energize(x, y);
       wake();
+    };
+
+    const onPointerOut = (event: PointerEvent) => {
+      if (event.relatedTarget === null) spotlight.classList.remove("is-visible");
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -300,6 +311,9 @@ export function CursorGrid({
       if (reducedMotion || !config.clickPulse) return;
       const [x, y] = toLocal(event);
       pulses = [...pulses, { x, y, t0: performance.now() }].slice(-3);
+      spotlight.classList.remove("is-pulsing");
+      void spotlight.offsetWidth;
+      spotlight.classList.add("is-pulsing");
       wake();
     };
 
@@ -312,12 +326,14 @@ export function CursorGrid({
     wake();
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("pointerout", onPointerOut, { passive: true });
 
     return () => {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerout", onPointerOut);
       wakeRef.current = null;
     };
   }, [cellSize]);
@@ -328,6 +344,7 @@ export function CursorGrid({
 
   return (
     <div ref={containerRef} className={`cursor-grid${className ? ` ${className}` : ""}`} style={style} aria-hidden="true">
+      <span ref={spotlightRef} className="cursor-grid__spotlight" />
       <canvas ref={canvasRef} className="cursor-grid__canvas" />
     </div>
   );
