@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Library, Plus, Settings2, Sparkles, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
@@ -232,13 +232,14 @@ function IdeaForm({
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
         {idea ? <button className="text-button" type="button" disabled={busy} onClick={clearDraft}>清除草稿</button> : null}
       </div>
-      <div className="idea-presets" aria-label="创作预设">
-        <span className="idea-presets-label">快速起步</span>
-        {presets.map((preset) => (
-          <button className={`preset-chip${selectedPresetId === preset.id ? " active" : ""}`} type="button" key={preset.id} disabled={busy} onClick={() => { setIdea(preset.idea); setSelectedPresetId(preset.id); }}>{preset.label}</button>
-        ))}
-        {!presetEditorOpen ? <button className="preset-chip preset-save-trigger" type="button" disabled={busy || !idea.trim()} onClick={() => setPresetEditorOpen(true)}>保存为预设</button> : null}
-      </div>
+      <PresetFlipbook
+        presets={presets}
+        selectedPresetId={selectedPresetId}
+        disabled={busy}
+        onSelect={(preset) => { setIdea(preset.idea); setSelectedPresetId(preset.id); }}
+        onOpenSavePreset={() => setPresetEditorOpen(true)}
+        canSavePreset={Boolean(idea.trim())}
+      />
       {presetEditorOpen ? <div className="preset-editor"><input aria-label="预设名称" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="给这套写作方式起个名字" maxLength={32} autoFocus /><button className="secondary-button" type="button" disabled={busy || !presetName.trim()} onClick={savePreset}>保存预设</button><button className="text-button" type="button" onClick={() => setPresetEditorOpen(false)}>取消</button></div> : null}
       <label className="direction-count-control" htmlFor="direction-count">方向数量
         <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
@@ -252,6 +253,109 @@ function IdeaForm({
         </div>
       </div>
     </form>
+  );
+}
+
+function PresetFlipbook({
+  presets,
+  selectedPresetId,
+  disabled,
+  canSavePreset,
+  onSelect,
+  onOpenSavePreset,
+}: {
+  presets: readonly StoryPreset[];
+  selectedPresetId: string | null;
+  disabled: boolean;
+  canSavePreset: boolean;
+  onSelect: (preset: StoryPreset) => void;
+  onOpenSavePreset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pageIndex, setPageIndex] = useState(() => Math.max(0, presets.findIndex((preset) => preset.id === selectedPresetId)));
+  const [pageMotion, setPageMotion] = useState<"next" | "prev" | null>(null);
+  const current = presets[pageIndex] ?? presets[0];
+
+  useEffect(() => {
+    if (!selectedPresetId) return;
+    const nextIndex = presets.findIndex((preset) => preset.id === selectedPresetId);
+    if (nextIndex >= 0) setPageIndex(nextIndex);
+  }, [presets, selectedPresetId]);
+
+  if (!current) return null;
+
+  const turnPage = (direction: -1 | 1) => {
+    setPageMotion(direction === 1 ? "next" : "prev");
+    setPageIndex((index) => (index + direction + presets.length) % presets.length);
+    window.setTimeout(() => setPageMotion(null), 320);
+  };
+
+  return (
+    <section
+      className={`preset-flipbook${open ? " is-open" : ""}`}
+      aria-label="灵感册"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault();
+          setOpen(false);
+        } else if (open && event.key === "ArrowRight") {
+          event.preventDefault();
+          turnPage(1);
+        } else if (open && event.key === "ArrowLeft") {
+          event.preventDefault();
+          turnPage(-1);
+        }
+      }}
+    >
+      <header className="preset-flipbook-heading">
+        <div><span>灵感册</span><strong>翻一页，找到故事的起点</strong></div>
+        <small>{open ? `${pageIndex + 1} / ${presets.length}` : "点击打开"}</small>
+      </header>
+      <div className="preset-book-stage">
+        <div className="preset-book-spread" aria-hidden={!open}>
+          <div className="preset-book-page preset-book-index-page">
+            <span className="preset-book-page-label">写作样本</span>
+            <div className="preset-book-index-list">
+              {presets.map((preset, index) => (
+                <button
+                  className={selectedPresetId === preset.id ? "is-selected" : ""}
+                  type="button"
+                  aria-label={preset.label}
+                  tabIndex={open ? 0 : -1}
+                  key={preset.id}
+                  disabled={disabled}
+                  onClick={() => { setPageIndex(index); onSelect(preset); }}
+                >
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{preset.label}</strong>
+                </button>
+              ))}
+            </div>
+            <button className="preset-book-save" type="button" aria-label="保存为预设" tabIndex={open ? 0 : -1} disabled={disabled || !canSavePreset} onClick={onOpenSavePreset}>＋ 保存为预设</button>
+          </div>
+          <div className={`preset-book-page preset-book-detail-page${pageMotion ? ` turn-${pageMotion}` : ""}`}>
+            <span className="preset-book-page-label">{current.genre || "自定义写法"}</span>
+            <h3>{current.label}</h3>
+            <p>{current.idea}</p>
+            <div className="preset-book-meta"><span>{current.targetChapters} 章</span><span>每章约 {current.targetChapterCharacters.toLocaleString()} 字</span></div>
+            <small>{current.style}</small>
+            <button className="preset-book-use" type="button" tabIndex={open ? 0 : -1} disabled={disabled} onClick={() => onSelect(current)}><BookOpen size={14} /> 采用这套</button>
+          </div>
+        </div>
+        <button className="preset-book-cover" type="button" disabled={disabled} aria-expanded={open} onClick={() => setOpen(true)}>
+          <span>小奕 · IDEAS</span>
+          <strong>灵感册</strong>
+          <small>翻一页，选一个起点</small>
+          <BookOpen size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <footer className="preset-flipbook-controls">
+        <button className="preset-flipbook-inline-save" type="button" aria-label="保存为预设" disabled={disabled || !canSavePreset} onClick={onOpenSavePreset}>保存为预设</button>
+        <button className="icon-button" type="button" aria-label="上一套灵感" title="上一套" disabled={!open || disabled || presets.length < 2} onClick={() => turnPage(-1)}><ChevronLeft size={16} /></button>
+        {selectedPresetId ? <button className="preset-flipbook-current" type="button" aria-label={current.label} onClick={() => setOpen(true)}>{current.label}</button> : <span>三套内置写法 · 也可保存自己的方式</span>}
+        <button className="icon-button" type="button" aria-label="下一套灵感" title="下一套" disabled={!open || disabled || presets.length < 2} onClick={() => turnPage(1)}><ChevronRight size={16} /></button>
+      </footer>
+    </section>
   );
 }
 
