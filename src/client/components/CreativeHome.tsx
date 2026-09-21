@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
@@ -38,6 +38,23 @@ export function CreativeHome({
   onRetry,
   assetDraft,
 }: CreativeHomeProps) {
+  const processRef = useRef<HTMLOListElement>(null);
+  const [activeProcess, setActiveProcess] = useState(0);
+  const processLabels = ["写下想法", "选择方向", "逐章生产", "审核成书"];
+
+  useEffect(() => {
+    if (typeof window.IntersectionObserver !== "function" || !processRef.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+      const step = visible?.target instanceof HTMLElement ? Number(visible.target.dataset.processStep) : NaN;
+      if (Number.isInteger(step)) setActiveProcess(step);
+    }, { rootMargin: "-32% 0px -48% 0px", threshold: [0.1, 0.45, 0.8] });
+    processRef.current.querySelectorAll<HTMLElement>("[data-process-step]").forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <main className="creative-home">
       <CursorGrid className="creative-cursor-grid" />
@@ -91,12 +108,13 @@ export function CreativeHome({
         <div className="home-process-heading">
           <span className="home-process-kicker">写作路径</span>
           <h2 id="home-process-title">从一句话，走到正式正文</h2>
+          <span className="home-process-live" aria-live="polite">当前：{processLabels[activeProcess]}</span>
         </div>
-        <ol className="home-process-list">
-          <li className="is-current"><span>01</span><strong>写下想法</strong><small>一句话就能开始</small></li>
-          <li><span>02</span><strong>选择方向</strong><small>先看整本书的命运</small></li>
-          <li><span>03</span><strong>逐章生产</strong><small>每一步都有检查点</small></li>
-          <li><span>04</span><strong>审核成书</strong><small>只采纳你确认的内容</small></li>
+        <ol className="home-process-list" ref={processRef}>
+          <li className={activeProcess === 0 ? "is-current" : ""} data-process-step="0" aria-current={activeProcess === 0 ? "step" : undefined}><span>01</span><strong>写下想法</strong><small>一句话就能开始</small></li>
+          <li className={activeProcess === 1 ? "is-current" : ""} data-process-step="1" aria-current={activeProcess === 1 ? "step" : undefined}><span>02</span><strong>选择方向</strong><small>先看整本书的命运</small></li>
+          <li className={activeProcess === 2 ? "is-current" : ""} data-process-step="2" aria-current={activeProcess === 2 ? "step" : undefined}><span>03</span><strong>逐章生产</strong><small>每一步都有检查点</small></li>
+          <li className={activeProcess === 3 ? "is-current" : ""} data-process-step="3" aria-current={activeProcess === 3 ? "step" : undefined}><span>04</span><strong>审核成书</strong><small>只采纳你确认的内容</small></li>
         </ol>
       </section>
 
