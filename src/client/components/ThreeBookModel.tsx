@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import * as THREE from "three";
+import { useEffect, useRef, useState } from "react";
+import type * as THREE from "three";
 
 export type ThreeBookTurnDirection = "next" | "prev" | null;
 
@@ -22,8 +22,20 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const modelRef = useRef<BookModel | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [modelVersion, setModelVersion] = useState(0);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    modelRef.current = null;
+  }, []);
 
   useEffect(() => {
+    if (!open || modelRef.current || loadingRef.current) return;
     const root = rootRef.current;
     const canvas = canvasRef.current;
     if (!root || !canvas) return;
@@ -33,16 +45,17 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
       return;
     }
 
-    let model: BookModel | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    try {
-      const webglContext = canvas.getContext("webgl2", { antialias: true, alpha: true }) ?? canvas.getContext("webgl", { antialias: true, alpha: true });
-      if (!webglContext) {
+    loadingRef.current = true;
+    void import("three").then((THREE) => {
+      if (!mountedRef.current || modelRef.current) return;
+      const context = canvas.getContext("webgl2", { antialias: true, alpha: true }) ?? canvas.getContext("webgl", { antialias: true, alpha: true });
+      if (!context) {
         canvas.hidden = true;
         root.dataset.webgl = "unsupported";
         return;
       }
-      const renderer = new THREE.WebGLRenderer({ canvas, context: webglContext as WebGLRenderingContext, alpha: true, antialias: true, powerPreference: "high-performance" });
+
+      const renderer = new THREE.WebGLRenderer({ canvas, context: context as WebGLRenderingContext, alpha: true, antialias: true, powerPreference: "high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       const scene = new THREE.Scene();
@@ -96,11 +109,11 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
       turnGroup.add(turningPage);
       book.add(turnGroup);
 
-      model = { camera, renderer, coverGroup, turnGroup, scene, coverRotation: 0, turnRotation: 0 };
+      const model: BookModel = { camera, renderer, coverGroup, turnGroup, scene, coverRotation: 0, turnRotation: 0 };
       modelRef.current = model;
+      setModelVersion((version) => version + 1);
 
       const resize = () => {
-        if (!model) return;
         const rect = root.getBoundingClientRect();
         const width = Math.max(1, rect.width);
         const height = Math.max(1, rect.height);
@@ -110,6 +123,7 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
         renderer.render(scene, camera);
       };
       resize();
+      let resizeObserver: ResizeObserver | null = null;
       if (typeof ResizeObserver === "function") {
         resizeObserver = new ResizeObserver(resize);
         resizeObserver.observe(root);
@@ -117,7 +131,7 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
         window.addEventListener("resize", resize);
       }
 
-      return () => {
+      cleanupRef.current = () => {
         resizeObserver?.disconnect();
         window.removeEventListener("resize", resize);
         pageBlock.geometry.dispose();
@@ -132,13 +146,15 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
         spineMaterial.dispose();
         renderer.dispose();
         renderer.forceContextLoss();
-        modelRef.current = null;
       };
-    } catch {
+    }).catch(() => {
+      if (!mountedRef.current) return;
       canvas.hidden = true;
       root.dataset.webgl = "unsupported";
-    }
-  }, []);
+    }).finally(() => {
+      loadingRef.current = false;
+    });
+  }, [open]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -171,7 +187,7 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [open, turnDirection]);
+  }, [modelVersion, open, turnDirection]);
 
   return <div className="preset-book-3d-model" ref={rootRef} aria-hidden="true"><canvas ref={canvasRef} /></div>;
 }
