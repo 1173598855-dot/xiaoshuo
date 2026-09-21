@@ -31,6 +31,18 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "章节上下文" })).toBeVisible();
+  await page.getByRole("button", { name: "连续性雷达" }).click();
+  await expect(page.getByRole("complementary", { name: "故事连续性雷达" })).toBeVisible();
+  for (const view of ["时间线", "关系流", "状态板", "AI 上下文", "总览"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(page.getByRole("button", { name: view, exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("complementary", { name: "故事连续性雷达" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole("button", { name: "关闭故事连续性雷达" }).click();
+  await expect(page.getByRole("complementary", { name: "故事连续性雷达" })).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 960 });
   for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
