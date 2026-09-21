@@ -63,4 +63,19 @@ describe("CommandPalette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes shortcuts and closes from a pointer interaction on the backdrop", () => {
+    const onClose = vi.fn();
+    render(
+      <CommandPalette
+        open
+        onClose={onClose}
+        actions={[{ id: "workflow", label: "打开工作流", description: "配置角色", icon: FileText, shortcut: "W", onSelect: vi.fn() }]}
+      />,
+    );
+
+    expect(screen.getByRole("option", { name: /打开工作流/ })).toHaveAttribute("aria-keyshortcuts", "W");
+    fireEvent.pointerDown(screen.getByRole("presentation"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

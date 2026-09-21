@@ -105,14 +105,14 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
   if (!open) return null;
 
   return (
-    <div className="command-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="command-backdrop" role="presentation" onPointerDown={onClose}>
       <section
         className="command-palette"
         data-command-palette
         role="dialog"
         aria-modal="true"
         aria-labelledby="command-palette-title"
-        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <header className="command-palette-header">
           <div className="command-palette-title">
@@ -152,6 +152,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
                 id={`command-${action.id}`}
                 role="option"
                 aria-selected={index === selectedIndex}
+                aria-keyshortcuts={action.shortcut}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={() => execute(action)}
               >
