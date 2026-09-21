@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
@@ -18,6 +18,9 @@ interface CreativeHomeProps {
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
   onOpenAssetLibrary?: () => void;
+  onOpenData?: () => void;
+  motionMode?: "full" | "quiet";
+  onToggleMotionMode?: () => void;
   onOpenCommandPalette?: () => void;
   onOpenNavigation?: () => void;
   onRetry?: () => void;
@@ -33,6 +36,9 @@ export function CreativeHome({
   onConfigureProvider,
   onConfigureWorkflow,
   onOpenAssetLibrary,
+  onOpenData,
+  motionMode = "full",
+  onToggleMotionMode,
   onOpenCommandPalette,
   onOpenNavigation,
   onRetry,
@@ -74,6 +80,10 @@ export function CreativeHome({
               { id: "provider", label: "模型设置", icon: Settings2, onSelect: onConfigureProvider },
               { id: "workflow", label: "工作流", icon: Workflow, onSelect: onConfigureWorkflow },
               ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
+              ...(onOpenData ? [{ id: "data", label: "数据管理", icon: Database, onSelect: onOpenData }] : []),
+              { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => document.querySelector<HTMLButtonElement>(".preset-book-cover")?.click() },
+              { id: "new-idea", label: "新故事", icon: Plus, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() },
+              ...(onToggleMotionMode ? [{ id: "motion", label: motionMode === "quiet" ? "完整动效" : "安静动效", icon: Sparkles, onSelect: onToggleMotionMode }] : []),
             ]}
             onOpenNavigation={onOpenNavigation}
             onOpenCommandPalette={onOpenCommandPalette}

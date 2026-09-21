@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Settings2, Square, Terminal } from "lucide-react";
+import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Search, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -113,6 +113,12 @@ export function ProductionRoom({
               { id: "review", label: "候选审核", icon: CheckCircle2, onSelect: () => document.getElementById("chapter-review-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
               { id: "memory", label: "记忆中心", icon: History, onSelect: onOpenMemory },
               { id: "timeline", label: "故事时间线", icon: GitBranch, onSelect: onOpenTimeline },
+              { id: "authoring-hub", label: "创作中枢", icon: Activity, onSelect: onOpenAuthoringHub },
+              { id: "search", label: "全局搜索", icon: Search, onSelect: onOpenSearch },
+              { id: "task-center", label: "任务中心", icon: History, onSelect: () => setTaskOpen(true) },
+              ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
+              { id: "provider", label: "模型设置", icon: Settings2, onSelect: onConfigureProvider },
+              { id: "workflow", label: "工作流", icon: Terminal, onSelect: onConfigureWorkflow },
             ]}
             onOpenNavigation={onOpenNavigation}
             onOpenCommandPalette={onOpenCommandPalette}

@@ -638,6 +638,8 @@
     width: max-content;
     min-width: 190px;
     max-width: min(280px, calc(100vw - 24px));
+    max-height: min(70vh, 420px);
+    overflow-y: auto;
     padding: 6px;
     border: 1px solid var(--border-strong);
     border-radius: 7px;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CreativeHome } from "../../src/client/components/CreativeHome";
@@ -68,6 +68,32 @@ describe("CreativeHome author entry", () => {
 
     expect(screen.getByRole("textbox", { name: "故事想法" })).not.toHaveValue("");
     expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("字"))).toBe(true);
+  });
+
+  it("exposes a useful overflow menu instead of a single leftover action", () => {
+    render(
+      <CreativeHome
+        books={[]}
+        busy={false}
+        error={null}
+        onCreateIdea={vi.fn()}
+        onOpenBook={vi.fn()}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+        onOpenAssetLibrary={vi.fn()}
+        onOpenData={vi.fn()}
+        motionMode="full"
+        onToggleMotionMode={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    const menu = screen.getByRole("menu", { name: "更多快捷操作" });
+    expect(within(menu).getByRole("menuitem", { name: "资产库" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "数据管理" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "打开灵感册" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: /新故事/ })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "安静动效" })).toBeVisible();
   });
 
   it("turns a local service failure into an actionable retry state", () => {
