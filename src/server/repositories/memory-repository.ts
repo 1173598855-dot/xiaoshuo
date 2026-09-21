@@ -515,13 +515,12 @@ export class MemoryRepository {
     let compressedSelected = [...selected];
     if (JSON.stringify(compressedSelected.map(({ entry }) => entry)).length > MAX_MEMORY_CONTEXT_CHARACTERS) {
       compressedSelected = compressedSelected.map(({ entry, score }) => {
-        if (entry.kind === "fact" && entry.content.statement.length > 200) {
+        const isFact = entry.kind === "fact";
+        if (isFact && (entry.content as { statement: string }).statement.length > 200) {
+          const content = entry.content as { statement: string; evidence: string | null };
           const truncated: MemoryEntry = {
             ...entry,
-            content: {
-              ...entry.content,
-              statement: entry.content.statement.slice(0, 150) + "...",
-            },
+            content: { ...content, statement: content.statement.slice(0, 150) + "..." },
           };
           return { entry: truncated, score };
         }

@@ -8,7 +8,7 @@ export interface ExportServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryService?: {
-    list: (bookId: string, filter?: Partial<{ kind: string }>) => readonly unknown[];
+    list: (bookId: string, filter?: { kind?: string; includeArchived?: boolean; status?: string }) => readonly unknown[];
   };
 }
 
@@ -24,13 +24,12 @@ export function exportBook(
   const chapters = dependencies.productionRepository
     .getChapters(bookId)
     .filter(({ revision }) => revision > 0);
-  if (format === "docx") return toDocxDataUrl(details.book.title, chapters, details.book.description);
-  if (format === "epub") return toEpubDataUrl(details.book.title, chapters, details.book.description);
+  if (format === "docx") return toDocxDataUrl(details.book.title, chapters);
+  if (format === "epub") return toEpubDataUrl(details.book.title, chapters);
   if (format === "markdown") {
     return [
       "# " + details.book.title,
       "",
-      details.book.description ? details.book.description + "\n\n---\n\n" : "",
       ...chapters.flatMap((chapter) => [
         "## " + chapter.title,
         "",
@@ -42,12 +41,8 @@ export function exportBook(
   if (format === "txt") {
     return [
       details.book.title,
-      details.book.description ? details.book.description : "",
-      ...chapters.flatMap((chapter) => [
-        chapter.title,
-        chapter.content,
-        "",
-      ]),
+      "",
+      ...chapters.flatMap((chapter) => [chapter.title, "", chapter.content, ""]),
     ].join("\n");
   }
   throw new UnsupportedExportFormatError();
