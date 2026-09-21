@@ -326,7 +326,7 @@ function PresetFlipbook({
       </header>
       <div className="preset-book-stage">
         <div className="preset-book-reader" aria-hidden={!open}>
-          <ThreeBookModel open={open} turnDirection={turning?.direction ?? null} />
+          <ThreeBookModel open={open} turnDirection={turning?.direction ?? null} coverTitle="灵感册" />
           <div className="preset-book-page-layer preset-book-under-page">
             <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={onSelect} />
           </div>

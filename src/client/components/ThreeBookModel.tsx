@@ -6,6 +6,7 @@ export type ThreeBookTurnDirection = "next" | "prev" | null;
 interface ThreeBookModelProps {
   open: boolean;
   turnDirection: ThreeBookTurnDirection;
+  coverTitle?: string;
 }
 
 interface BookModel {
@@ -18,7 +19,7 @@ interface BookModel {
   turnRotation: number;
 }
 
-export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
+export function ThreeBookModel({ open, turnDirection, coverTitle = "灵感册" }: ThreeBookModelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const modelRef = useRef<BookModel | null>(null);
@@ -77,14 +78,47 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
 
       const pageMaterial = new THREE.MeshStandardMaterial({ color: 0x756d80, roughness: 0.78, metalness: 0.02 });
       const paperEdgeMaterial = new THREE.MeshStandardMaterial({ color: 0xbcb5c8, roughness: 0.9, metalness: 0 });
-      const coverMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2445, roughness: 0.54, metalness: 0.14 });
+      const artworkCanvas = document.createElement("canvas");
+      artworkCanvas.width = 720;
+      artworkCanvas.height = 960;
+      const artworkContext = artworkCanvas.getContext("2d");
+      let coverTexture: THREE.CanvasTexture | null = null;
+      if (artworkContext) {
+        artworkContext.fillStyle = "#2a2445";
+        artworkContext.fillRect(0, 0, artworkCanvas.width, artworkCanvas.height);
+        artworkContext.strokeStyle = "#a99dff";
+        artworkContext.lineWidth = 6;
+        artworkContext.strokeRect(34, 34, artworkCanvas.width - 68, artworkCanvas.height - 68);
+        artworkContext.fillStyle = "#a99dff";
+        artworkContext.font = "600 22px sans-serif";
+        artworkContext.textAlign = "center";
+        artworkContext.fillText("XIAOYI · IDEAS", artworkCanvas.width / 2, 190);
+        artworkContext.fillStyle = "#f4f2fb";
+        artworkContext.font = "700 58px sans-serif";
+        artworkContext.fillText(coverTitle, artworkCanvas.width / 2, 500);
+        artworkContext.fillStyle = "#a5a1b4";
+        artworkContext.font = "400 20px sans-serif";
+        artworkContext.fillText("翻一页，找到故事的起点", artworkCanvas.width / 2, 570);
+        coverTexture = new THREE.CanvasTexture(artworkCanvas);
+        coverTexture.colorSpace = THREE.SRGBColorSpace;
+      }
+      const coverMaterial = new THREE.MeshStandardMaterial(coverTexture
+        ? { map: coverTexture, roughness: 0.54, metalness: 0.14 }
+        : { color: 0x2a2445, roughness: 0.54, metalness: 0.14 });
       const spineMaterial = new THREE.MeshStandardMaterial({ color: 0x4b3b78, roughness: 0.6, metalness: 0.18 });
+      const pageGrooveMaterial = new THREE.MeshStandardMaterial({ color: 0x9d96aa, roughness: 0.86, metalness: 0 });
+      const pageGrooveGeometry = new THREE.BoxGeometry(0.018, 2.04, 0.018);
 
       const pageBlock = new THREE.Mesh(new THREE.BoxGeometry(3.35, 2.16, 0.16), paperEdgeMaterial);
       book.add(pageBlock);
       const innerPage = new THREE.Mesh(new THREE.BoxGeometry(3.27, 2.08, 0.04), pageMaterial);
       innerPage.position.z = 0.11;
       book.add(innerPage);
+      for (let index = 0; index < 6; index += 1) {
+        const groove = new THREE.Mesh(pageGrooveGeometry, pageGrooveMaterial);
+        groove.position.set(1.68 + index * 0.022, 0, 0.12);
+        book.add(groove);
+      }
 
       const backCover = new THREE.Mesh(new THREE.BoxGeometry(3.52, 2.32, 0.1), coverMaterial);
       backCover.position.z = -0.16;
@@ -140,10 +174,13 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
         spine.geometry.dispose();
         frontCover.geometry.dispose();
         turningPage.geometry.dispose();
+        pageGrooveGeometry.dispose();
         pageMaterial.dispose();
         paperEdgeMaterial.dispose();
         coverMaterial.dispose();
         spineMaterial.dispose();
+        pageGrooveMaterial.dispose();
+        coverTexture?.dispose();
         renderer.dispose();
         renderer.forceContextLoss();
       };
@@ -154,7 +191,7 @@ export function ThreeBookModel({ open, turnDirection }: ThreeBookModelProps) {
     }).finally(() => {
       loadingRef.current = false;
     });
-  }, [open]);
+  }, [coverTitle, open]);
 
   useEffect(() => {
     const model = modelRef.current;

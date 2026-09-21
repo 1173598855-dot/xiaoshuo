@@ -12,6 +12,7 @@
 
 - 删除首页原来的“快速起步”横向 chip 带，替换为 `PresetFlipbook` 灵感册。
 - `ThreeBookModel` 使用 `Scene`、`PerspectiveCamera`、`Group`、`BoxGeometry` 与 `MeshStandardMaterial` 构造书体和纸页；Three.js 官方文档作为 API 依据。
+- 封面用 `CanvasTexture` 绘制小奕自己的灵感册封面，书脊、纸边沟槽和灯光材质独立建模，视觉上与现有立体书架保持同一语言。
 - Three.js 通过动态 import 只在灵感册真正打开时加载，首页首屏不提前初始化 WebGL；WebGL context 创建失败时隐藏 canvas，保留 DOM/CSS 书页降级。
 - 封面支持点击/触摸/键盘打开；打开后每次只翻一页，支持 `←` / `→`、上一页/下一页边界、采用当前写法、保存为预设和合上后恢复当前页。
 - 预设仍复用原有 localStorage、草稿自动保存和 `selectedPresetId` 语义，不改变创建作品请求。
