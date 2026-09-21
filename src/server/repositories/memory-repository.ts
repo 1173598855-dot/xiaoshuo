@@ -526,7 +526,6 @@ export class MemoryRepository {
         }
         return { entry, score };
       });
-      serialized = JSON.stringify(compressedSelected.map(({ entry }) => entry));
     }
 
     const selectedEntries = compressedSelected.map(({ entry }) => entry);

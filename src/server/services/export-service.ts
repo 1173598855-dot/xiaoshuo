@@ -2,14 +2,13 @@ import { Buffer } from "node:buffer";
 
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProductionRepository } from "../repositories/production-repository";
+import type { MemoryService } from "./memory-service";
 import { UnsupportedExportFormatError } from "../export-errors";
 
 export interface ExportServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
-  readonly memoryService?: {
-    list: (bookId: string, filter?: { kind?: string; includeArchived?: boolean; status?: string }) => readonly unknown[];
-  };
+  readonly memoryService?: MemoryService;
 }
 
 /** Build the same export payload for HTTP and Electron. */
@@ -48,7 +47,7 @@ export function exportBook(
   throw new UnsupportedExportFormatError();
 }
 
-function toDocxDataUrl(title: string, chapters: readonly { title: string; content: string }[], description?: string): string {
+function toDocxDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
   const document = [
     xmlHeader(),
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
@@ -95,7 +94,7 @@ function toDocxDataUrl(title: string, chapters: readonly { title: string; conten
   return `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${archive.toString("base64")}`;
 }
 
-function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[], description?: string): string {
+function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
   const chapterFiles = chapters.map((chapter, index) => ({
     id: `chapter-${index + 1}`,
     href: `chapter-${index + 1}.xhtml`,
