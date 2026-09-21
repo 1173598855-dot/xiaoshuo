@@ -1551,6 +1551,65 @@
 
 /* Unified surface pass: auth, drawers, dialogs and secondary workspaces share one desk. */
 @layer polish {
+  /* Login and registration stay one responsive surface; registration only adds fields. */
+  .auth-gate {
+    align-items: center;
+  }
+
+  .auth-gate-shell {
+    max-height: calc(100dvh - 48px);
+  }
+
+  .auth-gate-card {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .auth-mode-register .auth-gate-card {
+    --auth-form-gap: 15px;
+  }
+
+  .auth-mode-register .auth-form {
+    gap: var(--auth-form-gap, 18px);
+  }
+
+  .auth-mode-register .auth-gate-footer {
+    margin-top: 18px;
+  }
+
+  @media (max-width: 980px) and (min-width: 761px) {
+    .auth-gate {
+      padding: 24px;
+    }
+
+    .auth-gate-shell {
+      grid-template-columns: minmax(235px, .72fr) minmax(390px, 1.28fr);
+      max-height: calc(100dvh - 48px);
+    }
+
+    .auth-gate-card {
+      padding: 36px 32px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .auth-gate {
+      align-items: stretch;
+    }
+
+    .auth-gate-shell {
+      max-height: none;
+    }
+
+    .auth-gate-card {
+      overflow: visible;
+      scrollbar-gutter: auto;
+    }
+  }
+}
+
+@layer polish {
   :root {
     --surface-control: #211f2e;
     --surface-control-hover: #292442;
