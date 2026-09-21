@@ -76,7 +76,7 @@ button {
   background: var(--text-primary);
   border-radius: 8px;
   box-shadow: 5px 5px 0 var(--action-primary);
-  font-family: "STSong", "Songti SC", serif;
+  font-family: var(--font-serif);
   font-size: 22px;
 }
 
@@ -108,7 +108,7 @@ button {
 .production-hero h1,
 .manuscript-heading h1 {
   margin: 3px 0 0;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-weight: 700;
   letter-spacing: -.03em;
 }
@@ -193,7 +193,7 @@ button:disabled {
 .stage-copy h2 {
   max-width: 430px;
   margin: 15px 0 12px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: clamp(34px, 5vw, 66px);
   line-height: 1.05;
   letter-spacing: -.065em;
@@ -235,7 +235,7 @@ button:disabled {
   background: #fbfcfb;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 17px;
   line-height: 1.8;
 }
@@ -266,7 +266,7 @@ button:disabled {
 .section-heading h2,
 .panel-heading h2 {
   margin: 3px 0 0;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 24px;
 }
 
@@ -363,7 +363,7 @@ button:disabled {
 
 .direction-index {
   color: var(--action-primary);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 26px;
   font-weight: 800;
 }
@@ -378,7 +378,7 @@ button:disabled {
 
 .direction-card h2 {
   margin: 30px 0 8px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 25px;
 }
 
@@ -471,7 +471,7 @@ button:disabled {
 
 .production-stat strong {
   color: var(--state-success);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 38px;
 }
 
@@ -684,7 +684,7 @@ button:disabled {
 .stage-number,
 .feed-index {
   color: #a7b0a7;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -744,7 +744,7 @@ button:disabled {
   background: #fbfcfb;
   border: 1px solid var(--border-default);
   border-radius: 5px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 16px;
   line-height: 2;
   white-space: pre-wrap;
@@ -793,13 +793,13 @@ button:disabled {
 
 .manuscript-chapter h2 {
   margin: 0 0 18px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 25px;
 }
 
 .chapter-body {
   color: #303730;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 17px;
   line-height: 2.05;
   white-space: pre-wrap;
@@ -875,7 +875,7 @@ button:disabled {
   background: #fff;
   border: 1px solid var(--border-strong);
   border-radius: 5px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 16px;
   line-height: 2;
   resize: vertical;
@@ -915,7 +915,7 @@ button:disabled {
   max-height: 260px;
   overflow: auto;
   padding: 7px 0;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.65;
 }
@@ -1048,7 +1048,7 @@ button:disabled {
   background: #f7f9f7;
   border: 1px solid #edf0ed;
   border-radius: 4px;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1107,7 +1107,7 @@ button:disabled {
 
 .memory-drawer-header h2 {
   margin: 6px 0 0;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 24px;
 }
 
@@ -1198,7 +1198,7 @@ button:disabled {
 .memory-revision {
   margin-left: auto;
   color: #929a93;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
 }
 
@@ -1305,7 +1305,7 @@ button:disabled {
   background: #f7f9f7;
   border: 1px solid #edf0ed;
   border-radius: 4px;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -1322,7 +1322,7 @@ button:disabled {
   background: #fff;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.55;
   resize: vertical;
@@ -1564,7 +1564,7 @@ button:disabled {
 
 .timeline-volume-heading span {
   color: var(--action-primary);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 750;
 }
@@ -1592,7 +1592,7 @@ button:disabled {
 
 .timeline-card-marker {
   color: var(--action-primary);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 800;
 }
@@ -1741,7 +1741,7 @@ button:disabled {
 .consistency-issue small { color: #929a93; font-size: 10px; }
 .search-form { display: flex; gap: 8px; margin-top: 16px; }
 .search-form input { flex: 1; min-width: 0; padding: 9px; border: 1px solid var(--border-strong); }
-.search-result span { color: var(--action-primary); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; text-transform: uppercase; }
+.search-result span { color: var(--action-primary); font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; }
 
 .backup-password-field {
   display: grid;
@@ -1894,7 +1894,7 @@ button:disabled {
   border: 1px solid var(--text-primary);
   border-radius: 0;
   box-shadow: 5px 5px 0 var(--action-primary);
-  font-family: "STSong", "Songti SC", serif;
+  font-family: var(--font-serif);
   font-size: 23px;
 }
 
@@ -1920,7 +1920,7 @@ button:disabled {
 .direction-type,
 .stage-progress,
 .pane-kicker {
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .14em;
@@ -1930,7 +1930,7 @@ button:disabled {
 .creative-header h1 {
   margin: 0;
   color: var(--text-primary);
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -.02em;
@@ -2045,7 +2045,7 @@ button:disabled {
   max-width: 690px;
   margin: 18px 0 27px;
   color: var(--text-primary);
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: clamp(64px, 9.1vw, 137px);
   font-weight: 850;
   line-height: .87;
@@ -2129,7 +2129,7 @@ button:disabled {
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: clamp(18px, 2vw, 25px);
   line-height: 1.65;
 }
@@ -2195,7 +2195,7 @@ button:disabled {
 .section-heading h2 {
   margin: 7px 0 0;
   color: var(--text-primary);
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: clamp(26px, 3vw, 39px);
   font-weight: 800;
   letter-spacing: -.06em;
@@ -2255,7 +2255,7 @@ button:disabled {
 .production-hero h1,
 .manuscript-heading h1 {
   color: var(--text-primary);
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 850;
   letter-spacing: -.08em;
 }
@@ -2305,7 +2305,7 @@ button:disabled {
 
 .direction-card h2 {
   margin-top: 34px;
-  font-family: "STSong", "Songti SC", "Noto Serif SC", serif;
+  font-family: var(--font-serif);
   font-size: 28px;
 }
 
@@ -2344,7 +2344,7 @@ button:disabled {
 
 .production-stat strong {
   color: var(--action-primary);
-  font-family: "Arial Narrow", "Inter Tight", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 58px;
   letter-spacing: -.08em;
 }
@@ -2380,7 +2380,7 @@ button:disabled {
 }
 
 .panel-heading h2 {
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 21px;
   font-weight: 800;
   letter-spacing: -.04em;
@@ -2451,7 +2451,7 @@ button:disabled {
 }
 
 .manuscript-chapter h2 {
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 28px;
   font-weight: 800;
   letter-spacing: -.04em;
@@ -2491,7 +2491,7 @@ button:disabled {
 
 .dialog-header h2 {
   margin: 7px 0 0;
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 27px;
   letter-spacing: -.05em;
 }
@@ -2635,7 +2635,7 @@ button:disabled {
 
 .memory-drawer-header h2 {
   margin-top: 7px;
-  font-family: "Arial Narrow", "Inter Tight", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 29px;
   letter-spacing: -.05em;
 }
@@ -3175,7 +3175,7 @@ select:focus-visible,
   border-radius: 10px;
   background: var(--text-primary);
   color: #fff;
-  font-family: "Songti SC", "STSong", serif;
+  font-family: var(--font-serif);
   font-size: 20px;
   line-height: 1;
 }
@@ -4738,7 +4738,7 @@ select:focus-visible,
   .auth-gate-rail h1 {
     margin: 14px 0 16px;
     color: #fff;
-    font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+    font-family: var(--font-serif);
     font-size: clamp(32px, 4vw, 54px);
     font-weight: 700;
     letter-spacing: -.06em;
@@ -6039,7 +6039,7 @@ select:focus-visible,
 
   .hub-scene-number {
     color: var(--action-primary);
-    font-family: "Cascadia Mono", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 

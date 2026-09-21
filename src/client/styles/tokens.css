@@ -26,6 +26,9 @@
   --state-danger: #ee8c9e;
   --state-warning: #d9bd7d;
   --surface-rail: #0d0c13;
+  --font-sans: "Public Sans", "Inter", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-serif: "STSong", "Songti SC", "Noto Serif SC", serif;
+  --font-mono: "Cascadia Mono", Consolas, monospace;
 
   --shadow: 0 18px 42px rgb(0 0 0 / 24%);
   --shadow-soft: 0 22px 60px rgb(0 0 0 / 28%);
