@@ -1827,6 +1827,9 @@
 
   .author-delivery-progress { height: 7px; overflow: hidden; border-radius: 999px; background: rgb(255 255 255 / 8%); }
   .author-delivery-progress span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--action-primary); box-shadow: 0 0 14px rgb(169 157 255 / 44%); transform-origin: left center; }
+  .author-delivery-provider-list { display: grid; gap: 5px; }
+  .author-delivery-provider-list > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-secondary); background: rgb(255 255 255 / 2%); font-size: 10px; }
+  .author-delivery-provider-list strong { color: var(--text-primary); }
   .author-delivery-snapshot-list button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 7px; color: var(--text-secondary); background: var(--surface-control); text-align: left; cursor: pointer; }
   .author-delivery-snapshot-list button:hover,
   .author-delivery-snapshot-list button:focus-visible,

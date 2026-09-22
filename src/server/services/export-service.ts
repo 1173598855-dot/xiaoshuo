@@ -3,12 +3,13 @@ import { Buffer } from "node:buffer";
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { MemoryService } from "./memory-service";
-import { UnsupportedExportFormatError } from "../export-errors";
+import { ExportBlockedByQualityError, UnsupportedExportFormatError } from "../export-errors";
 
 export interface ExportServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryService?: MemoryService;
+  readonly authoringService?: { consistency(bookId: string): { issues: readonly { severity: string }[] } };
 }
 
 /** Build the same export payload for HTTP and Electron. */
@@ -17,6 +18,10 @@ export function exportBook(
   bookId: string,
   format: "markdown" | "txt" | "docx" | "epub",
 ): string {
+  const quality = dependencies.authoringService?.consistency(bookId);
+  if (quality?.issues.some((issue) => issue.severity === "error")) {
+    throw new ExportBlockedByQualityError();
+  }
   const details = dependencies.bookRepository.getBook(bookId);
   // A chapter with revision 0 is only a generated placeholder. It is not part
   // of the formal manuscript and must never leak into an export.

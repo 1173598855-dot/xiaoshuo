@@ -5,6 +5,7 @@ import type { BookDetails, ChapterCandidate } from "../../shared/auto-novel";
 import type { StorySnapshot } from "../../shared/authoring";
 import type { Chapter } from "../../shared/contracts";
 import type { ConsistencyReport, UsageSummary } from "../../shared/authoring";
+import type { MemoryBookSnapshot } from "../../shared/memory";
 import type { AuthoringWorkspace } from "../../shared/authoring-workspace";
 import {
   AutomationRulesSchema,
@@ -56,6 +57,7 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [consistency, setConsistency] = useState<ConsistencyReport | null>(null);
   const [workspace, setWorkspace] = useState<AuthoringWorkspace | null>(null);
+  const [memorySnapshot, setMemorySnapshot] = useState<MemoryBookSnapshot | null>(null);
   const [snapshots, setSnapshots] = useState<readonly StorySnapshot[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
 
   const selectedSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? null;
   const qualityIssues = useMemo(() => buildQualityIssues(book, chapters, consistency, workspace), [book, chapters, consistency, workspace]);
-  const revisionItems = useMemo(() => buildRevisionTimeline(book, snapshots, run?.candidates ?? []), [book, run?.candidates, snapshots]);
+  const revisionItems = useMemo(() => buildRevisionTimeline(book, chapters, memorySnapshot, snapshots, run?.candidates ?? []), [book, chapters, memorySnapshot, run?.candidates, snapshots]);
   const selectedPlanCount = selectedSnapshot
     ? selectedSnapshot.payload.chapterPlans.filter((plan) => selectedPlanIds.has(plan.id)).length
     : 0;
@@ -78,12 +80,14 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
       api.getUsageSummary(),
       api.checkConsistency(book.book.id),
       api.getAuthoringWorkspace(book.book.id),
+      api.listMemory(book.book.id, { includeArchived: true }),
       api.listStorySnapshots(book.book.id),
-    ]).then(([nextUsage, nextConsistency, nextWorkspace, nextSnapshots]) => {
+    ]).then(([nextUsage, nextConsistency, nextWorkspace, nextMemory, nextSnapshots]) => {
       if (!active) return;
       setUsage(nextUsage);
       setConsistency(nextConsistency);
       setWorkspace(nextWorkspace);
+      setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
     }).catch((loadError) => {
       if (active) setError(loadError instanceof Error ? loadError.message : "作者交付中心暂时无法读取。");
@@ -118,15 +122,17 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     setBusy(true);
     setError(null);
     try {
-      const [nextUsage, nextConsistency, nextWorkspace, nextSnapshots] = await Promise.all([
+      const [nextUsage, nextConsistency, nextWorkspace, nextMemory, nextSnapshots] = await Promise.all([
         api.getUsageSummary(),
         api.checkConsistency(book.book.id),
         api.getAuthoringWorkspace(book.book.id),
+        api.listMemory(book.book.id, { includeArchived: true }),
         api.listStorySnapshots(book.book.id),
       ]);
       setUsage(nextUsage);
       setConsistency(nextConsistency);
       setWorkspace(nextWorkspace);
+      setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
       setNotice("作者交付状态已刷新。");
     } catch (loadError) {
@@ -242,7 +248,7 @@ function CostTab({ usage, budget, onBudgetChange, onSave, run }: { usage: UsageS
   const tokens = usage?.totalTokens ?? 0;
   const percent = budget.monthlyTokenLimit > 0 ? Math.min(100, Math.round(tokens / budget.monthlyTokenLimit * 100)) : 0;
   const averagePerChapter = run?.acceptedChapters.length ? Math.round(tokens / run.acceptedChapters.length) : 0;
-  return <div className="author-delivery-tab-content"><div className={`author-delivery-status ${percent >= budget.warningPercent ? "is-warning" : "is-ready"}`}><Gauge size={20} /><div><strong>{budget.monthlyTokenLimit > 0 ? `${percent}% 配额已使用` : "未设置月度配额"}</strong><small>{usage ? `${tokens.toLocaleString("zh-CN")} Token · ¥${(usage.estimatedCostMicros / 100_000_000).toFixed(4)}` : "正在读取用量"}</small></div></div><div className="author-delivery-quality-grid"><span><strong>{usage?.requests ?? 0}</strong>请求</span><span><strong>{usage?.inputTokens ?? 0}</strong>输入 Token</span><span><strong>{usage?.outputTokens ?? 0}</strong>输出 Token</span></div><div className="author-delivery-progress"><span style={{ transform: `scaleX(${percent / 100})` }} /></div><p className="author-delivery-muted">按已采纳章节估算，当前平均每章约 {averagePerChapter.toLocaleString("zh-CN")} Token。</p><div className="author-delivery-form-row"><label>月 Token 上限<input type="number" min={0} value={budget.monthlyTokenLimit} onChange={(event) => onBudgetChange({ ...budget, monthlyTokenLimit: Math.max(0, Number(event.target.value)) })} /></label><label>预算预警 %<input type="number" min={1} max={99} value={budget.warningPercent} onChange={(event) => onBudgetChange({ ...budget, warningPercent: Math.max(1, Math.min(99, Number(event.target.value))) })} /></label></div><button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存配额</button></div>;
+  return <div className="author-delivery-tab-content"><div className={`author-delivery-status ${percent >= budget.warningPercent ? "is-warning" : "is-ready"}`}><Gauge size={20} /><div><strong>{budget.monthlyTokenLimit > 0 ? `${percent}% 配额已使用` : "未设置月度配额"}</strong><small>{usage ? `${tokens.toLocaleString("zh-CN")} Token · ¥${(usage.estimatedCostMicros / 100_000_000).toFixed(4)}` : "正在读取用量"}</small></div></div><div className="author-delivery-quality-grid"><span><strong>{usage?.requests ?? 0}</strong>请求</span><span><strong>{usage?.inputTokens ?? 0}</strong>输入 Token</span><span><strong>{usage?.outputTokens ?? 0}</strong>输出 Token</span></div>{usage?.byProvider.length ? <div className="author-delivery-provider-list">{usage.byProvider.map((provider) => <div key={provider.provider}><strong>{provider.provider}</strong><span>{(provider.inputTokens + provider.outputTokens).toLocaleString("zh-CN")} Token · ¥{(provider.estimatedCostMicros / 100_000_000).toFixed(4)}</span></div>)}</div> : null}<div className="author-delivery-progress"><span style={{ transform: `scaleX(${percent / 100})` }} /></div><p className="author-delivery-muted">按已采纳章节估算，当前平均每章约 {averagePerChapter.toLocaleString("zh-CN")} Token。</p><div className="author-delivery-form-row"><label>月 Token 上限<input type="number" min={0} value={budget.monthlyTokenLimit} onChange={(event) => onBudgetChange({ ...budget, monthlyTokenLimit: Math.max(0, Number(event.target.value)) })} /></label><label>预算预警 %<input type="number" min={1} max={99} value={budget.warningPercent} onChange={(event) => onBudgetChange({ ...budget, warningPercent: Math.max(1, Math.min(99, Number(event.target.value))) })} /></label></div><button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存配额</button></div>;
 }
 
 function SnapshotTab({ snapshots, selected, selectedPlanIds, onSelect, onTogglePlan, onCreate, onMerge, onRestore, disabled }: { snapshots: readonly StorySnapshot[]; selected: StorySnapshot | null; selectedPlanIds: ReadonlySet<string>; onSelect: (snapshot: StorySnapshot) => void; onTogglePlan: (id: string) => void; onCreate: () => void; onMerge: () => void; onRestore: () => void; disabled: boolean }) {
@@ -299,9 +305,11 @@ function issue(id: string, category: QualityGateIssue["category"], severity: Qua
   return { id, category, certainty: "deterministic", severity, blocking, title, detail, evidence: [detail], chapterNumber, sourceId: null, repairActions: [] };
 }
 
-function buildRevisionTimeline(book: BookDetails, snapshots: readonly StorySnapshot[], candidates: readonly ChapterCandidate[]): RevisionTimelineItem[] {
+function buildRevisionTimeline(book: BookDetails, chapters: readonly Chapter[], memorySnapshot: MemoryBookSnapshot | null, snapshots: readonly StorySnapshot[], candidates: readonly ChapterCandidate[]): RevisionTimelineItem[] {
   const items: RevisionTimelineItem[] = [{ id: `story-${book.book.id}-${book.book.revision}`, scope: "story", revision: book.book.revision, title: book.book.title, summary: "当前正式作品版本", source: "live", chapterNumber: null, createdAt: book.book.updatedAt, restorable: false }];
   for (const snapshot of snapshots.slice(0, 10)) items.push({ id: snapshot.id, scope: "story", revision: snapshot.baseRevision, title: snapshot.name, summary: `${snapshot.payload.chapterPlans.length} 条章纲 · 可恢复快照`, source: "snapshot", chapterNumber: null, createdAt: snapshot.updatedAt, restorable: true });
+  for (const chapter of chapters.slice(0, 20)) items.push({ id: `chapter-${chapter.id}-${chapter.revision}`, scope: "chapter", revision: chapter.revision, title: `第${chapter.position + 1}章 · ${chapter.title}`, summary: `${chapter.content.length.toLocaleString("zh-CN")} 字正式正文`, source: chapter.status, chapterNumber: chapter.position + 1, createdAt: chapter.updatedAt, restorable: true });
+  for (const entry of memorySnapshot?.entries.slice(0, 20) ?? []) items.push({ id: `memory-${entry.id}-${entry.revision}`, scope: "memory", revision: entry.revision, title: entry.subject, summary: `${entry.kind} · ${entry.status}`, source: entry.source, chapterNumber: entry.sourceChapterNumber, createdAt: entry.updatedAt, restorable: true });
   for (const candidate of candidates.slice(0, 10)) items.push({ id: candidate.id, scope: "candidate", revision: candidate.candidateTextRevision ?? 0, title: `候选 · ${candidate.chapterId.slice(0, 8)}`, summary: `基线正文 v${candidate.baseRevision} · 候选文本 v${candidate.candidateTextRevision ?? 0}`, source: candidate.review.status, chapterNumber: null, createdAt: candidate.createdAt, restorable: false });
   return items.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }

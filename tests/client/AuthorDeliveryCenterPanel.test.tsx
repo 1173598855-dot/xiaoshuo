@@ -21,6 +21,7 @@ function createApi() {
     getUsageSummary: vi.fn().mockResolvedValue({ requests: 2, totalTokens: 1_200, inputTokens: 800, outputTokens: 400, estimatedCostMicros: 120_000, cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, successfulRequests: 2, failedRequests: 0, blockedRequests: 0, from: "2026-09-22T00:00:00.000Z", to: "2026-09-23T00:00:00.000Z", byProvider: [] }),
     checkConsistency: vi.fn().mockResolvedValue({ bookId: book.book.id, bookRevision: 3, checkedAt: "2026-09-22T00:00:00.000Z", issues: [] }),
     getAuthoringWorkspace: vi.fn().mockResolvedValue({ bookId: book.book.id, revision: 1, scenes: [], foreshadowing: [], notes: [], writingGoal: { dailyCharacters: 2000, todayCharacters: 0, streakDays: 0, lastWorkedAt: null }, termLocks: [], knowledgeBoundaries: [], series: null, productionRecipes: [], promptVersions: [], updatedAt: "2026-09-22T00:00:00.000Z" }),
+    listMemory: vi.fn().mockResolvedValue({ bookId: book.book.id, bookRevision: 3, memoryRevision: 1, entries: [] }),
     listStorySnapshots: vi.fn().mockResolvedValue([]),
     createStorySnapshot: vi.fn(),
     updateChapterPlans: vi.fn(),

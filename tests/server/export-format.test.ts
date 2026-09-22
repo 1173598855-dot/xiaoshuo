@@ -8,7 +8,7 @@ import { ProductionRepository } from "../../src/server/repositories/production-r
 
 const databases: ReturnType<typeof createDatabase>[] = [];
 
-function createFixture() {
+function createFixture(quality?: { consistency: () => { issues: readonly { severity: string }[] } }) {
   const database = createDatabase(":memory:");
   databases.push(database);
   migrate(database);
@@ -21,6 +21,7 @@ function createFixture() {
     directorService: {} as never,
     foundationService: {} as never,
     productionService: {} as never,
+    ...(quality ? { authoringService: quality as never } : {}),
   });
   return { app, book };
 }
@@ -77,5 +78,13 @@ describe("book export formats", () => {
     const dataStart = 30 + nameLength + archive.readUInt16LE(28);
     expect(archive.subarray(30, dataStart).toString("utf8")).toBe("mimetype");
     expect(archive.subarray(dataStart, dataStart + archive.readUInt32LE(18)).toString("utf8")).toBe("application/epub+zip");
+  });
+
+  it("blocks every export format when the fresh quality check has an error", async () => {
+    const fixture = createFixture({ consistency: () => ({ issues: [{ severity: "error" }] }) });
+    const response = await exportBook(fixture.app, fixture.book.id, "markdown");
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: { code: "EXPORT_BLOCKED_BY_QUALITY", message: "当前作品存在必须先处理的质量问题，暂时不能导出。" } });
   });
 });
