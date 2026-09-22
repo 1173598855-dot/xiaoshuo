@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Search, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
@@ -16,6 +16,8 @@ import { ProductionTaskPanel } from "./ProductionTaskPanel";
 import { ChapterWorkspace } from "./ChapterWorkspace";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 import type { StoryPulseState } from "./StoryPulse";
+import { runAnime, runAnimeStagger } from "../motion/anime-motion";
+import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
 
 const StoryPulse = lazy(() => import("./StoryPulse").then(({ StoryPulse: component }) => ({ default: component })));
 
@@ -85,6 +87,7 @@ export function ProductionRoom({
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [assetOpen, setAssetOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const motionRef = useRef<HTMLElement>(null);
   const taskApi = useMemo<AutoNovelApi>(() => {
     if (api) return api;
     const bridge = (window as Window & { xiaoyi?: { autoNovel?: AutoNovelDesktopApiV2 } }).xiaoyi?.autoNovel;
@@ -105,8 +108,22 @@ export function ProductionRoom({
     state: (run?.run.status === "failed" && stage === currentStage ? "blocked" : index < currentStageIndex ? "done" : stage === currentStage ? "active" : "upcoming") as StoryPulseState,
   }));
   const estimatedTokens = Math.ceil((run?.acceptedChapters.reduce((sum, chapter) => sum + chapter.content.length, 0) ?? 0) / 4);
+  useEffect(() => {
+    const root = motionRef.current;
+    if (!root) return;
+    const hero = root.querySelector<HTMLElement>(".production-hero");
+    const statuses = root.querySelectorAll<HTMLElement>(".workbench-status-item");
+    const panels = root.querySelectorAll<HTMLElement>(".production-grid > *");
+    const cleanups = [
+      hero ? runAnime([{ targets: hero, params: { opacity: [0, 1], translateY: ["12px", "0px"], duration: 420, ease: "out(4)" } }]) : () => undefined,
+      statuses.length > 0 ? runAnimeStagger(statuses, { opacity: [0, 1], translateY: ["-6px", "0px"], duration: 300, ease: "out(4)" }, 55) : () => undefined,
+      panels.length > 0 ? runAnimeStagger(panels, { opacity: [0, 1], translateY: ["16px", "0px"], duration: 420, ease: "out(4)" }, 75) : () => undefined,
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [book.book.id, currentStage, status]);
   return (
-    <main className="production-page">
+    <main className="production-page" ref={motionRef}>
+      <AceternityAmbientLayer variant="production" />
       <header className="page-topbar">
         <div className="production-title"><span className="brand-mark small">奕</span><strong>{book.book.title}</strong></div>
         <div className="page-topbar-actions">

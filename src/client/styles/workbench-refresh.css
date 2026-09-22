@@ -1566,6 +1566,103 @@
 }
 
 @layer polish {
+  /* Aceternity-inspired immersion, rewritten for the existing plain-CSS desk. */
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) {
+    position: relative;
+    isolation: isolate;
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) > .aceternity-ambient-layer {
+    position: absolute;
+    z-index: 0;
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) > :not(.aceternity-ambient-layer):not(.creative-cursor-grid):not(.black-hole-backdrop):not(.creative-header):not(.page-topbar) {
+    position: relative;
+    z-index: 1;
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) > :is(.creative-header, .page-topbar) {
+    z-index: 20;
+  }
+
+  .aceternity-moving-border {
+    isolation: isolate;
+  }
+
+  .aceternity-moving-border::after {
+    position: absolute;
+    z-index: 0;
+    inset: -1px;
+    border-radius: inherit;
+    background: conic-gradient(from 0deg, transparent 0 64%, rgb(169 157 255 / 75%) 72%, transparent 82% 100%);
+    content: "";
+    animation: aceternity-border-orbit 7s linear infinite;
+    pointer-events: none;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    padding: 1px;
+  }
+
+  .home-process-list {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .home-process-list > li {
+    position: relative;
+    z-index: 1;
+  }
+
+  .aceternity-tracing-beam {
+    position: absolute;
+    z-index: 0;
+    top: 34px;
+    right: 7%;
+    left: 7%;
+    height: 1px;
+    transform: scaleX(var(--process-progress, 0));
+    transform-origin: left center;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, var(--action-primary), transparent);
+    box-shadow: 0 0 14px rgb(169 157 255 / 42%);
+    transition: transform 420ms var(--ease-studio);
+  }
+
+  @keyframes aceternity-border-orbit {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 620px) {
+    .aceternity-tracing-beam {
+      top: 10px;
+      bottom: 10px;
+      left: 21px;
+      width: 1px;
+      height: auto;
+      transform: scaleY(var(--process-progress, 0));
+      transform-origin: top center;
+      background: linear-gradient(180deg, transparent, var(--action-primary), transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .aceternity-moving-border::after {
+      animation: none;
+    }
+
+    .aceternity-tracing-beam {
+      transition: none;
+    }
+  }
+
+  html[data-motion-mode="quiet"] .aceternity-moving-border::after {
+    animation: none;
+  }
+}
+
+@layer polish {
   /* Uiverse-inspired controls: tactile feedback stays inside the existing
      Xiaoyi token system instead of introducing a second visual language. */
   .workbench-quick-action,

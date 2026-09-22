@@ -20,6 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { runAnimeStagger } from "../motion/anime-motion";
 
 export type WorkbenchPage = "home" | "directions" | "production" | "manuscript";
 export type MotionMode = "full" | "quiet";
@@ -55,6 +56,7 @@ export function WorkbenchQuickActions({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const actionBoundary = Math.max(0, visibleActionCount);
   const visibleActions = actions.slice(0, actionBoundary);
@@ -77,6 +79,13 @@ export function WorkbenchQuickActions({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
+  }, [overflowOpen]);
+
+  useEffect(() => {
+    if (!overflowOpen || !menuRef.current) return;
+    const items = menuRef.current.querySelectorAll<HTMLElement>(".workbench-quick-menu-item");
+    if (items.length === 0) return;
+    return runAnimeStagger(items, { opacity: [0, 1], translateX: ["8px", "0px"], duration: 220, ease: "out(4)" }, 35);
   }, [overflowOpen]);
 
   const run = (action: WorkbenchQuickAction) => {
@@ -117,7 +126,7 @@ export function WorkbenchQuickActions({
             <span className="workbench-quick-more-count" aria-hidden="true">{overflowActions.length}</span>
           </button>
           {overflowOpen ? (
-            <div className="workbench-quick-menu" role="menu" aria-label="更多快捷操作">
+            <div className="workbench-quick-menu" ref={menuRef} role="menu" aria-label="更多快捷操作">
               {overflowActions.map((action) => {
                 const Icon = action.icon;
                 return (
@@ -275,6 +284,18 @@ export function WorkbenchNavigationDrawer({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open || !drawerRef.current) return;
+    const drawer = drawerRef.current;
+    const current = drawer.querySelector<HTMLElement>(".workbench-drawer-current");
+    const items = drawer.querySelectorAll<HTMLElement>(".workbench-drawer-item");
+    const cleanups = [
+      current ? runAnimeStagger([current], { opacity: [0, 1], translateY: ["8px", "0px"], duration: 260, ease: "out(4)" }, 0) : () => undefined,
+      items.length > 0 ? runAnimeStagger(items, { opacity: [0, 1], translateX: ["12px", "0px"], duration: 260, ease: "out(4)" }, 28) : () => undefined,
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [open]);
 
   if (!open) return null;
 

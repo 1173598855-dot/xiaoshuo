@@ -24,6 +24,13 @@ function renderHome() {
 }
 
 describe("CreativeHome author entry", () => {
+  it("mounts a local Aceternity ambient layer without changing the author flow", () => {
+    renderHome();
+
+    expect(screen.getByTestId("aceternity-ambient")).toHaveAttribute("data-variant", "home");
+    expect(screen.getByRole("textbox", { name: "故事想法" })).toBeVisible();
+  });
+
   it("restores an unfinished idea draft from local storage", async () => {
     window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: "一封会回信的信", directionCount: 5, selectedPresetId: null }));
     renderHome();

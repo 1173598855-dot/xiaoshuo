@@ -1,7 +1,8 @@
-import { useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ArrowUpRight, BookOpen, Library, List } from "lucide-react";
 import type { Book } from "../../shared/auto-novel";
 import "./BookShelf.css";
+import { runAnimeStagger } from "../motion/anime-motion";
 
 export function BookShelf({ books, onOpenBook }: {
   books: readonly Book[];
@@ -9,6 +10,13 @@ export function BookShelf({ books, onOpenBook }: {
 }) {
   const [view, setView] = useState<"shelf" | "list">("shelf");
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const motionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const root = motionRef.current;
+    const booksToAnimate = root?.querySelectorAll<HTMLElement>(".shelf-book");
+    if (!booksToAnimate || booksToAnimate.length === 0) return;
+    return runAnimeStagger(booksToAnimate, { opacity: [0, 1], translateY: ["12px", "0px"], duration: 360, ease: "out(4)" }, 45);
+  }, [books.length, view]);
   const openBook = (book: Book) => {
     setOpeningId(book.id);
     const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -26,7 +34,7 @@ export function BookShelf({ books, onOpenBook }: {
     event.currentTarget.style.setProperty("--book-tilt-x", "0deg");
     event.currentTarget.style.setProperty("--book-tilt-y", "0deg");
   };
-  return <section className="library-section" aria-labelledby="library-title">
+  return <section className="library-section" ref={motionRef} aria-labelledby="library-title">
     <div className="section-heading">
       <div><h2 id="library-title">继续你的故事</h2><p className="shelf-description">{books.length} 部作品 · 每一个世界，都从这里继续</p></div>
       <div className="shelf-view-switch" role="group" aria-label="作品展示方式">

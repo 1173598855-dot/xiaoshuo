@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
@@ -8,6 +8,8 @@ import { CursorGrid } from "./CursorGrid";
 import { SpotlightCard } from "./SpotlightCard";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 import { ThreeBookModel } from "./ThreeBookModel";
+import { runAnime, runAnimeStagger } from "../motion/anime-motion";
+import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
 
 interface CreativeHomeProps {
   books: readonly Book[];
@@ -47,8 +49,25 @@ export function CreativeHome({
   assetDraft,
 }: CreativeHomeProps) {
   const processRef = useRef<HTMLOListElement>(null);
+  const motionRef = useRef<HTMLElement>(null);
   const [activeProcess, setActiveProcess] = useState(0);
   const processLabels = ["写下想法", "选择方向", "逐章生产", "审核成书"];
+
+  useEffect(() => {
+    const root = motionRef.current;
+    if (!root) return;
+    const header = root.querySelector<HTMLElement>(".creative-header");
+    const statusItems = root.querySelectorAll<HTMLElement>(".workbench-status-item");
+    const stageItems = root.querySelectorAll<HTMLElement>(".stage-copy > *");
+    const hero = root.querySelector<HTMLElement>(".idea-column");
+    const cleanups = [
+      header ? runAnime([{ targets: header, params: { opacity: [0, 1], translateY: ["-14px", "0px"], duration: 520, ease: "out(4)" } }]) : () => undefined,
+      statusItems.length > 0 ? runAnimeStagger(statusItems, { opacity: [0, 1], translateY: ["-8px", "0px"], duration: 360, ease: "out(4)" }, 65) : () => undefined,
+      stageItems.length > 0 ? runAnimeStagger(stageItems, { opacity: [0, 1], translateX: ["-14px", "0px"], duration: 460, ease: "out(4)" }, 55) : () => undefined,
+      hero ? runAnime([{ targets: hero, params: { opacity: [0, 1], translateY: ["18px", "0px"], scale: [.985, 1], duration: 620, delay: 160, ease: "out(4)" } }]) : () => undefined,
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, []);
 
   useEffect(() => {
     if (typeof window.IntersectionObserver !== "function" || !processRef.current) return;
@@ -64,7 +83,8 @@ export function CreativeHome({
   }, []);
 
   return (
-    <main className="creative-home">
+    <main className="creative-home" ref={motionRef} style={{ "--process-progress": activeProcess / Math.max(processLabels.length - 1, 1) } as CSSProperties}>
+      <AceternityAmbientLayer variant="home" />
       <CursorGrid className="creative-cursor-grid" />
       <BlackHoleBackdrop />
       <header className="creative-header">
@@ -110,7 +130,7 @@ export function CreativeHome({
           <div className="stage-notes"><span>不用填卡</span><span>少做杂务</span><span>直接开始</span></div>
         </div>
         <div className="idea-column">
-          <SpotlightCard className="idea-spotlight-shell">
+          <SpotlightCard className="idea-spotlight-shell aceternity-moving-border">
             <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onRetry={onRetry} onSubmit={onCreateIdea} />
           </SpotlightCard>
           <div className="idea-caption"><span>方向数 1–12</span><span>输入 → 方向 → 正文</span></div>
@@ -124,6 +144,7 @@ export function CreativeHome({
           <span className="home-process-live" aria-live="polite">当前：{processLabels[activeProcess]}</span>
         </div>
         <ol className="home-process-list" ref={processRef}>
+          <span className="aceternity-tracing-beam" aria-hidden="true" />
           <li className={activeProcess === 0 ? "is-current" : ""} data-process-step="0" aria-current={activeProcess === 0 ? "step" : undefined}><span>01</span><strong>写下想法</strong><small>一句话就能开始</small></li>
           <li className={activeProcess === 1 ? "is-current" : ""} data-process-step="1" aria-current={activeProcess === 1 ? "step" : undefined}><span>02</span><strong>选择方向</strong><small>先看整本书的命运</small></li>
           <li className={activeProcess === 2 ? "is-current" : ""} data-process-step="2" aria-current={activeProcess === 2 ? "step" : undefined}><span>03</span><strong>逐章生产</strong><small>每一步都有检查点</small></li>

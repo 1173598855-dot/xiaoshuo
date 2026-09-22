@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Activity, ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
 import { SpotlightCard } from "./SpotlightCard";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
+import { runAnime, runAnimeStagger } from "../motion/anime-motion";
+import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
 
 interface DirectionPickerProps {
   directions: readonly StoryDirection[];
@@ -18,8 +20,29 @@ interface DirectionPickerProps {
 
 export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack, onOpenNavigation, onOpenCommandPalette, onOpenCreatorDashboard }: DirectionPickerProps) {
   const [peekDirection, setPeekDirection] = useState<StoryDirection | null>(null);
+  const motionRef = useRef<HTMLElement>(null);
+  const peekRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = motionRef.current;
+    if (!root) return;
+    const intro = root.querySelector<HTMLElement>(".direction-intro");
+    const cards = root.querySelectorAll<HTMLElement>(".direction-spotlight-shell");
+    const cleanups = [
+      intro ? runAnime([{ targets: intro, params: { opacity: [0, 1], translateY: ["14px", "0px"], duration: 480, ease: "out(4)" } }]) : () => undefined,
+      cards.length > 0 ? runAnimeStagger(cards, { opacity: [0, 1], translateY: ["20px", "0px"], scale: [.97, 1], duration: 520, ease: "out(4)" }, 70) : () => undefined,
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [directions.length]);
+
+  useEffect(() => {
+    if (!peekDirection || !peekRef.current) return;
+    return runAnime([{ targets: peekRef.current, params: { opacity: [0, 1], translateY: ["12px", "0px"], scale: [.98, 1], duration: 280, ease: "out(4)" } }]);
+  }, [peekDirection]);
+
   return (
-    <main className="director-page">
+    <main className="director-page" ref={motionRef}>
+      <AceternityAmbientLayer variant="direction" />
       <header className="page-topbar">
         <button className="text-button" type="button" onClick={onBack}>← 返回想法</button>
         <div className="page-topbar-actions">
@@ -74,7 +97,7 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
           </SpotlightCard>
         ))}
       </section>
-      {peekDirection ? <div className="peek-preview" role="dialog" aria-modal="false" aria-label={`预览方向：${peekDirection.title}`}><div className="peek-preview-bar"><span>方向预览</span><button className="icon-button" type="button" aria-label="关闭方向预览" onClick={() => setPeekDirection(null)}><X size={16} /></button></div><h2>{peekDirection.title}</h2><p>{peekDirection.logline}</p><div className="peek-preview-grid"><div><span>读者承诺</span><strong>{peekDirection.promise}</strong></div><div><span>核心冲突</span><strong>{peekDirection.centralConflict}</strong></div></div><button className="primary-button" type="button" disabled={busy} onClick={() => { onSelect(peekDirection); setPeekDirection(null); }}><Check size={15} /> 选择这条路</button></div> : null}
+      {peekDirection ? <div className="peek-preview" ref={peekRef} role="dialog" aria-modal="false" aria-label={`预览方向：${peekDirection.title}`}><div className="peek-preview-bar"><span>方向预览</span><button className="icon-button" type="button" aria-label="关闭方向预览" onClick={() => setPeekDirection(null)}><X size={16} /></button></div><h2>{peekDirection.title}</h2><p>{peekDirection.logline}</p><div className="peek-preview-grid"><div><span>读者承诺</span><strong>{peekDirection.promise}</strong></div><div><span>核心冲突</span><strong>{peekDirection.centralConflict}</strong></div></div><button className="primary-button" type="button" disabled={busy} onClick={() => { onSelect(peekDirection); setPeekDirection(null); }}><Check size={15} /> 选择这条路</button></div> : null}
     </main>
   );
 }

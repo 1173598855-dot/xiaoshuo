@@ -15,6 +15,7 @@
 - 首页资产库支持保存、搜索、编辑、删除、复制和带入人物、世界观、章法与文风素材，内容默认只保存在当前浏览器本地。
 - 顶栏“更多”提供创作统计入口：聚合本地作品数量、当前作品章节进度、已采纳字数、最近作品和只在当前窗口运行的专注计时；统计面板只读现有数据，不写入作品正文或数据库。
 - 动效偏好、快捷操作和模型推理预设采用 Uiverse 风格的轻量按压/切换反馈，但仍使用原生语义控件、统一 token、键盘焦点和 reduced-motion 降级；实现说明见 [`docs/third-party/uiverse.md`](docs/third-party/uiverse.md)。
+- 作者工作台增加 Aceternity 风格的 Spotlight、Background Beams、Tracing Beam 和 Moving Border 沉浸层，全部改写为本地 SVG/CSS，随安静动效和 reduced-motion 自动降级；实现说明见 [`docs/third-party/aceternity-ui.md`](docs/third-party/aceternity-ui.md)。
 - “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；
 - 生产室支持暂停、继续、停止、失败阶段重试和重新选择当前模型；应用启动时会自动恢复排队中/运行中的任务；
 - 生产室支持对当前章节发起 AI 重写，重写结果仍然是隔离候选，必须审核并采纳后才会进入正文；

@@ -5,6 +5,8 @@ import type { Chapter } from "../../shared/contracts";
 import type { BookDetails } from "../../shared/auto-novel";
 import type { AutoNovelApi } from "../auto-novel-api";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
+import { runAnime, runAnimeStagger } from "../motion/anime-motion";
+import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
 
 interface ManuscriptViewProps {
   book: BookDetails;
@@ -27,6 +29,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [readingProgress, setReadingProgress] = useState(0);
+  const motionRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (preserveImportedChapters.current) {
       preserveImportedChapters.current = false;
@@ -60,6 +63,17 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
       window.removeEventListener("resize", updateProgress);
     };
   }, [currentChapters.length, filteredChapters.length]);
+  useEffect(() => {
+    const root = motionRef.current;
+    if (!root) return;
+    const chapters = root.querySelectorAll<HTMLElement>(".manuscript-chapter");
+    const notice = root.querySelector<HTMLElement>(".manuscript-import-message, .manuscript-export-error");
+    const cleanups = [
+      chapters.length > 0 ? runAnimeStagger(chapters, { opacity: [0, 1], translateY: ["10px", "0px"], duration: 320, ease: "out(4)" }, 35) : () => undefined,
+      notice ? runAnime([{ targets: notice, params: { opacity: [0, 1], translateX: ["-8px", "0px"], duration: 260, ease: "out(4)" } }]) : () => undefined,
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [filteredChapters.length, importMessage, exportError]);
   const exportBook = async (format: "markdown" | "txt" | "docx" | "epub") => {
     setExporting(format);
     setExportError(null);
@@ -108,7 +122,8 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
     }
   };
   return (
-    <main className="manuscript-page" data-print-template={printTemplate} aria-label="正式正文">
+    <main className="manuscript-page" ref={motionRef} data-print-template={printTemplate} aria-label="正式正文">
+      <AceternityAmbientLayer variant="manuscript" />
       <header className="page-topbar">
         <button className="text-button" type="button" onClick={onBack}><ArrowLeft size={15} /> 返回生产室</button>
         <div className="page-topbar-actions">
