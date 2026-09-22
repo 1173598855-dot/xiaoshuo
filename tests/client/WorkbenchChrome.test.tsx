@@ -92,7 +92,10 @@ describe("WorkbenchChrome", () => {
     expect(screen.queryByRole("button", { name: /模型设置/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /清除工具筛选/ }));
-    fireEvent.click(screen.getByRole("button", { name: /完整动效/ }));
+    const motionToggle = screen.getByRole("button", { name: /完整动效/ });
+    expect(motionToggle).toHaveAttribute("aria-pressed", "false");
+    expect(within(motionToggle).getByText("满")).toBeInTheDocument();
+    fireEvent.click(motionToggle);
     expect(props.onToggleMotionMode).toHaveBeenCalledTimes(1);
   });
 

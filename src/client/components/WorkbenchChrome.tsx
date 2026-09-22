@@ -362,7 +362,7 @@ export function WorkbenchNavigationDrawer({
               const Icon = item.icon;
               return <button className="workbench-drawer-item" type="button" key={item.id} onClick={() => closeAnd(item.action)}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
             })}
-            {motionVisible && onToggleMotionMode ? <button className={`workbench-drawer-item workbench-motion-item${motionMode === "quiet" ? " is-active" : ""}`} type="button" aria-pressed={motionMode === "quiet"} onClick={onToggleMotionMode}><span className="workbench-drawer-item-icon"><Zap size={16} /></span><span><strong>{motionLabel}</strong><small>{motionDetail}</small></span><ChevronRight size={15} aria-hidden="true" /></button> : null}
+            {motionVisible && onToggleMotionMode ? <button className={`workbench-drawer-item workbench-motion-item${motionMode === "quiet" ? " is-active" : ""}`} type="button" aria-pressed={motionMode === "quiet"} onClick={onToggleMotionMode}><span className="workbench-drawer-item-icon"><Zap size={16} /></span><span><strong>{motionLabel}</strong><small>{motionDetail}</small></span><span className={`workbench-motion-switch${motionMode === "quiet" ? " is-quiet" : ""}`} aria-hidden="true"><span className="workbench-motion-switch-track"><span className="workbench-motion-switch-thumb" /></span><small>{motionMode === "quiet" ? "低" : "满"}</small></span></button> : null}
           </div></> : null}
           {!hasFilteredItems ? <p className="workbench-drawer-empty">没有匹配的工作区工具。</p> : null}
         </nav>

@@ -1566,6 +1566,135 @@
 }
 
 @layer polish {
+  /* Uiverse-inspired controls: tactile feedback stays inside the existing
+     Xiaoyi token system instead of introducing a second visual language. */
+  .workbench-quick-action,
+  .workbench-quick-menu-item,
+  .workbench-drawer-command,
+  .idea-surprise-button,
+  .reasoning-presets button {
+    box-shadow: 0 2px 0 rgb(0 0 0 / 18%);
+    transition: transform 160ms var(--ease-studio), box-shadow 160ms var(--ease-studio), border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+  }
+
+  .workbench-quick-action:hover:not(:disabled),
+  .workbench-quick-menu-item:hover:not(:disabled),
+  .workbench-drawer-command:hover:not(:disabled),
+  .idea-surprise-button:hover:not(:disabled),
+  .reasoning-presets button:hover:not(:disabled),
+  .reasoning-presets button.is-active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 0 rgb(0 0 0 / 22%);
+  }
+
+  .workbench-quick-action:active:not(:disabled),
+  .workbench-quick-menu-item:active:not(:disabled),
+  .workbench-drawer-command:active:not(:disabled),
+  .idea-surprise-button:active:not(:disabled),
+  .reasoning-presets button:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 rgb(0 0 0 / 24%);
+  }
+
+  .workbench-quick-menu-item:hover:not(:disabled) > svg:last-child,
+  .workbench-quick-menu-item:focus-visible:not(:disabled) > svg:last-child {
+    transform: translateX(2px);
+  }
+
+  .workbench-quick-menu-item > svg:last-child {
+    transition: transform 160ms var(--ease-studio);
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) :where(.primary-button, .secondary-button, .danger-button) {
+    box-shadow: 0 2px 0 rgb(0 0 0 / 22%);
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) :where(.primary-button, .secondary-button, .danger-button):hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 rgb(0 0 0 / 24%);
+  }
+
+  :where(.creative-home, .director-page, .production-page, .manuscript-page) :where(.primary-button, .secondary-button, .danger-button):active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 rgb(0 0 0 / 26%);
+  }
+
+  .workbench-motion-item {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+
+  .workbench-motion-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 42px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  .workbench-motion-switch-track {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 32px;
+    height: 18px;
+    padding: 2px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-rail);
+    transition: border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .workbench-motion-switch-thumb {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 38%);
+    transition: transform 180ms var(--ease-studio), background-color 180ms ease;
+  }
+
+  .workbench-motion-switch.is-quiet .workbench-motion-switch-track {
+    border-color: var(--action-primary);
+    background: rgb(169 157 255 / 18%);
+  }
+
+  .workbench-motion-switch.is-quiet .workbench-motion-switch-thumb {
+    transform: translateX(14px);
+    background: var(--action-primary);
+  }
+
+  .workbench-status-strip[role="status"] .workbench-status-item:first-child .workbench-status-icon {
+    animation: workbench-live-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes workbench-live-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(169 157 255 / 0%); }
+    50% { box-shadow: 0 0 0 4px rgb(169 157 255 / 10%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .workbench-quick-action,
+    .workbench-quick-menu-item,
+    .workbench-drawer-command,
+    .idea-surprise-button,
+    .reasoning-presets button,
+    .workbench-quick-menu-item > svg:last-child,
+    .workbench-motion-switch-track,
+    .workbench-motion-switch-thumb {
+      transition: none;
+    }
+
+    .workbench-status-strip[role="status"] .workbench-status-item:first-child .workbench-status-icon {
+      animation: none;
+    }
+  }
+}
+
+@layer polish {
   .workflow-assignment-tools {
     display: flex;
     align-items: center;
@@ -1596,7 +1725,7 @@
   }
 
   .reasoning-presets button {
-    min-height: 27px;
+    min-height: 34px;
     padding: 0 8px;
     border: 0;
     border-radius: 5px;
@@ -1616,6 +1745,7 @@
   @media (max-width: 620px) {
     .workflow-assignment-tools { align-items: stretch; flex-direction: column; }
     .workflow-assignment-tools .ghost-button { align-self: start; }
+    .reasoning-presets button { min-height: 40px; }
   }
 }
 
