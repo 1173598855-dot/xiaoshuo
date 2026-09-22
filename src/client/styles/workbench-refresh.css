@@ -1764,7 +1764,7 @@
     background: var(--action-primary);
   }
 
-  .workbench-status-strip[role="status"] .workbench-status-item:first-child .workbench-status-icon {
+  .workbench-status-strip[aria-live="polite"] .workbench-status-item:first-child .workbench-status-icon {
     animation: workbench-live-pulse 1.8s ease-in-out infinite;
   }
 
@@ -1785,7 +1785,7 @@
       transition: none;
     }
 
-    .workbench-status-strip[role="status"] .workbench-status-item:first-child .workbench-status-icon {
+    .workbench-status-strip[aria-live="polite"] .workbench-status-item:first-child .workbench-status-icon {
       animation: none;
     }
   }

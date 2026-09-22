@@ -162,7 +162,7 @@ export function WorkbenchStatusStrip({
   ariaLabel?: string;
 }) {
   return (
-    <div className="workbench-status-strip" aria-label={ariaLabel} role={live ? "status" : undefined} aria-live={live ? "polite" : undefined}>
+    <div className="workbench-status-strip" aria-label={ariaLabel} role={live ? "region" : undefined} aria-live={live ? "polite" : undefined}>
       {items.map((item) => {
         const Icon = item.icon;
         return (

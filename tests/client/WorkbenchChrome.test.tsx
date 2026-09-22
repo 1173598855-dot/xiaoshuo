@@ -79,8 +79,8 @@ describe("WorkbenchChrome", () => {
 
   it("announces live production status without changing business state", () => {
     render(<WorkbenchStatusStrip live items={[{ id: "run", label: "生产状态", detail: "生产中", tone: "accent" }]} />);
-    expect(screen.getByRole("status")).toHaveTextContent("生产状态");
-    expect(screen.getByRole("status")).toHaveTextContent("生产中");
+    expect(screen.getByRole("region", { name: "工作区状态" })).toHaveTextContent("生产状态");
+    expect(screen.getByRole("region", { name: "工作区状态" })).toHaveTextContent("生产中");
   });
 
   it("filters drawer tools and exposes the motion preference", () => {
