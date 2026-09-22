@@ -44,12 +44,13 @@
 - 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel、AuthorDeliveryCenterPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 当前约 412KB；Three.js 仍只在打开灵感册时加载。
 - 本地开发页面默认 favicon 404 仍是站点资源级非阻塞观察，不属于当前业务优化范围。
 - 六项深化继续沿用首屏 lazy chunk、Three.js 延迟加载、ThemeSelect 键盘/焦点/对比度、移动端视口和 reduced-motion 约束，没有把质量/备份/配额逻辑重新放回 Renderer。
+- 第三阶段继续收口：交付中心展示权威 Diff/恢复说明、作品级 quota reserved/remaining、自动化执行审计；服务端质量门禁复用工作区术语锁和伏笔规则，旧候选文本历史在迁移中补齐，避免 UI 与 HTTP/Electron 产生不同结论。
 
 ## 最终门禁
 
 - `npm run lint`：通过。
 - `npm run typecheck`：通过。
-- `npm run test:run`：102 文件、413 测试通过。
+- `npm run test:run`：102 文件、415 测试通过。
 - `npm run build` / server smoke：通过。
 - `npm run e2e`：8/8 通过（含主题化下拉的真实菜单打开与背景断言）。
 - `npm run smoke:desktop`：通过。

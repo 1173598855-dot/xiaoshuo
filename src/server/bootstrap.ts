@@ -47,6 +47,7 @@ export interface ServerRuntime {
   readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly authorDeliveryRepository: AuthorDeliveryRepository;
   readonly automationCoordinator: AutomationCoordinator;
+  readonly automationExecutionRepository: AutomationExecutionRepository;
   readonly revisionRepository: RevisionRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
@@ -74,10 +75,11 @@ export function createServerRuntime(
     const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
-    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
+    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService, undefined, authoringWorkspaceRepository);
     productionRepository.setQualityGate((bookId, candidateId, readOnly) => authoringService.qualityGate(bookId, candidateId, readOnly));
+    const automationExecutionRepository = new AutomationExecutionRepository(database);
     const automationCoordinator = new AutomationCoordinator({
-      executionRepository: new AutomationExecutionRepository(database),
+      executionRepository: automationExecutionRepository,
       authorDeliveryRepository,
       authoringService,
       ...(options.onAcceptBackup ? { backupAfterAccept: options.onAcceptBackup } : {}),
@@ -116,6 +118,7 @@ export function createServerRuntime(
       memoryService,
       authoringService,
       automationCoordinator,
+      automationExecutionRepository,
       revisionRepository,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
@@ -134,6 +137,7 @@ export function createServerRuntime(
       authoringWorkspaceRepository,
       authorDeliveryRepository,
       automationCoordinator,
+      automationExecutionRepository,
       revisionRepository,
       memoryRepository,
       directorService: new DirectorService(shared),

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 const AUTO_NOVEL_SCHEMA = `
@@ -255,6 +256,27 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_context_config_json TEXT NOT NULL DEFAULT '{\"mode\":\"automatic\",\"entryIds\":[]}'");
   }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
+  const legacyCandidates = database.prepare(
+    `SELECT c.id, c.original_text, c.candidate_text, c.created_at
+       FROM chapter_candidates c
+      WHERE NOT EXISTS (
+        SELECT 1 FROM candidate_text_revisions r WHERE r.candidate_id = c.id
+      )`,
+  ).all() as Array<{ id: string; original_text: string; candidate_text: string; created_at: string }>;
+  if (legacyCandidates.length > 0) {
+    const insertCandidateHistory = database.prepare(
+      `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
+       VALUES (?, ?, 0, ?, ?)`,
+    );
+    for (const candidate of legacyCandidates) {
+      insertCandidateHistory.run(
+        randomUUID(),
+        candidate.id,
+        candidate.original_text || candidate.candidate_text,
+        candidate.created_at,
+      );
+    }
+  }
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
   if (!columns.some(({ name }) => name === "owner_user_id")) {
     database.exec("ALTER TABLE books ADD COLUMN owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL");

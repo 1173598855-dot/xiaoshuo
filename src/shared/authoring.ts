@@ -166,6 +166,20 @@ export const RestoreStorySnapshotInputSchema = z.object({
 }).strict();
 export type RestoreStorySnapshotInput = z.infer<typeof RestoreStorySnapshotInputSchema>;
 
+export const QuotaSnapshotSchema = z.object({
+  status: z.enum(["unlimited", "ok", "warning", "paused"]),
+  tokenLimit: z.number().int().nonnegative(),
+  budgetMicrosLimit: z.number().int().nonnegative(),
+  tokensUsed: z.number().int().nonnegative(),
+  costUsedMicros: z.number().int().nonnegative(),
+  tokensReserved: z.number().int().nonnegative(),
+  costReservedMicros: z.number().int().nonnegative(),
+  warningPercent: z.number().int().min(1).max(99),
+  tokenRemaining: z.number().int().nonnegative().nullable(),
+  budgetRemainingMicros: z.number().int().nonnegative().nullable(),
+}).strict();
+export type QuotaSnapshot = z.infer<typeof QuotaSnapshotSchema>;
+
 export const UsageSummarySchema = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -220,18 +234,7 @@ export const UsageSummarySchema = z.object({
     outputTokens: z.number().int().nonnegative(),
     estimatedCostMicros: z.number().int().nonnegative(),
   }).strict()).default([]),
-  quota: z.object({
-    status: z.enum(["unlimited", "ok", "warning", "paused"]),
-    tokenLimit: z.number().int().nonnegative(),
-    budgetMicrosLimit: z.number().int().nonnegative(),
-    tokensUsed: z.number().int().nonnegative(),
-    costUsedMicros: z.number().int().nonnegative(),
-    tokensReserved: z.number().int().nonnegative(),
-    costReservedMicros: z.number().int().nonnegative(),
-    warningPercent: z.number().int().min(1).max(99),
-    tokenRemaining: z.number().int().nonnegative().nullable(),
-    budgetRemainingMicros: z.number().int().nonnegative().nullable(),
-  }).strict().default({
+  quota: QuotaSnapshotSchema.default({
     status: "unlimited",
     tokenLimit: 0,
     budgetMicrosLimit: 0,

@@ -61,6 +61,7 @@ export interface AutoNovelRuntime {
   readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly authorDeliveryRepository: AuthorDeliveryRepository;
   readonly automationCoordinator: AutomationCoordinator;
+  readonly automationExecutionRepository: AutomationExecutionRepository;
   readonly revisionRepository: RevisionRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryRepository: MemoryRepository;
@@ -92,10 +93,11 @@ export function createAutoNovelRuntime(
     const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
-    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
+    const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService, undefined, authoringWorkspaceRepository);
     productionRepository.setQualityGate((bookId, candidateId, readOnly) => authoringService.qualityGate(bookId, candidateId, readOnly));
+    const automationExecutionRepository = new AutomationExecutionRepository(database);
     const automationCoordinator = new AutomationCoordinator({
-      executionRepository: new AutomationExecutionRepository(database),
+      executionRepository: automationExecutionRepository,
       authorDeliveryRepository,
       authoringService,
       ...(options.onAcceptBackup ? { backupAfterAccept: options.onAcceptBackup } : {}),
@@ -136,6 +138,7 @@ export function createAutoNovelRuntime(
       memoryService,
       authoringService,
       automationCoordinator,
+      automationExecutionRepository,
       revisionRepository,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
@@ -161,6 +164,7 @@ export function createAutoNovelRuntime(
       authoringWorkspaceRepository,
       authorDeliveryRepository,
       automationCoordinator,
+      automationExecutionRepository,
       revisionRepository,
       productionRepository,
       memoryRepository,

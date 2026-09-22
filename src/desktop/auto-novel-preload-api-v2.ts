@@ -18,9 +18,9 @@ import type {
   UpdateChapterPlanInput,
   DesktopModelWorkflowSelection,
 } from "../shared/auto-novel";
-import type { BatchReplaceInput, BatchReplaceResult, ChapterPlanPreviewEnvelope, ConsistencyReport, ManuscriptImportInput, ManuscriptImportResult, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
+import type { BatchReplaceInput, BatchReplaceResult, ChapterPlanPreviewEnvelope, ConsistencyReport, ManuscriptImportInput, ManuscriptImportResult, QuotaSnapshot, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
 import type { AuthoringWorkspace, SaveAuthoringWorkspaceInput } from "../shared/authoring-workspace";
-import type { AuthorDeliveryState, MergeRevisionInput, QualityGateReport, RestoreRevisionInput, RevisionDiffResponse, RevisionTimelineResponse, SaveAuthorDeliveryStateInput } from "../shared/author-delivery";
+import type { AuthorDeliveryState, AutomationExecution, MergeRevisionInput, QualityGateReport, RestoreRevisionInput, RevisionDiffResponse, RevisionTimelineResponse, SaveAuthorDeliveryStateInput } from "../shared/author-delivery";
 import type { UsageSummary } from "../shared/authoring";
 import type {
   MemoryBookSnapshot,
@@ -78,6 +78,8 @@ export interface AutoNovelDesktopApiV2 {
     replaceText(input: BatchReplaceInput): Promise<DesktopResult<BatchReplaceResult>>;
     importManuscript(input: ManuscriptImportInput): Promise<DesktopResult<ManuscriptImportResult>>;
     usageSummary(): Promise<DesktopResult<UsageSummary>>;
+    quota(bookId: string): Promise<DesktopResult<QuotaSnapshot>>;
+    automationExecutions(bookId: string, limit?: number): Promise<DesktopResult<readonly AutomationExecution[]>>;
     chapters(bookId: string): Promise<DesktopResult<BookChapters>>;
     export(input: {
       bookId: string;
@@ -158,6 +160,8 @@ export function createAutoNovelPreloadApiV2(
       replaceText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringReplace, input),
       importManuscript: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringImport, input),
       usageSummary: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.usageSummary),
+      quota: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksQuota, { bookId }),
+      automationExecutions: (bookId, limit) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksAutomationExecutions, { bookId, ...(limit === undefined ? {} : { limit }) }),
       chapters: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksChapters, { bookId }),
       export: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksExport, input),
     },

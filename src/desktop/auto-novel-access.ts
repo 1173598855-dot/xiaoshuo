@@ -24,6 +24,7 @@ export interface AutoNovelServices {
   readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
   readonly authorDeliveryRepository: AuthorDeliveryRepository;
   readonly automationCoordinator: AutomationCoordinator;
+  readonly automationExecutionRepository: AutomationExecutionRepository;
   readonly revisionRepository: RevisionRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryRepository: MemoryRepository;
@@ -49,10 +50,11 @@ export function createAutoNovelServices(
   const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
   const memoryRepository = new MemoryRepository(database);
   const memoryService = new MemoryService(memoryRepository);
-  const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
+  const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService, undefined, authoringWorkspaceRepository);
   productionRepository.setQualityGate((bookId, candidateId, readOnly) => authoringService.qualityGate(bookId, candidateId, readOnly));
+  const automationExecutionRepository = new AutomationExecutionRepository(database);
   const automationCoordinator = new AutomationCoordinator({
-    executionRepository: new AutomationExecutionRepository(database),
+    executionRepository: automationExecutionRepository,
     authorDeliveryRepository,
     authoringService,
     ...(options.backupAfterAccept ? { backupAfterAccept: options.backupAfterAccept } : {}),
@@ -87,6 +89,7 @@ export function createAutoNovelServices(
     memoryService,
     authoringService,
     automationCoordinator,
+    automationExecutionRepository,
     revisionRepository,
     metrics,
     auditRepository,
@@ -97,6 +100,7 @@ export function createAutoNovelServices(
     authoringWorkspaceRepository,
     authorDeliveryRepository,
     automationCoordinator,
+    automationExecutionRepository,
     revisionRepository,
     productionRepository,
     memoryRepository,

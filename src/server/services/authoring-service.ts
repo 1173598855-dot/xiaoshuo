@@ -3,6 +3,7 @@ import type { SearchQuery, SearchResponse, ConsistencyReport, ConsistencyIssue }
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { MemoryService } from "./memory-service";
+import type { AuthoringWorkspaceRepository } from "../repositories/authoring-workspace-repository";
 import {
   QualityGateReportSchema,
   type QualityGateReport,
@@ -15,6 +16,7 @@ export class AuthoringService {
     private readonly productionRepository: ProductionRepository,
     private readonly memoryService: MemoryService,
     private readonly now: () => Date = () => new Date(),
+    private readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository,
   ) {}
 
   search(bookId: string, query: SearchQuery): SearchResponse {
@@ -123,6 +125,78 @@ export class AuthoringService {
         chapterNumber: issue.chapterNumber,
       }],
     }));
+    const workspace = readOnly
+      ? this.authoringWorkspaceRepository?.getPersisted(bookId)
+      : this.authoringWorkspaceRepository?.get(bookId);
+    const chapters = this.productionRepository.getChapters(bookId).filter((chapter) => chapter.revision > 0);
+    const plans = this.bookRepository.getBook(bookId).chapterPlans;
+    const seenTitles = new Map<string, number>();
+    for (const plan of plans) {
+      const key = plan.title.trim().toLocaleLowerCase();
+      const previous = seenTitles.get(key);
+      if (previous !== undefined) {
+        issues.push(deterministicIssue(
+          `duplicate-title-${plan.id}`,
+          "duplicate-chapter",
+          "warning",
+          false,
+          "章节标题重复",
+          `第${plan.chapterNumber}章与第${previous}章使用了相同标题。`,
+          plan.chapterNumber,
+        ));
+      } else {
+        seenTitles.set(key, plan.chapterNumber);
+      }
+    }
+    const seenContent = new Map<string, number>();
+    for (const chapter of chapters) {
+      const key = chapter.content.replace(/\s+/g, "").slice(0, 2_000);
+      const previous = seenContent.get(key);
+      if (key.length > 40 && previous !== undefined) {
+        issues.push(deterministicIssue(
+          `duplicate-content-${chapter.id}`,
+          "duplicate-chapter",
+          "error",
+          true,
+          "正文内容重复",
+          `当前正文与第${previous}章存在高度相同的开头片段。`,
+          chapter.position + 1,
+        ));
+      } else if (key.length > 40) {
+        seenContent.set(key, chapter.position + 1);
+      }
+    }
+    for (const lock of workspace?.termLocks ?? []) {
+      const needle = lock.caseSensitive ? lock.term : lock.term.toLocaleLowerCase();
+      const hasDrift = chapters.some((chapter) => {
+        const content = lock.caseSensitive ? chapter.content : chapter.content.toLocaleLowerCase();
+        return lock.term !== lock.canonical && content.includes(needle);
+      });
+      if (hasDrift) {
+        issues.push(deterministicIssue(
+          `term-${lock.id}`,
+          "term-drift",
+          "error",
+          true,
+          `术语“${lock.term}”需要统一`,
+          `正文中出现旧称，规范写法为“${lock.canonical}”。`,
+          null,
+        ));
+      }
+    }
+    for (const track of workspace?.foreshadowing ?? []) {
+      if (track.targetChapter && track.status !== "resolved" && chapters.length >= track.targetChapter) {
+        issues.push(deterministicIssue(
+          `foreshadowing-${track.id}`,
+          "foreshadowing",
+          "warning",
+          false,
+          "伏笔可能尚未回收",
+          `“${track.title}”已到目标章节但仍标记为${track.status}。`,
+          track.targetChapter,
+        ));
+      }
+    }
     if (candidateId) {
       const candidate = this.productionRepository.getCandidate(candidateId);
       if (candidate.bookId !== bookId) {
@@ -156,14 +230,23 @@ export class AuthoringService {
         });
       }
     }
+    const boundedIssues = issues.slice(0, 500);
     return QualityGateReportSchema.parse({
       bookId,
       bookRevision: consistency.bookRevision,
       checkedAt: consistency.checkedAt,
       candidateId,
-      issues,
-      blockingCount: issues.filter((issue) => issue.blocking).length,
+      issues: boundedIssues,
+      blockingCount: boundedIssues.filter((issue) => issue.blocking).length,
     });
+  }
+
+  qualityInputRevisions(bookId: string): { bookRevision: number; memoryRevision: number; workspaceRevision: number } {
+    return {
+      bookRevision: this.bookRepository.getBook(bookId).book.revision,
+      memoryRevision: this.memoryService.getRevision(bookId),
+      workspaceRevision: this.authoringWorkspaceRepository?.getPersisted(bookId)?.revision ?? 0,
+    };
   }
 }
 
@@ -172,4 +255,28 @@ function excerpt(text: string, needle: string): string {
   const index = normalized.toLocaleLowerCase().indexOf(needle);
   if (index < 0 || normalized.length <= 240) return normalized.slice(0, 240);
   return normalized.slice(Math.max(0, index - 80), index + needle.length + 160);
+}
+
+function deterministicIssue(
+  id: string,
+  category: QualityGateIssue["category"],
+  severity: QualityGateIssue["severity"],
+  blocking: boolean,
+  title: string,
+  detail: string,
+  chapterNumber: number | null,
+): QualityGateIssue {
+  return {
+    id,
+    category,
+    certainty: "deterministic",
+    severity,
+    blocking,
+    title,
+    detail,
+    evidence: [detail],
+    chapterNumber,
+    sourceId: null,
+    repairActions: [],
+  };
 }

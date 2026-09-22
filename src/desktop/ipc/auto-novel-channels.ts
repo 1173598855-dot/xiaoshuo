@@ -24,6 +24,8 @@ export const AUTO_NOVEL_CHANNELS = {
   authoringSearch: "auto-novel:authoring-search",
   authoringConsistency: "auto-novel:authoring-consistency",
   authoringQualityGate: "auto-novel:authoring-quality-gate",
+  booksQuota: "auto-novel:books-quota",
+  booksAutomationExecutions: "auto-novel:books-automation-executions",
   authoringReplace: "auto-novel:authoring-replace",
   authoringImport: "auto-novel:authoring-import",
   usageSummary: "auto-novel:usage-summary",

@@ -118,31 +118,55 @@ export class RevisionRepository {
       entityId: revision.memory_entry_id,
     });
     const candidates = this.database.prepare(
-      `SELECT c.id, c.chapter_id, c.candidate_text_revision, c.status,
+      `SELECT c.id, c.chapter_id, c.candidate_text_revision, c.status, c.created_at,
               r.revision AS text_revision, r.created_at AS text_created_at
          FROM chapter_candidates c
          LEFT JOIN candidate_text_revisions r ON r.candidate_id = c.id
         WHERE c.book_id = ? ORDER BY COALESCE(r.created_at, c.created_at) DESC, c.id DESC
         LIMIT 600`,
-    ).all(bookId) as Array<{ id: string; chapter_id: string; candidate_text_revision: number; status: string; text_revision: number | null; text_created_at: string | null }>;
-    for (const candidate of candidates) rows.push({
-      id: `candidate:${candidate.id}:${candidate.text_revision ?? candidate.candidate_text_revision}`,
-      scope: "candidate",
-      revision: candidate.text_revision ?? candidate.candidate_text_revision,
-      title: `候选正文 · ${candidate.chapter_id.slice(0, 8)}`,
-      summary: `${candidate.status} · 候选文本 v${candidate.text_revision ?? candidate.candidate_text_revision}`,
-      source: candidate.status,
-      chapterNumber: null,
-      createdAt: candidate.text_created_at ?? new Date(0).toISOString(),
-      restorable: false,
-      entityId: candidate.id,
-    });
+    ).all(bookId) as Array<{ id: string; chapter_id: string; candidate_text_revision: number; status: string; created_at: string; text_revision: number | null; text_created_at: string | null }>;
+    const currentCandidateAdded = new Set<string>();
+    for (const candidate of candidates) {
+      const revision = candidate.text_revision ?? candidate.candidate_text_revision;
+      rows.push({
+        id: `candidate:${candidate.id}:${revision}`,
+        scope: "candidate",
+        revision,
+        title: `候选正文 · ${candidate.chapter_id.slice(0, 8)}`,
+        summary: `${candidate.status} · 候选文本 v${revision}`,
+        source: candidate.status,
+        chapterNumber: null,
+        createdAt: candidate.text_created_at ?? candidate.created_at,
+        restorable: false,
+        entityId: candidate.id,
+      });
+      if (candidate.text_revision !== null && candidate.text_revision !== candidate.candidate_text_revision && !currentCandidateAdded.has(candidate.id)) {
+        currentCandidateAdded.add(candidate.id);
+        rows.push({
+          id: `candidate:${candidate.id}:${candidate.candidate_text_revision}`,
+          scope: "candidate",
+          revision: candidate.candidate_text_revision,
+          title: `候选正文 · ${candidate.chapter_id.slice(0, 8)}`,
+          summary: `${candidate.status} · 当前候选文本 v${candidate.candidate_text_revision}`,
+          source: candidate.status,
+          chapterNumber: null,
+          createdAt: candidate.created_at,
+          restorable: false,
+          entityId: candidate.id,
+        });
+      }
+    }
     const items = rows
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
       .map((row) => ({
         id: row.id,
         scope: row.scope,
         revision: row.revision,
+        reference: {
+          scope: row.scope,
+          id: row.scope === "story" ? row.id : row.entityId,
+          revision: row.revision,
+        },
         title: row.title,
         summary: row.summary,
         source: row.source,

@@ -91,6 +91,17 @@ export class AutomationExecutionRepository {
     ).get(bookId, rule, idempotencyKey) as ExecutionRow | undefined;
     return row ? toExecution(row) : undefined;
   }
+
+  list(bookId: string, limit = 40): AutomationExecution[] {
+    const rows = this.database.prepare(
+      `SELECT id, book_id, rule, idempotency_key, status, result_json,
+              error_code, created_at, completed_at
+         FROM automation_executions
+        WHERE book_id = ?
+        ORDER BY created_at DESC, id DESC LIMIT ?`,
+    ).all(bookId, Math.max(1, Math.min(200, Math.trunc(limit)))) as unknown as ExecutionRow[];
+    return rows.map(toExecution);
+  }
 }
 
 function toExecution(row: ExecutionRow): AutomationExecution {

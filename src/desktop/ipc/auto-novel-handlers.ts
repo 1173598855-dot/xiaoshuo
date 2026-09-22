@@ -261,6 +261,21 @@ export function registerAutoNovelIpcHandlers(
     return dependencies.getServices().productionRepository.importChapters(input.bookId, input.expectedBookRevision, chapters);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.usageSummary, z.undefined(), () => dependencies.getServices().usageRepository.getMonthlySummary());
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksQuota, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    const services = dependencies.getServices();
+    const budget = services.authorDeliveryRepository.get(bookId).payload.budget;
+    return services.usageRepository.getQuotaSnapshot({
+      bookId,
+      monthlyTokenLimit: budget.monthlyTokenLimit || undefined,
+      monthlyBudgetMicros: budget.monthlyBudgetMicros || undefined,
+      warningPercent: budget.warningPercent,
+    });
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksAutomationExecutions, z.object({ bookId: z.string().uuid(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ bookId, limit }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().automationExecutionRepository.list(bookId, limit);
+  });
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.directionsList,

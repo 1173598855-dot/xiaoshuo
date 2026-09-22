@@ -25,6 +25,7 @@ export const OPENAPI_DOCUMENT = {
     "/api/books/recoverable/details": { get: { summary: "读取可恢复作品详情" } },
     "/api/usage": { get: { summary: "读取当前周期模型 Token 与费用用量" } },
     "/api/books/{bookId}/quota": { get: { summary: "读取作品配额使用、预留与预警状态" } },
+    "/api/books/{bookId}/automation-executions": { get: { summary: "读取作品自动化执行审计" } },
     "/api/books/{bookId}": { get: { summary: "读取作品详情" } },
     "/api/books/{bookId}/directions": { get: { summary: "读取方向候选" } },
     "/api/books/{bookId}/chapters": { get: { summary: "读取卷章计划与已采纳正文" } },

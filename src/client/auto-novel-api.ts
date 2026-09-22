@@ -60,6 +60,7 @@ import {
 import { AuthoringWorkspaceSchema, SaveAuthoringWorkspaceInputSchema, type AuthoringWorkspace, type SaveAuthoringWorkspaceInput } from "../shared/authoring-workspace";
 import {
   AuthorDeliveryStateSchema,
+  AutomationExecutionSchema,
   MergeRevisionInputSchema,
   RestoreRevisionInputSchema,
   RevisionDiffResponseSchema,
@@ -68,6 +69,7 @@ import {
   QualityGateReportSchema,
   SaveAuthorDeliveryStateInputSchema,
   type AuthorDeliveryState,
+  type AutomationExecution,
   type MergeRevisionInput,
   type RestoreRevisionInput,
   type RevisionDiffResponse,
@@ -80,6 +82,7 @@ import {
   ConsistencyReportSchema,
   ReorderChapterPlansInputSchema,
   SearchResponseSchema,
+  QuotaSnapshotSchema,
   type BatchReplaceInput,
   type BatchReplaceResult,
   ManuscriptImportInputSchema,
@@ -91,6 +94,7 @@ import {
   type ReorderChapterPlansInput,
   type SearchResponse,
   UsageSummarySchema,
+  type QuotaSnapshot,
   type UsageSummary,
   type UpdateChapterPlansInput,
 } from "../shared/authoring";
@@ -145,6 +149,8 @@ export interface AutoNovelApi {
   checkQualityGate?(bookId: string): Promise<QualityGateReport>;
   previewChapterPlans(bookId: string, provider: AutoNovelProviderInput): Promise<ChapterPlanPreviewEnvelope>;
   getUsageSummary(): Promise<UsageSummary>;
+  getBookQuota?(bookId: string): Promise<QuotaSnapshot>;
+  listAutomationExecutions?(bookId: string, limit?: number): Promise<readonly AutomationExecution[]>;
   listDirections(bookId: string): Promise<readonly StoryDirection[]>;
   getChapters(bookId: string): Promise<BookChapters>;
   getCandidate(candidateId: string): Promise<ChapterCandidate>;
@@ -277,6 +283,12 @@ export function createAutoNovelApi(
     },
     async getUsageSummary() {
       return UsageSummarySchema.parse(await requestJson(fetchImpl, "/api/usage"));
+    },
+    async getBookQuota(bookId) {
+      return QuotaSnapshotSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/quota`));
+    },
+    async listAutomationExecutions(bookId, limit = 40) {
+      return z.array(AutomationExecutionSchema).parse(await requestJson(fetchImpl, `/api/books/${bookId}/automation-executions?limit=${encodeURIComponent(String(limit))}`));
     },
     async listDirections(bookId) {
       return z.array(StoryDirectionSchema).parse(

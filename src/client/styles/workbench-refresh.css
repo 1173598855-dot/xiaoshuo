@@ -1818,10 +1818,20 @@
   .author-delivery-section-heading h3 { margin: 3px 0 0; color: var(--text-primary); font-size: 15px; }
   .author-delivery-section-heading > strong { color: var(--action-primary); font-size: 12px; }
   .author-delivery-revision-list article { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--surface-control); }
+  .author-delivery-revision-list article { content-visibility: auto; contain-intrinsic-size: 72px; }
   .author-delivery-revision-list article > div { display: grid; flex: 1; gap: 3px; min-width: 0; }
   .author-delivery-revision-list strong { color: var(--text-primary); font-size: 11px; }
   .author-delivery-revision-list small,
   .author-delivery-revision-list p { margin: 0; color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
+  .author-delivery-revision-actions { display: flex !important; flex: 0 0 auto !important; align-items: flex-start; gap: 4px; }
+  .author-delivery-revision-note { color: var(--action-primary) !important; }
+  .author-delivery-diff { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-default); }
+  .author-delivery-note-field { display: grid; gap: 4px; color: var(--text-secondary); font-size: 10px; }
+  .author-delivery-note-field textarea { min-height: 54px; padding: 7px 8px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); background: var(--surface-control); resize: vertical; }
+  .author-delivery-diff pre { max-height: 320px; overflow: auto; margin: 0; padding: 9px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-secondary); background: var(--surface-rail); font: 10px/1.55 var(--font-mono); white-space: pre-wrap; }
+  .author-delivery-diff .diff-line { display: block; }
+  .author-delivery-diff .diff-line.is-added { color: var(--state-success); background: rgb(123 216 181 / 8%); }
+  .author-delivery-diff .diff-line.is-removed { color: var(--state-danger); background: rgb(238 140 158 / 8%); }
   .revision-scope { flex: 0 0 auto; min-width: 50px; padding: 4px 6px; border-radius: 5px; color: var(--action-primary); background: rgb(169 157 255 / 9%); font-size: 9px; text-align: center; }
   .scope-candidate { color: var(--state-warning); background: rgb(217 189 125 / 10%); }
 
@@ -1837,6 +1847,15 @@
   .author-delivery-snapshot-list button > span { display: grid; gap: 2px; }
   .author-delivery-snapshot-list strong { font-size: 11px; }
   .author-delivery-snapshot-list small { color: var(--text-secondary); font-size: 9px; }
+  .author-delivery-execution-log { display: grid; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-default); }
+  .author-delivery-execution-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-control); }
+  .author-delivery-execution-row > div { display: grid; gap: 2px; min-width: 0; }
+  .author-delivery-execution-row strong { overflow: hidden; color: var(--text-primary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .author-delivery-execution-row small { color: var(--text-secondary); font-size: 9px; }
+  .execution-status { flex: 0 0 auto; padding: 3px 5px; border-radius: 4px; font-size: 9px; }
+  .execution-status.is-completed { color: var(--state-success); background: rgb(123 216 181 / 12%); }
+  .execution-status.is-failed { color: var(--state-danger); background: rgb(238 140 158 / 12%); }
+  .execution-status.is-running { color: var(--state-warning); background: rgb(217 189 125 / 12%); }
   .author-delivery-plan-merge { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--surface-panel-muted); }
   .author-delivery-plan-merge > strong { color: var(--text-primary); font-size: 11px; }
   .author-delivery-plan-merge label { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 10px; }

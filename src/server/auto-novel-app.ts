@@ -70,6 +70,7 @@ import type { BookRepository } from "./repositories/book-repository";
 import type { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
 import type { AuthorDeliveryRepository } from "./repositories/author-delivery-repository";
 import type { RevisionRepository } from "./repositories/revision-repository";
+import type { AutomationExecutionRepository } from "./repositories/automation-repository";
 import type { ProductionRepository } from "./repositories/production-repository";
 import type { DirectorService } from "./services/director-service";
 import type { FoundationService } from "./services/foundation-service";
@@ -207,6 +208,7 @@ export interface AutoNovelAppDependencies {
   readonly authorDeliveryRepository?: AuthorDeliveryRepository;
   readonly automationCoordinator?: AutomationCoordinator;
   readonly revisionRepository?: RevisionRepository;
+  readonly automationExecutionRepository?: AutomationExecutionRepository;
   readonly productionRepository: ProductionRepository;
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
@@ -1260,6 +1262,14 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       monthlyBudgetMicros: budget.monthlyBudgetMicros || undefined,
       warningPercent: budget.warningPercent,
     }));
+  });
+  app.get("/api/books/:bookId/automation-executions", (context) => {
+    const bookId = context.req.param("bookId");
+    assertBookAccess(dependencies, bookId);
+    if (!dependencies.automationExecutionRepository) return context.json(apiError("AUTOMATION_NOT_CONFIGURED", "自动化审计尚未配置。"), 503);
+    const limit = Number(context.req.query("limit") ?? 40);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return context.json(apiError("VALIDATION_ERROR", "自动化审计条数无效。"), 400);
+    return context.json(dependencies.automationExecutionRepository.list(bookId, limit));
   });
   app.onError((error, context) =>
     context.json({ error: toAutoNovelPublicError(error) }, autoNovelErrorStatus(error)),

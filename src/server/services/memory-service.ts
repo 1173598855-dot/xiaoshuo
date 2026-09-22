@@ -42,6 +42,10 @@ export class MemoryService {
     return this.repository.list(bookId, filter);
   }
 
+  getRevision(bookId: string): number {
+    return this.repository.getMemoryRevision(bookId);
+  }
+
   snapshot(bookId: string, filter?: Partial<MemoryFilter>): MemoryBookSnapshot {
     this.ensureSeeded(bookId);
     return MemoryBookSnapshotSchema.parse({

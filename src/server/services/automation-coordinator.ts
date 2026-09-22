@@ -55,8 +55,9 @@ export class AutomationCoordinator {
 
   beforeExport(bookId: string): void {
     const rules = this.dependencies.authorDeliveryRepository.get(bookId).payload.automation;
-    const currentRevision = this.dependencies.authoringService.consistency(bookId, { seed: false }).bookRevision;
-    const execution = this.begin(bookId, "fresh-quality-before-export", `book:${bookId}:v${currentRevision}`);
+    const revisions = this.dependencies.authoringService.qualityInputRevisions(bookId);
+    const deliveryRevision = this.dependencies.authorDeliveryRepository.get(bookId).revision;
+    const execution = this.begin(bookId, "fresh-quality-before-export", `book:${bookId}:b${revisions.bookRevision}:m${revisions.memoryRevision}:w${revisions.workspaceRevision}:d${deliveryRevision}`);
     if (!execution.started) {
       if (execution.execution.status === "failed") throw new ExportBlockedByQualityError();
       if (execution.execution.status === "completed" && Number(execution.execution.result.blockingCount ?? 0) > 0 && rules.blockExportOnErrors) {
@@ -70,6 +71,8 @@ export class AutomationCoordinator {
         checkedAt: report.checkedAt,
         blockingCount: report.blockingCount,
         issueCount: report.issues.length,
+        ...revisions,
+        deliveryRevision,
       };
       this.dependencies.executionRepository.complete(execution.execution.id, result);
       if (report.blockingCount > 0 && rules.blockExportOnErrors) throw new ExportBlockedByQualityError();

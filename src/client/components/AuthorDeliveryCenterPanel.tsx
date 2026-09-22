@@ -4,11 +4,12 @@ import { Archive, Check, Download, FileCheck2, GitBranch, Gauge, History, Refres
 import type { BookDetails, ChapterCandidate } from "../../shared/auto-novel";
 import type { StorySnapshot } from "../../shared/authoring";
 import type { Chapter } from "../../shared/contracts";
-import type { ConsistencyReport, UsageSummary } from "../../shared/authoring";
+import type { ConsistencyReport, QuotaSnapshot, UsageSummary } from "../../shared/authoring";
 import type { MemoryBookSnapshot } from "../../shared/memory";
 import type { AuthoringWorkspace } from "../../shared/authoring-workspace";
 import {
   AutomationRulesSchema,
+  type AutomationExecution,
   CostBudgetProfileSchema,
   DEFAULT_AUTOMATION_RULES,
   PublicationProfileSchema,
@@ -17,8 +18,10 @@ import {
   type CostBudgetProfile,
   type PublicationProfile,
   type QualityGateIssue,
+  type QualityGateReport,
   type RevisionTimelineItem,
   type RevisionTimelineResponse,
+  type RevisionReference,
 } from "../../shared/author-delivery";
 import type { AutoNovelApi, AutoNovelRunDetails } from "../auto-novel-api";
 import { ThemeSelect } from "./ThemeSelect";
@@ -35,6 +38,7 @@ interface AuthorDeliveryCenterPanelProps {
   onOpenTimeline: () => void;
   onOpenMemory: () => void;
   onOpenConsistency: () => void;
+  onBookUpdated?: (book: BookDetails) => void;
 }
 
 const PROFILE_KEY = "xiaoyi.publication-profile.v1";
@@ -50,14 +54,17 @@ const TAB_LABELS: Record<DeliveryTab, string> = {
   automation: "自动化规则",
 };
 
-export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, onOpenManuscript, onOpenTimeline, onOpenMemory, onOpenConsistency }: AuthorDeliveryCenterPanelProps) {
+export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, onOpenManuscript, onOpenTimeline, onOpenMemory, onOpenConsistency, onBookUpdated }: AuthorDeliveryCenterPanelProps) {
   const [tab, setTab] = useState<DeliveryTab>("publish");
   const [profile, setProfile] = useState<PublicationProfile>(() => loadPublicationProfile(book.book.id, book.book.title));
   const [budget, setBudget] = useState<CostBudgetProfile>(() => loadBudget());
   const [rules, setRules] = useState<AutomationRules>(() => loadRules());
   const [deliveryRevision, setDeliveryRevision] = useState(0);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
+  const [executions, setExecutions] = useState<readonly AutomationExecution[]>([]);
   const [consistency, setConsistency] = useState<ConsistencyReport | null>(null);
+  const [serverQuality, setServerQuality] = useState<QualityGateReport | null>(null);
   const [workspace, setWorkspace] = useState<AuthoringWorkspace | null>(null);
   const [memorySnapshot, setMemorySnapshot] = useState<MemoryBookSnapshot | null>(null);
   const [snapshots, setSnapshots] = useState<readonly StorySnapshot[]>([]);
@@ -67,9 +74,13 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set());
   const [serverTimeline, setServerTimeline] = useState<RevisionTimelineResponse | null>(null);
+  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
+  const [revisionDiff, setRevisionDiff] = useState<Awaited<ReturnType<AutoNovelApi["diffRevisions"]>> | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
+  const [revisionBusy, setRevisionBusy] = useState(false);
 
   const selectedSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? null;
-  const qualityIssues = useMemo(() => buildQualityIssues(book, chapters, consistency, workspace), [book, chapters, consistency, workspace]);
+  const qualityIssues = useMemo(() => serverQuality?.issues ?? buildQualityIssues(book, chapters, consistency, workspace), [book, chapters, consistency, workspace, serverQuality]);
   const revisionItems = useMemo(() => serverTimeline?.items ?? buildRevisionTimeline(book, chapters, memorySnapshot, snapshots, run?.candidates ?? []), [book, chapters, memorySnapshot, run?.candidates, snapshots, serverTimeline]);
   const selectedPlanCount = selectedSnapshot
     ? selectedSnapshot.payload.chapterPlans.filter((plan) => selectedPlanIds.has(plan.id)).length
@@ -79,19 +90,36 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     let active = true;
     setBusy(true);
     setError(null);
+    const qualityLoader = (api as Partial<AutoNovelApi>).checkQualityGate;
+    const quotaLoader = (api as Partial<AutoNovelApi>).getBookQuota;
+    const executionLoader = (api as Partial<AutoNovelApi>).listAutomationExecutions;
+    const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
+    const qualityRequest = qualityLoader ? qualityLoader(book.book.id) : api.checkConsistency(book.book.id);
     void Promise.all([
       api.getUsageSummary(),
-      api.checkConsistency(book.book.id),
+      qualityRequest,
       api.getAuthoringWorkspace(book.book.id),
       api.listMemory(book.book.id, { includeArchived: true }),
       api.listStorySnapshots(book.book.id),
-    ]).then(([nextUsage, nextConsistency, nextWorkspace, nextMemory, nextSnapshots]) => {
+      quotaLoader ? quotaLoader(book.book.id) : Promise.resolve(null),
+      executionLoader ? executionLoader(book.book.id) : Promise.resolve(null),
+      revisionLoader ? revisionLoader(book.book.id) : Promise.resolve(null),
+    ]).then(([nextUsage, nextQuality, nextWorkspace, nextMemory, nextSnapshots, nextQuota, nextExecutions, nextTimeline]) => {
       if (!active) return;
       setUsage(nextUsage);
-      setConsistency(nextConsistency);
+      if ("blockingCount" in nextQuality) {
+        setServerQuality(nextQuality);
+        setConsistency({ bookId: nextQuality.bookId, bookRevision: nextQuality.bookRevision, checkedAt: nextQuality.checkedAt, issues: [] });
+      } else {
+        setServerQuality(null);
+        setConsistency(nextQuality);
+      }
       setWorkspace(nextWorkspace);
       setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
+      if (nextQuota) setQuota(nextQuota);
+      if (nextExecutions) setExecutions(nextExecutions);
+      if (nextTimeline) setServerTimeline(nextTimeline);
       const persisted = (api as Partial<AutoNovelApi>).getAuthorDeliveryState;
       if (persisted) void persisted(book.book.id).then((state) => {
         setDeliveryRevision(state.revision);
@@ -99,8 +127,6 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
         setBudget((current) => ({ ...current, ...state.payload.budget, updatedAt: state.updatedAt }));
         setRules((current) => ({ ...current, ...state.payload.automation, updatedAt: state.updatedAt }));
       }).catch(() => undefined);
-      const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
-      if (revisionLoader) void revisionLoader(book.book.id).then(setServerTimeline).catch(() => undefined);
     }).catch((loadError) => {
       if (active) setError(loadError instanceof Error ? loadError.message : "作者交付中心暂时无法读取。");
     }).finally(() => {
@@ -145,6 +171,8 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     const next = CostBudgetProfileSchema.parse({ ...budget, updatedAt: new Date().toISOString() });
     setBudget(next);
     await saveDeliveryState(profile, next, rules);
+    const quotaLoader = (api as Partial<AutoNovelApi>).getBookQuota;
+    if (quotaLoader) void quotaLoader(book.book.id).then(setQuota).catch(() => undefined);
   };
 
   const saveRules = async () => {
@@ -157,20 +185,35 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     setBusy(true);
     setError(null);
     try {
-      const [nextUsage, nextConsistency, nextWorkspace, nextMemory, nextSnapshots] = await Promise.all([
+      const qualityLoader = (api as Partial<AutoNovelApi>).checkQualityGate;
+      const quotaLoader = (api as Partial<AutoNovelApi>).getBookQuota;
+      const executionLoader = (api as Partial<AutoNovelApi>).listAutomationExecutions;
+      const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
+      const qualityRequest = qualityLoader ? qualityLoader(book.book.id) : api.checkConsistency(book.book.id);
+      const [nextUsage, nextQuality, nextWorkspace, nextMemory, nextSnapshots, nextQuota, nextExecutions, nextTimeline] = await Promise.all([
         api.getUsageSummary(),
-        api.checkConsistency(book.book.id),
+        qualityRequest,
         api.getAuthoringWorkspace(book.book.id),
         api.listMemory(book.book.id, { includeArchived: true }),
         api.listStorySnapshots(book.book.id),
+        quotaLoader ? quotaLoader(book.book.id) : Promise.resolve(null),
+        executionLoader ? executionLoader(book.book.id) : Promise.resolve(null),
+        revisionLoader ? revisionLoader(book.book.id) : Promise.resolve(null),
       ]);
       setUsage(nextUsage);
-      setConsistency(nextConsistency);
+      if ("blockingCount" in nextQuality) {
+        setServerQuality(nextQuality);
+        setConsistency({ bookId: nextQuality.bookId, bookRevision: nextQuality.bookRevision, checkedAt: nextQuality.checkedAt, issues: [] });
+      } else {
+        setServerQuality(null);
+        setConsistency(nextQuality);
+      }
       setWorkspace(nextWorkspace);
       setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
-      const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
-      if (revisionLoader) void revisionLoader(book.book.id).then(setServerTimeline).catch(() => undefined);
+      if (nextQuota) setQuota(nextQuota);
+      if (nextExecutions) setExecutions(nextExecutions);
+      if (nextTimeline) setServerTimeline(nextTimeline);
       setNotice("作者交付状态已刷新。");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "刷新失败。");
@@ -225,9 +268,11 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
       });
       const mergeRevision = (api as Partial<AutoNovelApi>).mergeRevision;
       if (mergeRevision) {
-        await mergeRevision({ bookId: book.book.id, snapshotId: selectedSnapshot.id, expectedBookRevision: book.book.revision, chapterPlanIds: [...selectedPlanIds], note: "作者交付中心选择性合并章纲" });
+        const nextBook = await mergeRevision({ bookId: book.book.id, snapshotId: selectedSnapshot.id, expectedBookRevision: book.book.revision, chapterPlanIds: [...selectedPlanIds], note: "作者交付中心选择性合并章纲" });
+        onBookUpdated?.(nextBook);
       } else {
-        await api.updateChapterPlans({ bookId: book.book.id, expectedBookRevision: book.book.revision, plans });
+        const nextBook = await api.updateChapterPlans({ bookId: book.book.id, expectedBookRevision: book.book.revision, plans });
+        onBookUpdated?.(nextBook);
       }
       setNotice(`已选择性合并 ${selectedPlanCount} 条章纲变更；候选正文仍保持隔离。`);
     } catch (mergeError) {
@@ -237,12 +282,75 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     }
   };
 
+  const referenceToCurrent = (item: RevisionTimelineItem): RevisionReference | null => {
+    if (item.scope === "story") return { scope: "story", id: `live:${book.book.id}:${book.book.revision}`, revision: book.book.revision };
+    if (item.scope === "chapter") {
+      const current = chapters.find((chapter) => chapter.id === item.reference.id);
+      return current ? { scope: "chapter", id: item.reference.id, revision: current.revision } : null;
+    }
+    if (item.scope === "memory") {
+      const current = memorySnapshot?.entries.find((entry) => entry.id === item.reference.id);
+      return current ? { scope: "memory", id: item.reference.id, revision: current.revision } : null;
+    }
+    if (item.scope === "candidate") {
+      const current = run?.candidates.find((candidate) => candidate.id === item.reference.id);
+      return current ? { scope: "candidate", id: item.reference.id, revision: current.candidateTextRevision ?? 0 } : null;
+    }
+    return item.reference;
+  };
+
+  const inspectRevision = async (item: RevisionTimelineItem) => {
+    if (!api.diffRevisions) return;
+    const currentReference = referenceToCurrent(item);
+    if (!currentReference) {
+      setError("当前版本尚未加载，已停止 Diff，避免把历史版本误当作当前版本。");
+      return;
+    }
+    setSelectedRevisionId(item.id);
+    setRevisionBusy(true);
+    try {
+      setRevisionDiff(await api.diffRevisions(book.book.id, item.reference, currentReference));
+    } catch (diffError) {
+      setError(diffError instanceof Error ? diffError.message : "修订 Diff 读取失败。");
+    } finally {
+      setRevisionBusy(false);
+    }
+  };
+
+  const restoreRevision = async (item: RevisionTimelineItem) => {
+    if (!item.restorable || !api.restoreRevision) return;
+    const currentReference = referenceToCurrent(item);
+    if (item.scope === "memory" && !currentReference) {
+      setError("当前记忆版本尚未加载，已停止恢复。");
+      return;
+    }
+    setRevisionBusy(true);
+    setError(null);
+    try {
+      await api.restoreRevision({
+        bookId: book.book.id,
+        reference: item.reference,
+        expectedBookRevision: book.book.revision,
+        ...(item.scope === "memory" && currentReference ? { expectedEntryRevision: currentReference.revision } : {}),
+        note: revisionNote,
+      });
+      const refreshed = await api.getBook(book.book.id);
+      onBookUpdated?.(refreshed);
+      setNotice(`已恢复“${item.title}”，并记录修订说明。`);
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "修订恢复失败，当前版本未改变。");
+    } finally {
+      setRevisionBusy(false);
+    }
+  };
+
   const restoreSelectedSnapshot = async () => {
     if (!selectedSnapshot) return;
     setBusy(true);
     setError(null);
     try {
-      await api.restoreStorySnapshot(book.book.id, selectedSnapshot.id, book.book.revision);
+      const restored = await api.restoreStorySnapshot(book.book.id, selectedSnapshot.id, book.book.revision);
+      onBookUpdated?.(restored);
       setNotice(`已请求恢复“${selectedSnapshot.name}”；请刷新作品后继续。`);
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : "快照恢复失败。");
@@ -263,12 +371,12 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {notice ? <p className="timeline-notice" role="status"><Check size={14} /> {notice}</p> : null}
       {busy ? <div className="author-delivery-loading" role="status">正在读取交付状态…</div> : null}
-      {!busy && tab === "publish" ? <PublishTab profile={profile} chapters={chapters} book={book} onChange={setProfile} onSave={saveProfile} onExport={async (format) => { const content = await api.exportBook(book.book.id, format); downloadArtifact(content, `${safeName(book.book.title)}.${format === "markdown" ? "md" : format}`); }} onManifest={() => void downloadManifest(profile, book, chapters)} onOpenManuscript={onOpenManuscript} /> : null}
+      {!busy && tab === "publish" ? <PublishTab profile={profile} chapters={chapters} book={book} onChange={setProfile} onSave={saveProfile} onExport={async (format) => { try { const content = await api.exportBook(book.book.id, format); downloadArtifact(content, `${safeName(book.book.title)}.${format === "markdown" ? "md" : format}`); setNotice(`${format.toUpperCase()} 导出完成。`); } catch (exportError) { setError(exportError instanceof Error ? exportError.message : "导出失败，请先处理质量门禁。"); } }} onManifest={() => void downloadManifest(profile, book, chapters)} onOpenManuscript={onOpenManuscript} /> : null}
       {!busy && tab === "quality" ? <QualityTab issues={qualityIssues} consistency={consistency} onRefresh={() => void refresh()} onOpenMemory={onOpenMemory} onOpenTimeline={onOpenTimeline} onOpenConsistency={onOpenConsistency} /> : null}
-      {!busy && tab === "revisions" ? <RevisionTab items={revisionItems} currentRevision={book.book.revision} onOpenSnapshots={() => setTab("snapshots")} /> : null}
-      {!busy && tab === "cost" ? <CostTab usage={usage} budget={budget} onBudgetChange={setBudget} onSave={saveBudget} run={run} /> : null}
+      {!busy && tab === "revisions" ? <RevisionTab items={revisionItems} currentRevision={book.book.revision} selectedId={selectedRevisionId} diff={revisionDiff} note={revisionNote} busy={revisionBusy} onNoteChange={setRevisionNote} onInspect={(item) => void inspectRevision(item)} onRestore={(item) => void restoreRevision(item)} onOpenSnapshots={() => setTab("snapshots")} /> : null}
+      {!busy && tab === "cost" ? <CostTab usage={usage} quota={quota} budget={budget} onBudgetChange={setBudget} onSave={saveBudget} run={run} /> : null}
       {!busy && tab === "snapshots" ? <SnapshotTab snapshots={snapshots} selected={selectedSnapshot} selectedPlanIds={selectedPlanIds} onSelect={(snapshot) => { setSelectedSnapshotId(snapshot.id); setSelectedPlanIds(new Set(snapshot.payload.chapterPlans.map((plan) => plan.id))); }} onTogglePlan={(id) => setSelectedPlanIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onCreate={() => void createSnapshot()} onMerge={() => void mergeSelectedPlans()} onRestore={() => void restoreSelectedSnapshot()} disabled={busy} /> : null}
-      {!busy && tab === "automation" ? <AutomationTab rules={rules} onChange={setRules} onSave={saveRules} qualityIssues={qualityIssues} /> : null}
+      {!busy && tab === "automation" ? <AutomationTab rules={rules} executions={executions} onChange={setRules} onSave={saveRules} qualityIssues={qualityIssues} /> : null}
     </aside>
   );
 }
@@ -282,23 +390,26 @@ function QualityTab({ issues, consistency, onRefresh, onOpenMemory, onOpenTimeli
   return <div className="author-delivery-tab-content"><div className={`author-delivery-status ${blocking.length > 0 ? "is-danger" : "is-ready"}`}><ShieldCheck size={20} /><div><strong>{blocking.length > 0 ? `${blocking.length} 个问题阻止交付` : "质量门禁已通过"}</strong><small>{consistency ? `最近检查于 ${new Date(consistency.checkedAt).toLocaleString("zh-CN")}` : "等待检查"}</small></div></div><div className="author-delivery-quality-grid"><span><strong>{issues.length}</strong>全部问题</span><span><strong>{blocking.length}</strong>硬阻断</span><span><strong>{issues.filter((issue) => issue.certainty === "heuristic").length}</strong>启发式提示</span></div>{issues.length === 0 ? <p className="author-delivery-empty">当前没有发现人物、时间线、术语、伏笔、重复章节或文风风险。</p> : <div className="author-delivery-issue-list">{issues.slice(0, 12).map((issue) => <article className={`author-delivery-issue is-${issue.severity}`} key={issue.id}><div><strong>{issue.title}</strong><small>{issue.detail}</small><em>{issue.certainty === "deterministic" ? "确定性" : "启发式"}{issue.chapterNumber ? ` · 第${issue.chapterNumber}章` : ""}</em></div><span>{issue.blocking ? "阻断" : "提示"}</span></article>)}</div>}<div className="author-delivery-actions"><button className="ghost-button" type="button" onClick={onRefresh}><RefreshCw size={14} />重新检查</button><button className="secondary-button" type="button" onClick={onOpenConsistency}>打开一致性中心</button><button className="secondary-button" type="button" onClick={onOpenTimeline}>检查时间线</button><button className="secondary-button" type="button" onClick={onOpenMemory}>查看记忆</button></div></div>;
 }
 
-function RevisionTab({ items, currentRevision, onOpenSnapshots }: { items: readonly RevisionTimelineItem[]; currentRevision: number; onOpenSnapshots: () => void }) {
-  return <div className="author-delivery-tab-content"><div className="author-delivery-section-heading"><div><span className="eyebrow">REVISION LEDGER</span><h3>统一修订时间线</h3></div><strong>当前 v{currentRevision}</strong></div>{items.length === 0 ? <p className="author-delivery-empty">还没有可回看的修订记录。</p> : <div className="author-delivery-revision-list">{items.map((item) => <article key={item.id}><span className={`revision-scope scope-${item.scope}`}>{item.scope}</span><div><strong>{item.title}</strong><small>v{item.revision} · {item.source} · {new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.summary}</p></div>{item.restorable ? <button className="ghost-button" type="button" onClick={onOpenSnapshots}>回看</button> : null}</article>)}</div>}<button className="secondary-button" type="button" onClick={onOpenSnapshots}><History size={14} />打开快照与分支</button></div>;
+function RevisionTab({ items, currentRevision, selectedId, diff, note, busy, onNoteChange, onInspect, onRestore, onOpenSnapshots }: { items: readonly RevisionTimelineItem[]; currentRevision: number; selectedId: string | null; diff: Awaited<ReturnType<AutoNovelApi["diffRevisions"]>> | null; note: string; busy: boolean; onNoteChange: (note: string) => void; onInspect: (item: RevisionTimelineItem) => void; onRestore: (item: RevisionTimelineItem) => void; onOpenSnapshots: () => void }) {
+  const selected = selectedId ? items.find((item) => item.id === selectedId) : undefined;
+  return <div className="author-delivery-tab-content"><div className="author-delivery-section-heading"><div><span className="eyebrow">REVISION LEDGER</span><h3>统一修订时间线</h3></div><strong>当前 v{currentRevision}</strong></div>{items.length === 0 ? <p className="author-delivery-empty">还没有可回看的修订记录。</p> : <div className="author-delivery-revision-list">{items.slice(0, 80).map((item) => <article key={item.id}><span className={`revision-scope scope-${item.scope}`}>{item.scope}</span><div><strong>{item.title}</strong><small>v{item.revision} · {item.source} · {new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.summary}</p>{item.note ? <p className="author-delivery-revision-note">说明：{item.note}</p> : null}</div><div className="author-delivery-revision-actions"><button className="ghost-button" type="button" disabled={busy} onClick={() => onInspect(item)}>Diff</button>{item.restorable ? <button className="ghost-button" type="button" disabled={busy} onClick={() => onRestore(item)}>恢复</button> : null}</div></article>)}</div>}{selected ? <section className="author-delivery-diff" aria-label="修订 Diff"><div className="author-delivery-section-heading"><div><h3>{selected.title}</h3><small>{busy ? "正在读取 Diff…" : diff?.changed ? "存在差异" : "当前版本一致"}</small></div></div><label className="author-delivery-note-field">修订说明<textarea value={note} maxLength={500} onChange={(event) => onNoteChange(event.target.value)} placeholder="记录这次恢复或回看的原因" /></label>{diff ? <pre>{diff.lines.slice(0, 240).map((line, index) => <code className={`diff-line is-${line.type}`} key={`${index}-${line.type}`}>{line.type === "added" ? "+ " : line.type === "removed" ? "- " : "  "}{line.text}{"\n"}</code>)}</pre> : null}</section> : null}<button className="secondary-button" type="button" onClick={onOpenSnapshots}><History size={14} />打开快照与分支</button></div>;
 }
 
-function CostTab({ usage, budget, onBudgetChange, onSave, run }: { usage: UsageSummary | null; budget: CostBudgetProfile; onBudgetChange: (budget: CostBudgetProfile) => void; onSave: () => void; run: AutoNovelRunDetails | null }) {
+function CostTab({ usage, quota, budget, onBudgetChange, onSave, run }: { usage: UsageSummary | null; quota: QuotaSnapshot | null; budget: CostBudgetProfile; onBudgetChange: (budget: CostBudgetProfile) => void; onSave: () => void; run: AutoNovelRunDetails | null }) {
   const tokens = usage?.totalTokens ?? 0;
-  const percent = budget.monthlyTokenLimit > 0 ? Math.min(100, Math.round(tokens / budget.monthlyTokenLimit * 100)) : 0;
+  const effectiveTokens = quota ? quota.tokensUsed + quota.tokensReserved : tokens;
+  const percent = quota?.tokenLimit ? Math.min(100, Math.round(effectiveTokens / quota.tokenLimit * 100)) : budget.monthlyTokenLimit > 0 ? Math.min(100, Math.round(tokens / budget.monthlyTokenLimit * 100)) : 0;
   const averagePerChapter = run?.acceptedChapters.length ? Math.round(tokens / run.acceptedChapters.length) : 0;
-  return <div className="author-delivery-tab-content"><div className={`author-delivery-status ${percent >= budget.warningPercent ? "is-warning" : "is-ready"}`}><Gauge size={20} /><div><strong>{budget.monthlyTokenLimit > 0 ? `${percent}% 配额已使用` : "未设置月度配额"}</strong><small>{usage ? `${tokens.toLocaleString("zh-CN")} Token · ¥${(usage.estimatedCostMicros / 100_000_000).toFixed(4)}` : "正在读取用量"}</small></div></div><div className="author-delivery-quality-grid"><span><strong>{usage?.requests ?? 0}</strong>请求</span><span><strong>{usage?.inputTokens ?? 0}</strong>输入 Token</span><span><strong>{usage?.outputTokens ?? 0}</strong>输出 Token</span></div>{usage?.byProvider.length ? <div className="author-delivery-provider-list">{usage.byProvider.map((provider) => <div key={provider.provider}><strong>{provider.provider}</strong><span>{(provider.inputTokens + provider.outputTokens).toLocaleString("zh-CN")} Token · ¥{(provider.estimatedCostMicros / 100_000_000).toFixed(4)}</span></div>)}</div> : null}{usage?.byModel?.length ? <div className="author-delivery-provider-list">{usage.byModel.slice(0, 8).map((model) => <div key={`${model.provider}-${model.model}`}><strong>{model.model}</strong><span>{model.provider} · {(model.inputTokens + model.outputTokens).toLocaleString("zh-CN")} Token</span></div>)}</div> : null}<div className="author-delivery-progress"><span style={{ transform: `scaleX(${percent / 100})` }} /></div><p className="author-delivery-muted">按已采纳章节估算，当前平均每章约 {averagePerChapter.toLocaleString("zh-CN")} Token。</p><div className="author-delivery-form-row"><label>月 Token 上限<input type="number" min={0} value={budget.monthlyTokenLimit} onChange={(event) => onBudgetChange({ ...budget, monthlyTokenLimit: Math.max(0, Number(event.target.value)) })} /></label><label>预算预警 %<input type="number" min={1} max={99} value={budget.warningPercent} onChange={(event) => onBudgetChange({ ...budget, warningPercent: Math.max(1, Math.min(99, Number(event.target.value))) })} /></label></div><button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存配额</button></div>;
+  const status = quota?.status ?? (percent >= budget.warningPercent ? "warning" : "ok");
+  return <div className="author-delivery-tab-content"><div className={`author-delivery-status ${status === "paused" ? "is-danger" : status === "warning" ? "is-warning" : "is-ready"}`}><Gauge size={20} /><div><strong>{quota?.status === "paused" ? "配额已暂停" : quota?.status === "warning" ? "配额接近上限" : budget.monthlyTokenLimit > 0 ? `${percent}% 配额已使用` : "未设置月度配额"}</strong><small>{usage ? `${tokens.toLocaleString("zh-CN")} Token · ¥${(usage.estimatedCostMicros / 100_000_000).toFixed(4)}` : "正在读取用量"}</small></div></div><div className="author-delivery-quality-grid"><span><strong>{usage?.requests ?? 0}</strong>请求</span><span><strong>{usage?.inputTokens ?? 0}</strong>输入 Token</span><span><strong>{usage?.outputTokens ?? 0}</strong>输出 Token</span>{quota ? <span><strong>{quota.tokensReserved.toLocaleString("zh-CN")}</strong>已预留</span> : null}</div>{usage?.byProvider.length ? <div className="author-delivery-provider-list">{usage.byProvider.map((provider) => <div key={provider.provider}><strong>{provider.provider}</strong><span>{(provider.inputTokens + provider.outputTokens).toLocaleString("zh-CN")} Token · ¥{(provider.estimatedCostMicros / 100_000_000).toFixed(4)}</span></div>)}</div> : null}{usage?.byModel?.length ? <div className="author-delivery-provider-list">{usage.byModel.slice(0, 8).map((model) => <div key={`${model.provider}-${model.model}`}><strong>{model.model}</strong><span>{model.provider} · {(model.inputTokens + model.outputTokens).toLocaleString("zh-CN")} Token</span></div>)}</div> : null}<div className="author-delivery-progress"><span style={{ transform: `scaleX(${percent / 100})` }} /></div><p className="author-delivery-muted">{quota?.tokenRemaining !== null && quota?.tokenRemaining !== undefined ? `剩余约 ${quota.tokenRemaining.toLocaleString("zh-CN")} Token` : "按已采纳章节估算"} · 当前平均每章约 {averagePerChapter.toLocaleString("zh-CN")} Token。</p><div className="author-delivery-form-row"><label>月 Token 上限<input type="number" min={0} value={budget.monthlyTokenLimit} onChange={(event) => onBudgetChange({ ...budget, monthlyTokenLimit: Math.max(0, Number(event.target.value)) })} /></label><label>预算预警 %<input type="number" min={1} max={99} value={budget.warningPercent} onChange={(event) => onBudgetChange({ ...budget, warningPercent: Math.max(1, Math.min(99, Number(event.target.value))) })} /></label></div><button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存配额</button></div>;
 }
 
 function SnapshotTab({ snapshots, selected, selectedPlanIds, onSelect, onTogglePlan, onCreate, onMerge, onRestore, disabled }: { snapshots: readonly StorySnapshot[]; selected: StorySnapshot | null; selectedPlanIds: ReadonlySet<string>; onSelect: (snapshot: StorySnapshot) => void; onTogglePlan: (id: string) => void; onCreate: () => void; onMerge: () => void; onRestore: () => void; disabled: boolean }) {
   return <div className="author-delivery-tab-content"><div className="author-delivery-actions"><button className="primary-button" type="button" disabled={disabled} onClick={onCreate}><Archive size={14} />创建交付快照</button>{selected ? <><button className="secondary-button" type="button" disabled={disabled || selectedPlanIds.size === 0} onClick={onMerge}>合并选中章纲</button><button className="ghost-button" type="button" disabled={disabled} onClick={onRestore}>整体恢复</button></> : null}</div>{snapshots.length === 0 ? <p className="author-delivery-empty">还没有快照。重大改稿前先创建一个可回退版本。</p> : <div className="author-delivery-snapshot-list">{snapshots.map((snapshot) => <button className={selected?.id === snapshot.id ? "is-active" : ""} type="button" key={snapshot.id} onClick={() => onSelect(snapshot)}><GitBranch size={14} /><span><strong>{snapshot.name}</strong><small>基于 v{snapshot.baseRevision} · {new Date(snapshot.updatedAt).toLocaleString("zh-CN")}</small></span></button>)}</div>}{selected ? <div className="author-delivery-plan-merge"><strong>选择性合并章纲</strong>{selected.payload.chapterPlans.slice(0, 20).map((plan) => <label key={plan.id}><input type="checkbox" checked={selectedPlanIds.has(plan.id)} onChange={() => onTogglePlan(plan.id)} />第 {plan.chapterNumber} 章 · {plan.title}</label>)}</div> : null}<p className="author-delivery-muted">候选正文与未采纳记忆永远不会进入快照合并。</p></div>;
 }
 
-function AutomationTab({ rules, onChange, onSave, qualityIssues }: { rules: AutomationRules; onChange: (rules: AutomationRules) => void; onSave: () => void; qualityIssues: readonly QualityGateIssue[] }) {
-  return <div className="author-delivery-tab-content"><div className="author-delivery-status is-ready"><Settings2 size={20} /><div><strong>本地规则引擎</strong><small>只执行固定安全动作，不接受脚本、URL 或 Provider 配置。</small></div></div><div className="author-delivery-rule-list"><RuleToggle label="生成后自动质检" checked={rules.qualityAfterGeneration} onChange={(checked) => onChange({ ...rules, qualityAfterGeneration: checked })} /><RuleToggle label="审核采纳后提示备份" checked={rules.backupAfterAccept} onChange={(checked) => onChange({ ...rules, backupAfterAccept: checked })} /><RuleToggle label="发现错误时阻止导出" checked={rules.blockExportOnErrors} onChange={(checked) => onChange({ ...rules, blockExportOnErrors: checked })} /><RuleToggle label="显示启发式风格提示" checked={rules.warnOnHeuristics} onChange={(checked) => onChange({ ...rules, warnOnHeuristics: checked })} /></div><p className="author-delivery-muted">当前待处理质量问题：{qualityIssues.filter((issue) => issue.blocking).length} 个阻断，{qualityIssues.filter((issue) => !issue.blocking).length} 个提示。</p><button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存自动化规则</button></div>;
+function AutomationTab({ rules, executions, onChange, onSave, qualityIssues }: { rules: AutomationRules; executions: readonly AutomationExecution[]; onChange: (rules: AutomationRules) => void; onSave: () => void; qualityIssues: readonly QualityGateIssue[] }) {
+  return <div className="author-delivery-tab-content"><div className="author-delivery-status is-ready"><Settings2 size={20} /><div><strong>本地规则引擎</strong><small>固定规则协调器只执行质检、备份和导出前检查，不接受脚本、URL 或 Provider 配置。</small></div></div><div className="author-delivery-rule-list"><RuleToggle label="生成后自动质检" checked={rules.qualityAfterGeneration} onChange={(checked) => onChange({ ...rules, qualityAfterGeneration: checked })} /><RuleToggle label="审核采纳后提示备份" checked={rules.backupAfterAccept} onChange={(checked) => onChange({ ...rules, backupAfterAccept: checked })} /><RuleToggle label="发现错误时阻止导出" checked={rules.blockExportOnErrors} onChange={(checked) => onChange({ ...rules, blockExportOnErrors: checked })} /><RuleToggle label="显示启发式风格提示" checked={rules.warnOnHeuristics} onChange={(checked) => onChange({ ...rules, warnOnHeuristics: checked })} /></div><p className="author-delivery-muted">当前待处理质量问题：{qualityIssues.filter((issue) => issue.blocking).length} 个阻断，{qualityIssues.filter((issue) => !issue.blocking).length} 个提示。</p>{executions.length ? <section className="author-delivery-execution-log" aria-label="自动化执行审计"><div className="author-delivery-section-heading"><h3>最近执行</h3><small>{executions.length} 条</small></div>{executions.slice(0, 8).map((execution) => <div className="author-delivery-execution-row" key={execution.id}><span className={`execution-status is-${execution.status}`}>{execution.status}</span><div><strong>{execution.rule}</strong><small>{new Date(execution.createdAt).toLocaleString("zh-CN")}{execution.errorCode ? ` · ${execution.errorCode}` : execution.status === "failed" ? " · 同一事件不会重复执行" : ""}</small></div></div>)}</section> : <p className="author-delivery-muted">尚无自动化执行记录。</p>}<button className="primary-button" type="button" onClick={onSave}><Save size={14} />保存自动化规则</button></div>;
 }
 
 function RuleToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -348,11 +459,12 @@ function issue(id: string, category: QualityGateIssue["category"], severity: Qua
 }
 
 function buildRevisionTimeline(book: BookDetails, chapters: readonly Chapter[], memorySnapshot: MemoryBookSnapshot | null, snapshots: readonly StorySnapshot[], candidates: readonly ChapterCandidate[]): RevisionTimelineItem[] {
-  const items: RevisionTimelineItem[] = [{ id: `story-${book.book.id}-${book.book.revision}`, scope: "story", revision: book.book.revision, title: book.book.title, summary: "当前正式作品版本", source: "live", chapterNumber: null, createdAt: book.book.updatedAt, restorable: false, note: "" }];
-  for (const snapshot of snapshots.slice(0, 10)) items.push({ id: snapshot.id, scope: "story", revision: snapshot.baseRevision, title: snapshot.name, summary: `${snapshot.payload.chapterPlans.length} 条章纲 · 可恢复快照`, source: "snapshot", chapterNumber: null, createdAt: snapshot.updatedAt, restorable: true, note: "" });
-  for (const chapter of chapters.slice(0, 20)) items.push({ id: `chapter-${chapter.id}-${chapter.revision}`, scope: "chapter", revision: chapter.revision, title: `第${chapter.position + 1}章 · ${chapter.title}`, summary: `${chapter.content.length.toLocaleString("zh-CN")} 字正式正文`, source: chapter.status, chapterNumber: chapter.position + 1, createdAt: chapter.updatedAt, restorable: true, note: "" });
-  for (const entry of memorySnapshot?.entries.slice(0, 20) ?? []) items.push({ id: `memory-${entry.id}-${entry.revision}`, scope: "memory", revision: entry.revision, title: entry.subject, summary: `${entry.kind} · ${entry.status}`, source: entry.source, chapterNumber: entry.sourceChapterNumber, createdAt: entry.updatedAt, restorable: true, note: "" });
-  for (const candidate of candidates.slice(0, 10)) items.push({ id: candidate.id, scope: "candidate", revision: candidate.candidateTextRevision ?? 0, title: `候选 · ${candidate.chapterId.slice(0, 8)}`, summary: `基线正文 v${candidate.baseRevision} · 候选文本 v${candidate.candidateTextRevision ?? 0}`, source: candidate.review.status, chapterNumber: null, createdAt: candidate.createdAt, restorable: false, note: "" });
+  const storyReference = (id: string, revision: number): RevisionReference => ({ scope: "story", id, revision });
+  const items: RevisionTimelineItem[] = [{ id: `story-${book.book.id}-${book.book.revision}`, entityId: book.book.id, reference: storyReference(`live:${book.book.id}:${book.book.revision}`, book.book.revision), scope: "story", revision: book.book.revision, title: book.book.title, summary: "当前正式作品版本", source: "live", chapterNumber: null, createdAt: book.book.updatedAt, restorable: false, note: "" }];
+  for (const snapshot of snapshots.slice(0, 10)) items.push({ id: snapshot.id, entityId: snapshot.id, reference: storyReference(snapshot.id, snapshot.baseRevision), scope: "story", revision: snapshot.baseRevision, title: snapshot.name, summary: `${snapshot.payload.chapterPlans.length} 条章纲 · 可恢复快照`, source: "snapshot", chapterNumber: null, createdAt: snapshot.updatedAt, restorable: true, note: "" });
+  for (const chapter of chapters.slice(0, 20)) items.push({ id: `chapter-${chapter.id}-${chapter.revision}`, entityId: chapter.id, reference: { scope: "chapter", id: chapter.id, revision: chapter.revision }, scope: "chapter", revision: chapter.revision, title: `第${chapter.position + 1}章 · ${chapter.title}`, summary: `${chapter.content.length.toLocaleString("zh-CN")} 字正式正文`, source: chapter.status, chapterNumber: chapter.position + 1, createdAt: chapter.updatedAt, restorable: true, note: "" });
+  for (const entry of memorySnapshot?.entries.slice(0, 20) ?? []) items.push({ id: `memory-${entry.id}-${entry.revision}`, entityId: entry.id, reference: { scope: "memory", id: entry.id, revision: entry.revision }, scope: "memory", revision: entry.revision, title: entry.subject, summary: `${entry.kind} · ${entry.status}`, source: entry.source, chapterNumber: entry.sourceChapterNumber, createdAt: entry.updatedAt, restorable: true, note: "" });
+  for (const candidate of candidates.slice(0, 10)) items.push({ id: candidate.id, entityId: candidate.id, reference: { scope: "candidate", id: candidate.id, revision: candidate.candidateTextRevision ?? 0 }, scope: "candidate", revision: candidate.candidateTextRevision ?? 0, title: `候选 · ${candidate.chapterId.slice(0, 8)}`, summary: `基线正文 v${candidate.baseRevision} · 候选文本 v${candidate.candidateTextRevision ?? 0}`, source: candidate.review.status, chapterNumber: null, createdAt: candidate.createdAt, restorable: false, note: "" });
   return items.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 

@@ -42,9 +42,9 @@ import {
   type RollbackMemoryInput,
   type UpdateMemoryInput,
 } from "../shared/memory";
-import { BatchReplaceInputSchema, BatchReplaceResultSchema, ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ManuscriptImportInputSchema, ManuscriptImportResultSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema, type BatchReplaceInput, type ManuscriptImportInput } from "../shared/authoring";
+import { BatchReplaceInputSchema, BatchReplaceResultSchema, ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ManuscriptImportInputSchema, ManuscriptImportResultSchema, QuotaSnapshotSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema, type BatchReplaceInput, type ManuscriptImportInput } from "../shared/authoring";
 import { AuthoringWorkspaceSchema, SaveAuthoringWorkspaceInputSchema } from "../shared/authoring-workspace";
-import { AuthorDeliveryStateSchema, MergeRevisionInputSchema, QualityGateReportSchema, RestoreRevisionInputSchema, RevisionDiffResponseSchema, RevisionTimelineResponseSchema, SaveAuthorDeliveryStateInputSchema } from "../shared/author-delivery";
+import { AuthorDeliveryStateSchema, AutomationExecutionSchema, MergeRevisionInputSchema, QualityGateReportSchema, RestoreRevisionInputSchema, RevisionDiffResponseSchema, RevisionTimelineResponseSchema, SaveAuthorDeliveryStateInputSchema } from "../shared/author-delivery";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -144,6 +144,12 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async getUsageSummary() {
       return parseResult(await api.books.usageSummary(), UsageSummarySchema);
+    },
+    async getBookQuota(bookId) {
+      return parseResult(await api.books.quota(bookId), QuotaSnapshotSchema);
+    },
+    async listAutomationExecutions(bookId, limit = 40) {
+      return parseResult(await api.books.automationExecutions(bookId, limit), z.array(AutomationExecutionSchema));
     },
     async listDirections(bookId) {
       return parseResult(await api.directions.list(bookId), z.array(StoryDirectionSchema));

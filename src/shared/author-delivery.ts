@@ -86,8 +86,17 @@ export type QualityGateReport = z.infer<typeof QualityGateReportSchema>;
 export const RevisionScopeSchema = z.enum(["story", "timeline", "chapter", "memory", "candidate"]);
 export type RevisionScope = z.infer<typeof RevisionScopeSchema>;
 
+export const RevisionReferenceSchema = z.object({
+  scope: RevisionScopeSchema,
+  id: z.string().trim().min(1).max(160),
+  revision: z.number().int().nonnegative(),
+}).strict();
+export type RevisionReference = z.infer<typeof RevisionReferenceSchema>;
+
 export const RevisionTimelineItemSchema = z.object({
   id: z.string().trim().min(8).max(160),
+  entityId: z.string().trim().min(1).max(160).default(""),
+  reference: RevisionReferenceSchema,
   scope: RevisionScopeSchema,
   revision: z.number().int().nonnegative(),
   title: z.string().trim().min(1).max(240),
@@ -99,13 +108,6 @@ export const RevisionTimelineItemSchema = z.object({
   note: z.string().trim().max(500).default(""),
 }).strict();
 export type RevisionTimelineItem = z.infer<typeof RevisionTimelineItemSchema>;
-
-export const RevisionReferenceSchema = z.object({
-  scope: RevisionScopeSchema,
-  id: z.string().trim().min(1).max(160),
-  revision: z.number().int().nonnegative(),
-}).strict();
-export type RevisionReference = z.infer<typeof RevisionReferenceSchema>;
 
 export const RevisionTimelineResponseSchema = z.object({
   bookId: UuidSchema,

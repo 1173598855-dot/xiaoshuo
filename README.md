@@ -20,6 +20,7 @@
 - 作者交付中心统一提供发布资料/manifest、封面与模板、质量门禁、修订时间线、成本配额、快照选择性章纲合并和本地自动化规则；复用现有导出、质量、用量、快照和 revision-safe 编辑能力，不创建第二套生产或记忆账本。
 - 导出服务会在 HTTP/Electron 共同入口重新执行错误级质量检查；成本中心同时显示 Provider 与模型维度的 Token 明细，修订时间线包含正式章节和记忆 revision 投影。
 - 第二阶段将作者交付配置持久化到独立的 `author_delivery_states` revision，并把预算预留、Provider/模型/作品/章节/生产阶段用量、幂等自动化执行、权威修订 Diff 和候选文本历史下沉到 SQLite；HTTP 与 Electron 共享同一套服务边界，accept 后可触发校验备份，导出前会再次 fresh quality check。
+- 第三阶段把服务端质量规则、作品级配额快照、修订 Diff/恢复说明和自动化执行审计真正接入交付中心；交付中心可直接查看差异、恢复修订、查看预留 Token 和备份/失败执行状态，旧候选文本历史会在迁移时安全补齐。
 - 所有业务下拉统一使用可访问的主题化 listbox、工作台深色控件 token、portal 定位和可见焦点；包含动态抽屉、桌面 Electron 和移动端筛选场景，避免 Chromium/系统默认白色弹层穿透。
 - 审核正文、记忆中心和正式正文统一使用深色阅读 surface 与高对比文字；记忆卡、JSON 内容、Diff、候选文本和批注区域不再泄漏旧的纸张白底。
 - “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；
@@ -115,6 +116,8 @@ npm run dev
 | `GET` | `/api/books/:bookId/search` | 搜索资料卡、章纲和正文 |
 | `GET` | `/api/books/:bookId/consistency` | 检查故事一致性 |
 | `GET` | `/api/books/:bookId/quality-gate` | 读取服务端权威质量门禁和阻断问题 |
+| `GET` | `/api/books/:bookId/quota` | 读取作品 Token/费用使用、预留和预警状态 |
+| `GET` | `/api/books/:bookId/automation-executions` | 读取质检、备份和导出前检查的执行审计 |
 | `GET` / `PATCH` | `/api/books/:bookId/authoring-workspace` | 读取 / revision-safe 保存创作中枢资料 |
 | `GET` / `POST` | `/api/books/:bookId/revisions`、`/revisions/diff` | 读取权威修订时间线和逐行 Diff |
 | `POST` | `/api/books/:bookId/revisions/restore\|merge` | 带 expected revision 恢复或原子选择性合并 |

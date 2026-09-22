@@ -46,6 +46,14 @@ export class AuthoringWorkspaceRepository {
     return toWorkspace(row);
   }
 
+  /** Read without creating a row; safe for a quality check inside another SQLite transaction. */
+  getPersisted(bookId: string): AuthoringWorkspace | undefined {
+    const row = this.database
+      .prepare("SELECT book_id, revision, payload_json, created_at, updated_at FROM authoring_workspaces WHERE book_id = ?")
+      .get(bookId) as WorkspaceRow | undefined;
+    return row ? toWorkspace(row) : undefined;
+  }
+
   save(input: SaveAuthoringWorkspaceInput): AuthoringWorkspace {
     const current = this.get(input.bookId);
     if (current.revision !== input.expectedRevision) {
