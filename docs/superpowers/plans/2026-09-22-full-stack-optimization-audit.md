@@ -15,6 +15,7 @@
 - 创作中枢上下文回放只记录记忆 revision、上下文 Hash、章节、作者工作区 revision、启用 Prompt 名称和配方名称，不保存 Provider 凭据。
 - 系统健康面板复用服务 ready、用量、作品一致性和桌面数据库状态，失败时只显示归一化错误。
 - 业务下拉统一迁移到可访问的 `ThemeSelect` listbox：菜单通过 portal 定位，绕开 Windows/Chromium 原生白色弹层，统一深色 surface、紫色 focus、键盘导航、Escape 回收和 reduced-motion；真实 Chromium E2E 会打开菜单并断言主题背景。
+- 复查截图反馈后补齐 `.memory-drawer`、审核候选、记忆变更和 `.manuscript-page` 的深色 surface/文字对比度；真实 Chromium 渲染检查确认记忆卡与审核正文的背景为 `#211f2e`、正文文字为 `#f4f2fb`。
 
 ### Server / SQLite
 

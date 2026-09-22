@@ -2935,6 +2935,102 @@
     font-size: 25px;
   }
 
+  /* MemoryPanel is a separate drawer from the story-drawer family. Keep its
+     legacy cards from leaking the old paper palette into the dark desk. */
+  .memory-drawer :where(.memory-entry, .memory-selection-control, .memory-content, .memory-editor, .memory-history) {
+    border-color: var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  .memory-drawer .memory-entry > strong {
+    color: var(--text-primary);
+  }
+
+  .memory-drawer .memory-entry-meta,
+  .memory-drawer .memory-selection-control small,
+  .memory-drawer .memory-history-empty {
+    color: var(--text-secondary);
+  }
+
+  .memory-drawer .memory-content,
+  .memory-drawer .memory-editor {
+    color: var(--text-secondary);
+    background: var(--surface-panel-muted);
+    border-color: var(--border-default);
+  }
+
+  .memory-drawer .memory-selection-reason {
+    color: var(--action-primary);
+    background: rgb(169 157 255 / 8%);
+  }
+
+  .memory-drawer .memory-selection-modes button,
+  .memory-drawer .memory-entry-actions .ghost-button {
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    background: rgb(255 255 255 / 3%);
+  }
+
+  .memory-drawer .memory-selection-modes button:hover,
+  .memory-drawer .memory-selection-modes button:focus-visible,
+  .memory-drawer .memory-entry-actions .ghost-button:hover:not(:disabled),
+  .memory-drawer .memory-entry-actions .ghost-button:focus-visible {
+    border-color: var(--action-primary);
+    color: var(--text-primary);
+    background: rgb(169 157 255 / 9%);
+  }
+
+  .memory-drawer .memory-selection-modes button.active {
+    border-color: rgb(123 216 181 / 52%);
+    color: var(--state-success);
+    background: var(--surface-success);
+  }
+
+  /* Review and manuscript content are reading surfaces, not paper previews. */
+  .review-panel :where(.review-copy, .review-memory-panel, .memory-change, .candidate-textarea, .candidate-diff),
+  .manuscript-page .manuscript-chapter,
+  .manuscript-page .chapter-body {
+    border-color: var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--surface-control);
+  }
+
+  .review-panel .review-copy,
+  .manuscript-page .chapter-body {
+    color: var(--text-primary);
+  }
+
+  .review-panel .review-memory-panel {
+    box-shadow: none;
+  }
+
+  .review-panel .memory-change pre {
+    color: var(--text-secondary);
+    background: var(--surface-panel-muted);
+    border-color: var(--border-default);
+  }
+
+  .review-panel .candidate-diff-line.removed {
+    background: rgb(238 140 158 / 10%);
+  }
+
+  .review-panel .candidate-diff-line.added {
+    background: rgb(123 216 181 / 10%);
+  }
+
+  .review-panel .candidate-diff-line.removed code,
+  .review-panel .candidate-diff-line.removed .candidate-diff-marker {
+    color: #f0b5c2;
+  }
+
+  .review-panel .candidate-diff-line.added code,
+  .review-panel .candidate-diff-line.added .candidate-diff-marker {
+    color: #9be6c7;
+  }
+
   .story-drawer-subtitle,
   .story-drawer p,
   .story-drawer small,
