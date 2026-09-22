@@ -7,6 +7,7 @@ import { ProductionRepository } from "../../src/server/repositories/production-r
 import { MemoryRepository } from "../../src/server/repositories/memory-repository";
 import { MemoryService } from "../../src/server/services/memory-service";
 import { AuthoringService } from "../../src/server/services/authoring-service";
+import { AuthoringWorkspaceRepository } from "../../src/server/repositories/authoring-workspace-repository";
 
 const databases: ReturnType<typeof createDatabase>[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
@@ -41,5 +42,34 @@ describe("AuthoringService", () => {
     const report = service.consistency(book.id);
     expect(report.bookId).toBe(book.id);
     expect(report.issues.some(({ code }) => code === "FORESHADOWING_ORDER")).toBe(true);
+  });
+
+  it("moves workspace term drift into the server quality gate", () => {
+    const database = createDatabase(":memory:");
+    databases.push(database);
+    migrate(database);
+    const books = new BookRepository(database);
+    const production = new ProductionRepository(database);
+    const memory = new MemoryService(new MemoryRepository(database));
+    const workspaceRepository = new AuthoringWorkspaceRepository(database);
+    const book = books.createBook({ idea: "术语质量门禁" });
+    const workspace = workspaceRepository.get(book.id);
+    const { revision: _revision, updatedAt: _updatedAt, ...payload } = workspace;
+    void _revision;
+    void _updatedAt;
+    workspaceRepository.save({
+      bookId: book.id,
+      expectedRevision: workspace.revision,
+      workspace: {
+        ...payload,
+        termLocks: [{ id: "11111111-1111-4111-8111-111111111111", term: "旧称", canonical: "规范称呼", note: "", caseSensitive: false }],
+      },
+    });
+    production.importChapters(book.id, book.revision, [{ title: "第一章", content: "这里仍然使用旧称。" }]);
+    const service = new AuthoringService(books, production, memory, undefined, workspaceRepository);
+    const report = service.qualityGate(book.id);
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "term-drift", blocking: true, severity: "error" }),
+    ]));
   });
 });

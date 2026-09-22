@@ -48,4 +48,22 @@ describe("AuthorDeliveryCenterPanel", () => {
     expect(await screen.findByText("未设置月度配额")).toBeInTheDocument();
     await waitFor(() => expect(api.checkConsistency).toHaveBeenCalledWith(book.book.id));
   });
+
+  it("uses authoritative quality, quota, automation and revision APIs when available", async () => {
+    const api = createApi();
+    Object.assign(api, {
+      checkQualityGate: vi.fn().mockResolvedValue({ bookId: book.book.id, bookRevision: 3, checkedAt: "2026-09-23T00:00:00.000Z", candidateId: null, issues: [], blockingCount: 0 }),
+      getBookQuota: vi.fn().mockResolvedValue({ status: "warning", tokenLimit: 2_000, budgetMicrosLimit: 0, tokensUsed: 1_600, costUsedMicros: 0, tokensReserved: 120, costReservedMicros: 0, warningPercent: 80, tokenRemaining: 280, budgetRemainingMicros: null }),
+      listAutomationExecutions: vi.fn().mockResolvedValue([{ id: "11111111-1111-4111-8111-111111111111", bookId: book.book.id, rule: "fresh-quality-before-export", idempotencyKey: "book:test", status: "completed", result: {}, errorCode: null, createdAt: "2026-09-23T00:00:00.000Z", completedAt: "2026-09-23T00:00:00.000Z" }]),
+      listRevisionTimeline: vi.fn().mockResolvedValue({ bookId: book.book.id, currentBookRevision: 3, items: [{ id: "22222222-2222-4222-8222-222222222222", entityId: "22222222-2222-4222-8222-222222222222", reference: { scope: "story", id: "22222222-2222-4222-8222-222222222222", revision: 2 }, scope: "story", revision: 2, title: "交付快照", summary: "旧版本", source: "snapshot", chapterNumber: null, createdAt: "2026-09-22T00:00:00.000Z", restorable: true, note: "" }] }),
+      diffRevisions: vi.fn().mockResolvedValue({ bookId: book.book.id, from: { scope: "story", id: "22222222-2222-4222-8222-222222222222", revision: 2 }, to: { scope: "story", id: "live:test", revision: 3 }, changed: true, lines: [{ type: "removed", text: "旧" }, { type: "added", text: "新" }] }),
+    });
+    render(<AuthorDeliveryCenterPanel book={book} chapters={[]} run={null} api={api} onClose={vi.fn()} onOpenManuscript={vi.fn()} onOpenTimeline={vi.fn()} onOpenMemory={vi.fn()} onOpenConsistency={vi.fn()} />);
+    await screen.findByText("交付准备度");
+    fireEvent.click(screen.getByRole("button", { name: "修订时间线" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Diff" }));
+    expect(await screen.findByText(/\+ 新/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "自动化规则" }));
+    expect(await screen.findByText("fresh-quality-before-export")).toBeInTheDocument();
+  });
 });

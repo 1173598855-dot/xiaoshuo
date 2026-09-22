@@ -38,5 +38,6 @@ describe("AutomationCoordinator", () => {
     expect(first?.status).toBe("completed");
     expect(second?.id).toBe(first?.id);
     expect(checks).toBe(1);
+    expect(executionRepository.list(book.id)).toHaveLength(1);
   });
 });
