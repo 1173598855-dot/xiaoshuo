@@ -17,6 +17,7 @@
 - 业务下拉统一迁移到可访问的 `ThemeSelect` listbox：菜单通过 portal 定位，绕开 Windows/Chromium 原生白色弹层，统一深色 surface、紫色 focus、键盘导航、Escape 回收和 reduced-motion；真实 Chromium E2E 会打开菜单并断言主题背景。
 - 复查截图反馈后补齐 `.memory-drawer`、审核候选、记忆变更和 `.manuscript-page` 的深色 surface/文字对比度；真实 Chromium 渲染检查确认记忆卡与审核正文的背景为 `#211f2e`、正文文字为 `#f4f2fb`。
 - 新增作者交付中心作为六项能力的统一入口：发布资料/manifest、质量门禁、修订时间线、成本配额、快照选择性章纲合并和本地自动化规则；发布配置、预算和规则隔离在本地交付层，不污染 AI workspace revision。
+- 导出路径新增服务端质量 guard，错误级一致性问题在 UI 之外也返回稳定 409；用量聚合增加 Provider/模型维度，时间线补入正式章节与记忆 revision。
 
 ### Server / SQLite
 
@@ -43,7 +44,7 @@
 
 - `npm run lint`：通过。
 - `npm run typecheck`：通过。
-- `npm run test:run`：99 文件、407 测试通过。
+- `npm run test:run`：99 文件、408 测试通过。
 - `npm run build` / server smoke：通过。
 - `npm run e2e`：8/8 通过（含主题化下拉的真实菜单打开与背景断言）。
 - `npm run smoke:desktop`：通过。

@@ -101,6 +101,10 @@ describe("operational repositories", () => {
         { provider: "openai", requests: 1 },
         { provider: "openai-compatible", requests: 2, estimatedCostMicros: 37 },
       ],
+      byModel: [
+        { provider: "openai", model: "model-b", requests: 1 },
+        { provider: "openai-compatible", model: "model-a", requests: 2 },
+      ],
     });
   });
 

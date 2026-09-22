@@ -18,6 +18,7 @@
 - 作者工作台增加 Aceternity 风格的 Spotlight、Background Beams、Tracing Beam 和 Moving Border 沉浸层，全部改写为本地 SVG/CSS，随安静动效和 reduced-motion 自动降级；实现说明见 [`docs/third-party/aceternity-ui.md`](docs/third-party/aceternity-ui.md)。
 - 正文交付增加导出前预检与交付摘要；正文章节支持本地书签和批注；创作中枢上下文页保留最近上下文 Hash、记忆 revision、Prompt 和配方的回放摘要；生产室可打开统一系统健康面板查看服务、用量、备份和一致性状态。
 - 作者交付中心统一提供发布资料/manifest、封面与模板、质量门禁、修订时间线、成本配额、快照选择性章纲合并和本地自动化规则；复用现有导出、质量、用量、快照和 revision-safe 编辑能力，不创建第二套生产或记忆账本。
+- 导出服务会在 HTTP/Electron 共同入口重新执行错误级质量检查；成本中心同时显示 Provider 与模型维度的 Token 明细，修订时间线包含正式章节和记忆 revision 投影。
 - 所有业务下拉统一使用可访问的主题化 listbox、工作台深色控件 token、portal 定位和可见焦点；包含动态抽屉、桌面 Electron 和移动端筛选场景，避免 Chromium/系统默认白色弹层穿透。
 - 审核正文、记忆中心和正式正文统一使用深色阅读 surface 与高对比文字；记忆卡、JSON 内容、Diff、候选文本和批注区域不再泄漏旧的纸张白底。
 - “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；

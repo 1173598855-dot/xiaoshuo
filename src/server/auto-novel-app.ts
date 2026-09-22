@@ -1178,7 +1178,7 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     context.json(apiError("NOT_FOUND", "请求的资源不存在。"), 404),
   );
   app.get("/api/usage", (context) => context.json(dependencies.usageRepository?.getMonthlySummary() ?? {
-    from: new Date().toISOString(), to: new Date().toISOString(), requests: 0, successfulRequests: 0, failedRequests: 0, blockedRequests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, totalTokens: 0, estimatedCostMicros: 0, byProvider: [],
+    from: new Date().toISOString(), to: new Date().toISOString(), requests: 0, successfulRequests: 0, failedRequests: 0, blockedRequests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, totalTokens: 0, estimatedCostMicros: 0, byProvider: [], byModel: [],
   }));
   app.onError((error, context) =>
     context.json({ error: toAutoNovelPublicError(error) }, autoNovelErrorStatus(error)),

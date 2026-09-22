@@ -189,5 +189,13 @@ export const UsageSummarySchema = z.object({
     cacheHitRate: z.number().min(0).max(1),
     estimatedCostMicros: z.number().int().nonnegative(),
   }).strict()),
+  byModel: z.array(z.object({
+    provider: z.string().min(1).max(80),
+    model: z.string().min(1).max(200),
+    requests: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    estimatedCostMicros: z.number().int().nonnegative(),
+  }).strict()).default([]),
 }).strict();
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;

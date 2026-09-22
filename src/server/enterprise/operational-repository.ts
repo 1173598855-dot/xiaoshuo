@@ -150,6 +150,14 @@ export interface UsageSummary {
     readonly cacheHitRate: number;
     readonly estimatedCostMicros: number;
   }[];
+  readonly byModel: readonly {
+    readonly provider: string;
+    readonly model: string;
+    readonly requests: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }[];
 }
 
 export class UsageRepository {
@@ -223,6 +231,17 @@ export class UsageRepository {
          GROUP BY provider ORDER BY provider`,
       )
       .all(from, to) as unknown as UsageProviderRow[];
+    const models = this.database
+      .prepare(
+        `SELECT provider, model, COUNT(*) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_events
+         WHERE created_at >= ? AND created_at < ?
+         GROUP BY provider, model ORDER BY provider, model`,
+      )
+      .all(from, to) as unknown as UsageModelRow[];
     const inputTokens = integerOrZero(totals.input_tokens);
     const outputTokens = integerOrZero(totals.output_tokens);
     const cacheReadTokens = integerOrZero(totals.cache_read_tokens);
@@ -249,6 +268,14 @@ export class UsageRepository {
         cacheReadTokens: integerOrZero(row.cache_read_tokens),
         cacheWriteTokens: integerOrZero(row.cache_write_tokens),
         cacheHitRate: integerOrZero(row.input_tokens) > 0 ? Math.min(1, integerOrZero(row.cache_read_tokens) / integerOrZero(row.input_tokens)) : 0,
+        estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
+      })),
+      byModel: models.map((row) => ({
+        provider: row.provider,
+        model: row.model,
+        requests: integerOrZero(row.requests),
+        inputTokens: integerOrZero(row.input_tokens),
+        outputTokens: integerOrZero(row.output_tokens),
         estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
       })),
     };
@@ -294,6 +321,15 @@ interface UsageProviderRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
+  estimated_cost_micros: number;
+}
+
+interface UsageModelRow {
+  provider: string;
+  model: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
   estimated_cost_micros: number;
 }
 
