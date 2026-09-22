@@ -19,6 +19,7 @@
 - 正文交付增加导出前预检与交付摘要；正文章节支持本地书签和批注；创作中枢上下文页保留最近上下文 Hash、记忆 revision、Prompt 和配方的回放摘要；生产室可打开统一系统健康面板查看服务、用量、备份和一致性状态。
 - 作者交付中心统一提供发布资料/manifest、封面与模板、质量门禁、修订时间线、成本配额、快照选择性章纲合并和本地自动化规则；复用现有导出、质量、用量、快照和 revision-safe 编辑能力，不创建第二套生产或记忆账本。
 - 导出服务会在 HTTP/Electron 共同入口重新执行错误级质量检查；成本中心同时显示 Provider 与模型维度的 Token 明细，修订时间线包含正式章节和记忆 revision 投影。
+- 第二阶段将作者交付配置持久化到独立的 `author_delivery_states` revision，并把预算预留、Provider/模型/作品/章节/生产阶段用量、幂等自动化执行、权威修订 Diff 和候选文本历史下沉到 SQLite；HTTP 与 Electron 共享同一套服务边界，accept 后可触发校验备份，导出前会再次 fresh quality check。
 - 所有业务下拉统一使用可访问的主题化 listbox、工作台深色控件 token、portal 定位和可见焦点；包含动态抽屉、桌面 Electron 和移动端筛选场景，避免 Chromium/系统默认白色弹层穿透。
 - 审核正文、记忆中心和正式正文统一使用深色阅读 surface 与高对比文字；记忆卡、JSON 内容、Diff、候选文本和批注区域不再泄漏旧的纸张白底。
 - “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；
@@ -113,7 +114,10 @@ npm run dev
 | `POST` | `/api/books/:bookId/timeline/preview` | 生成 AI 时间线 Diff 预览 |
 | `GET` | `/api/books/:bookId/search` | 搜索资料卡、章纲和正文 |
 | `GET` | `/api/books/:bookId/consistency` | 检查故事一致性 |
+| `GET` | `/api/books/:bookId/quality-gate` | 读取服务端权威质量门禁和阻断问题 |
 | `GET` / `PATCH` | `/api/books/:bookId/authoring-workspace` | 读取 / revision-safe 保存创作中枢资料 |
+| `GET` / `POST` | `/api/books/:bookId/revisions`、`/revisions/diff` | 读取权威修订时间线和逐行 Diff |
+| `POST` | `/api/books/:bookId/revisions/restore\|merge` | 带 expected revision 恢复或原子选择性合并 |
 | `POST` | `/api/books/:bookId/replace` | revision-safe 批量替换章纲和正文 |
 | `POST` | `/api/books/:bookId/import` | 导入 Markdown / TXT / DOCX 正文 |
 | `GET` | `/api/usage` | 读取当前周期 Token 与费用统计 |
@@ -164,6 +168,9 @@ npm run clean:generated
 - 候选冻结基础 revision、上下文 hash 及记忆 revision/hash，正文或记忆基线发生变化后自动过期；记忆变更未经审阅不会 accept，确认后与正文在同一事务中更新历史快照；
 - Provider 记忆选择是显式 allow-list：自动模式按关键词相关度筛选，手动模式只允许当前作品中作者选定的非归档条目，选择配置参与上下文 hash，候选 accept 时再次校验；
 - 候选正文编辑不会直接修改正式正文；每次编辑增加候选正文 revision、重置审核状态并要求重新审核，只有原子 accept 才会提升章节 revision；
+- 质量门禁、配额预留、自动化 execution 和导出阻断均在服务端执行，不能通过绕过 Renderer 的 HTTP/IPC 调用解除；自动化只接受固定枚举规则，不执行脚本、URL 或任意 Provider 配置；
+- 用量记录只保存脱敏的 Provider/模型和作品/章节/阶段 attribution，配额采用 SQLite `BEGIN IMMEDIATE` 预留并在成功/失败后结算或释放，不把提示词、密钥或错误 cause 写入数据库；
+- 修订时间线以 SQLite 中的 story snapshot、chapter revision、memory revision、candidate text revision 为权威来源；恢复/合并必须携带 expected revision，候选正文和备份仍保持隔离；
 - 首版使用本地 SQLite 的确定性关键词检索和 20,000 字符上下文预算，不引入向量数据库或云端记忆服务；
 - 同一候选不能重复采纳或丢弃；
 - 生成、审核和修复失败不会污染已采纳正文；
@@ -232,7 +239,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/auth/register -Method Post `
 
 ## 企业内网 P0 基线
 
-当前版本的企业目标是单用户 / 单租户内网部署，不包含多人协作、多租户和云端协作。已补齐生产所需的访问令牌保护、持久化生产队列、Provider 用量与额度、显式故障转移、审计日志、结构化指标、告警、完整性校验备份及安全恢复脚本。
+当前版本的企业目标是单用户 / 单租户内网部署，不包含多人协作、多租户和云端协作。已补齐生产所需的访问令牌保护、持久化生产队列、Provider 用量与额度预留、显式故障转移、审计日志、结构化指标、告警、完整性校验备份及安全恢复脚本。
 
 详细变量、健康探针、备份恢复和升级回滚步骤见 [`docs/operations/enterprise-p0.md`](docs/operations/enterprise-p0.md)。服务端生产启动时设置 `NODE_ENV=production` 和至少 16 位的 `XIAOYI_ACCESS_TOKEN`；`/api/health` 与 `/api/ready` 作为无令牌探针，其余 HTTP API 使用 Bearer 令牌。
 

@@ -18,6 +18,7 @@ import {
   type PublicationProfile,
   type QualityGateIssue,
   type RevisionTimelineItem,
+  type RevisionTimelineResponse,
 } from "../../shared/author-delivery";
 import type { AutoNovelApi, AutoNovelRunDetails } from "../auto-novel-api";
 import { ThemeSelect } from "./ThemeSelect";
@@ -54,6 +55,7 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
   const [profile, setProfile] = useState<PublicationProfile>(() => loadPublicationProfile(book.book.id, book.book.title));
   const [budget, setBudget] = useState<CostBudgetProfile>(() => loadBudget());
   const [rules, setRules] = useState<AutomationRules>(() => loadRules());
+  const [deliveryRevision, setDeliveryRevision] = useState(0);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [consistency, setConsistency] = useState<ConsistencyReport | null>(null);
   const [workspace, setWorkspace] = useState<AuthoringWorkspace | null>(null);
@@ -64,10 +66,11 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set());
+  const [serverTimeline, setServerTimeline] = useState<RevisionTimelineResponse | null>(null);
 
   const selectedSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? null;
   const qualityIssues = useMemo(() => buildQualityIssues(book, chapters, consistency, workspace), [book, chapters, consistency, workspace]);
-  const revisionItems = useMemo(() => buildRevisionTimeline(book, chapters, memorySnapshot, snapshots, run?.candidates ?? []), [book, chapters, memorySnapshot, run?.candidates, snapshots]);
+  const revisionItems = useMemo(() => serverTimeline?.items ?? buildRevisionTimeline(book, chapters, memorySnapshot, snapshots, run?.candidates ?? []), [book, chapters, memorySnapshot, run?.candidates, snapshots, serverTimeline]);
   const selectedPlanCount = selectedSnapshot
     ? selectedSnapshot.payload.chapterPlans.filter((plan) => selectedPlanIds.has(plan.id)).length
     : 0;
@@ -89,6 +92,15 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
       setWorkspace(nextWorkspace);
       setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
+      const persisted = (api as Partial<AutoNovelApi>).getAuthorDeliveryState;
+      if (persisted) void persisted(book.book.id).then((state) => {
+        setDeliveryRevision(state.revision);
+        setProfile((current) => ({ ...current, ...state.payload.publication, bookId: book.book.id, revision: state.revision, updatedAt: state.updatedAt }));
+        setBudget((current) => ({ ...current, ...state.payload.budget, updatedAt: state.updatedAt }));
+        setRules((current) => ({ ...current, ...state.payload.automation, updatedAt: state.updatedAt }));
+      }).catch(() => undefined);
+      const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
+      if (revisionLoader) void revisionLoader(book.book.id).then(setServerTimeline).catch(() => undefined);
     }).catch((loadError) => {
       if (active) setError(loadError instanceof Error ? loadError.message : "作者交付中心暂时无法读取。");
     }).finally(() => {
@@ -97,25 +109,48 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
     return () => { active = false; };
   }, [api, book.book.id]);
 
-  const saveProfile = () => {
+  const saveDeliveryState = async (nextProfile = profile, nextBudget = budget, nextRules = rules) => {
+    const payload = {
+      publication: { authorName: nextProfile.authorName, subtitle: nextProfile.subtitle, publisher: nextProfile.publisher, copyrightNotice: nextProfile.copyrightNotice, template: nextProfile.template, chapterNumbering: nextProfile.chapterNumbering, includeToc: nextProfile.includeToc, cover: nextProfile.cover },
+      budget: { monthlyTokenLimit: nextBudget.monthlyTokenLimit, monthlyBudgetMicros: nextBudget.monthlyBudgetMicros, warningPercent: nextBudget.warningPercent },
+      automation: { qualityAfterGeneration: nextRules.qualityAfterGeneration, backupAfterAccept: nextRules.backupAfterAccept, blockExportOnErrors: nextRules.blockExportOnErrors, warnOnHeuristics: nextRules.warnOnHeuristics },
+    };
+    const persist = (api as Partial<AutoNovelApi>).saveAuthorDeliveryState;
+    if (persist) {
+      try {
+        const saved = await persist({ bookId: book.book.id, expectedRevision: deliveryRevision, payload });
+        setDeliveryRevision(saved.revision);
+        setProfile((current) => ({ ...current, ...saved.payload.publication, bookId: book.book.id, revision: saved.revision, updatedAt: saved.updatedAt }));
+        setBudget((current) => ({ ...current, ...saved.payload.budget, updatedAt: saved.updatedAt }));
+        setRules((current) => ({ ...current, ...saved.payload.automation, updatedAt: saved.updatedAt }));
+        setNotice("作者交付配置已保存到本地数据库。");
+        return;
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : "作者交付配置保存失败。");
+        return;
+      }
+    }
+    persistBookScoped(PROFILE_KEY, book.book.id, nextProfile);
+    window.localStorage.setItem(BUDGET_KEY, JSON.stringify(nextBudget));
+    window.localStorage.setItem(RULES_KEY, JSON.stringify(nextRules));
+  };
+
+  const saveProfile = async () => {
     const next = PublicationProfileSchema.parse({ ...profile, revision: profile.revision + 1, updatedAt: new Date().toISOString() });
-    persistBookScoped(PROFILE_KEY, book.book.id, next);
     setProfile(next);
-    setNotice("发布资料已保存在当前作品的本地交付配置中。");
+    await saveDeliveryState(next, budget, rules);
   };
 
-  const saveBudget = () => {
+  const saveBudget = async () => {
     const next = CostBudgetProfileSchema.parse({ ...budget, updatedAt: new Date().toISOString() });
-    window.localStorage.setItem(BUDGET_KEY, JSON.stringify(next));
     setBudget(next);
-    setNotice("成本阈值已更新；不会修改 Provider 凭据或作品正文。");
+    await saveDeliveryState(profile, next, rules);
   };
 
-  const saveRules = () => {
+  const saveRules = async () => {
     const next = AutomationRulesSchema.parse({ ...rules, updatedAt: new Date().toISOString() });
-    window.localStorage.setItem(RULES_KEY, JSON.stringify(next));
     setRules(next);
-    setNotice("自动化规则已更新，下一次作者流程会读取它们。");
+    await saveDeliveryState(profile, budget, next);
   };
 
   const refresh = async () => {
@@ -134,6 +169,8 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
       setWorkspace(nextWorkspace);
       setMemorySnapshot(nextMemory);
       setSnapshots(nextSnapshots);
+      const revisionLoader = (api as Partial<AutoNovelApi>).listRevisionTimeline;
+      if (revisionLoader) void revisionLoader(book.book.id).then(setServerTimeline).catch(() => undefined);
       setNotice("作者交付状态已刷新。");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "刷新失败。");
@@ -186,7 +223,12 @@ export function AuthorDeliveryCenterPanel({ book, chapters, run, api, onClose, o
           foreshadowing: snapshotPlan.foreshadowing,
         };
       });
-      await api.updateChapterPlans({ bookId: book.book.id, expectedBookRevision: book.book.revision, plans });
+      const mergeRevision = (api as Partial<AutoNovelApi>).mergeRevision;
+      if (mergeRevision) {
+        await mergeRevision({ bookId: book.book.id, snapshotId: selectedSnapshot.id, expectedBookRevision: book.book.revision, chapterPlanIds: [...selectedPlanIds], note: "作者交付中心选择性合并章纲" });
+      } else {
+        await api.updateChapterPlans({ bookId: book.book.id, expectedBookRevision: book.book.revision, plans });
+      }
       setNotice(`已选择性合并 ${selectedPlanCount} 条章纲变更；候选正文仍保持隔离。`);
     } catch (mergeError) {
       setError(mergeError instanceof Error ? mergeError.message : "快照合并失败，当前版本未改变。");
@@ -306,11 +348,11 @@ function issue(id: string, category: QualityGateIssue["category"], severity: Qua
 }
 
 function buildRevisionTimeline(book: BookDetails, chapters: readonly Chapter[], memorySnapshot: MemoryBookSnapshot | null, snapshots: readonly StorySnapshot[], candidates: readonly ChapterCandidate[]): RevisionTimelineItem[] {
-  const items: RevisionTimelineItem[] = [{ id: `story-${book.book.id}-${book.book.revision}`, scope: "story", revision: book.book.revision, title: book.book.title, summary: "当前正式作品版本", source: "live", chapterNumber: null, createdAt: book.book.updatedAt, restorable: false }];
-  for (const snapshot of snapshots.slice(0, 10)) items.push({ id: snapshot.id, scope: "story", revision: snapshot.baseRevision, title: snapshot.name, summary: `${snapshot.payload.chapterPlans.length} 条章纲 · 可恢复快照`, source: "snapshot", chapterNumber: null, createdAt: snapshot.updatedAt, restorable: true });
-  for (const chapter of chapters.slice(0, 20)) items.push({ id: `chapter-${chapter.id}-${chapter.revision}`, scope: "chapter", revision: chapter.revision, title: `第${chapter.position + 1}章 · ${chapter.title}`, summary: `${chapter.content.length.toLocaleString("zh-CN")} 字正式正文`, source: chapter.status, chapterNumber: chapter.position + 1, createdAt: chapter.updatedAt, restorable: true });
-  for (const entry of memorySnapshot?.entries.slice(0, 20) ?? []) items.push({ id: `memory-${entry.id}-${entry.revision}`, scope: "memory", revision: entry.revision, title: entry.subject, summary: `${entry.kind} · ${entry.status}`, source: entry.source, chapterNumber: entry.sourceChapterNumber, createdAt: entry.updatedAt, restorable: true });
-  for (const candidate of candidates.slice(0, 10)) items.push({ id: candidate.id, scope: "candidate", revision: candidate.candidateTextRevision ?? 0, title: `候选 · ${candidate.chapterId.slice(0, 8)}`, summary: `基线正文 v${candidate.baseRevision} · 候选文本 v${candidate.candidateTextRevision ?? 0}`, source: candidate.review.status, chapterNumber: null, createdAt: candidate.createdAt, restorable: false });
+  const items: RevisionTimelineItem[] = [{ id: `story-${book.book.id}-${book.book.revision}`, scope: "story", revision: book.book.revision, title: book.book.title, summary: "当前正式作品版本", source: "live", chapterNumber: null, createdAt: book.book.updatedAt, restorable: false, note: "" }];
+  for (const snapshot of snapshots.slice(0, 10)) items.push({ id: snapshot.id, scope: "story", revision: snapshot.baseRevision, title: snapshot.name, summary: `${snapshot.payload.chapterPlans.length} 条章纲 · 可恢复快照`, source: "snapshot", chapterNumber: null, createdAt: snapshot.updatedAt, restorable: true, note: "" });
+  for (const chapter of chapters.slice(0, 20)) items.push({ id: `chapter-${chapter.id}-${chapter.revision}`, scope: "chapter", revision: chapter.revision, title: `第${chapter.position + 1}章 · ${chapter.title}`, summary: `${chapter.content.length.toLocaleString("zh-CN")} 字正式正文`, source: chapter.status, chapterNumber: chapter.position + 1, createdAt: chapter.updatedAt, restorable: true, note: "" });
+  for (const entry of memorySnapshot?.entries.slice(0, 20) ?? []) items.push({ id: `memory-${entry.id}-${entry.revision}`, scope: "memory", revision: entry.revision, title: entry.subject, summary: `${entry.kind} · ${entry.status}`, source: entry.source, chapterNumber: entry.sourceChapterNumber, createdAt: entry.updatedAt, restorable: true, note: "" });
+  for (const candidate of candidates.slice(0, 10)) items.push({ id: candidate.id, scope: "candidate", revision: candidate.candidateTextRevision ?? 0, title: `候选 · ${candidate.chapterId.slice(0, 8)}`, summary: `基线正文 v${candidate.baseRevision} · 候选文本 v${candidate.candidateTextRevision ?? 0}`, source: candidate.review.status, chapterNumber: null, createdAt: candidate.createdAt, restorable: false, note: "" });
   return items.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 

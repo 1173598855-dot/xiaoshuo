@@ -59,6 +59,24 @@ import {
 } from "../shared/memory";
 import { AuthoringWorkspaceSchema, SaveAuthoringWorkspaceInputSchema, type AuthoringWorkspace, type SaveAuthoringWorkspaceInput } from "../shared/authoring-workspace";
 import {
+  AuthorDeliveryStateSchema,
+  MergeRevisionInputSchema,
+  RestoreRevisionInputSchema,
+  RevisionDiffResponseSchema,
+  RevisionReferenceSchema,
+  RevisionTimelineResponseSchema,
+  QualityGateReportSchema,
+  SaveAuthorDeliveryStateInputSchema,
+  type AuthorDeliveryState,
+  type MergeRevisionInput,
+  type RestoreRevisionInput,
+  type RevisionDiffResponse,
+  type RevisionReference,
+  type RevisionTimelineResponse,
+  type QualityGateReport,
+  type SaveAuthorDeliveryStateInput,
+} from "../shared/author-delivery";
+import {
   ConsistencyReportSchema,
   ReorderChapterPlansInputSchema,
   SearchResponseSchema,
@@ -124,6 +142,7 @@ export interface AutoNovelApi {
   batchReplaceText(input: BatchReplaceInput): Promise<BatchReplaceResult>;
   importManuscript(input: ManuscriptImportInput): Promise<ManuscriptImportResult>;
   checkConsistency(bookId: string): Promise<ConsistencyReport>;
+  checkQualityGate?(bookId: string): Promise<QualityGateReport>;
   previewChapterPlans(bookId: string, provider: AutoNovelProviderInput): Promise<ChapterPlanPreviewEnvelope>;
   getUsageSummary(): Promise<UsageSummary>;
   listDirections(bookId: string): Promise<readonly StoryDirection[]>;
@@ -170,6 +189,12 @@ export interface AutoNovelApi {
   refreshMemory(bookId: string): Promise<MemoryBookSnapshot>;
   getAuthoringWorkspace(bookId: string): Promise<AuthoringWorkspace>;
   saveAuthoringWorkspace(input: SaveAuthoringWorkspaceInput): Promise<AuthoringWorkspace>;
+  getAuthorDeliveryState(bookId: string): Promise<AuthorDeliveryState>;
+  saveAuthorDeliveryState(input: SaveAuthorDeliveryStateInput): Promise<AuthorDeliveryState>;
+  listRevisionTimeline(bookId: string): Promise<RevisionTimelineResponse>;
+  diffRevisions(bookId: string, from: RevisionReference, to: RevisionReference): Promise<RevisionDiffResponse>;
+  restoreRevision(input: RestoreRevisionInput): Promise<unknown>;
+  mergeRevision(input: MergeRevisionInput): Promise<BookDetails>;
 }
 
 export type UpdateCandidateMemoryReviewInput = z.infer<
@@ -243,6 +268,9 @@ export function createAutoNovelApi(
     async checkConsistency(bookId) {
       return ConsistencyReportSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/consistency`));
     },
+    async checkQualityGate(bookId) {
+      return QualityGateReportSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/quality-gate`));
+    },
     async previewChapterPlans(bookId, provider) {
       const body = previewProviderBody(provider);
       return ChapterPlanPreviewEnvelopeSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/timeline/preview`, { method: "POST", body: JSON.stringify(body) }));
@@ -307,6 +335,28 @@ export function createAutoNovelApi(
     async saveAuthoringWorkspace(input) {
       const parsed = SaveAuthoringWorkspaceInputSchema.parse(input);
       return AuthoringWorkspaceSchema.parse(await requestJson(fetchImpl, `/api/books/${parsed.bookId}/authoring-workspace`, { method: "PATCH", body: JSON.stringify(parsed) }));
+    },
+    async getAuthorDeliveryState(bookId) {
+      return AuthorDeliveryStateSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/author-delivery`));
+    },
+    async saveAuthorDeliveryState(input) {
+      const parsed = SaveAuthorDeliveryStateInputSchema.parse(input);
+      return AuthorDeliveryStateSchema.parse(await requestJson(fetchImpl, `/api/books/${parsed.bookId}/author-delivery`, { method: "PATCH", body: JSON.stringify(parsed) }));
+    },
+    async listRevisionTimeline(bookId) {
+      return RevisionTimelineResponseSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/revisions`));
+    },
+    async diffRevisions(bookId, from, to) {
+      const body = z.object({ from: RevisionReferenceSchema, to: RevisionReferenceSchema }).strict().parse({ from, to });
+      return RevisionDiffResponseSchema.parse(await requestJson(fetchImpl, `/api/books/${bookId}/revisions/diff`, { method: "POST", body: JSON.stringify(body) }));
+    },
+    async restoreRevision(input) {
+      const parsed = RestoreRevisionInputSchema.parse(input);
+      return await requestJson(fetchImpl, `/api/books/${parsed.bookId}/revisions/restore`, { method: "POST", body: JSON.stringify(parsed) });
+    },
+    async mergeRevision(input) {
+      const parsed = MergeRevisionInputSchema.parse(input);
+      return BookDetailsSchema.parse(await requestJson(fetchImpl, `/api/books/${parsed.bookId}/revisions/merge`, { method: "POST", body: JSON.stringify(parsed) }));
     },
     async pauseRun(runId) {
       return ProductionRunSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/pause`, { method: "POST", body: JSON.stringify({ action: "pause" }) }));

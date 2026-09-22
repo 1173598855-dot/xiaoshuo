@@ -8,6 +8,7 @@ import type { ProviderConfig } from "../shared/contracts";
 import { BookRepository } from "./repositories/book-repository";
 import { ProductionRepository } from "./repositories/production-repository";
 import { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
+import { AuthorDeliveryRepository } from "./repositories/author-delivery-repository";
 import { MemoryRepository } from "./repositories/memory-repository";
 import { WorkspaceRepository } from "./repositories/workspace-repository";
 import { DirectorService } from "./services/director-service";
@@ -18,6 +19,9 @@ import { AuthoringService } from "./services/authoring-service";
 import { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import { MetricsRegistry, StructuredLogger } from "./enterprise/observability";
 import { createOperationalProviderResolver } from "./enterprise/provider-stack";
+import { AutomationExecutionRepository } from "./repositories/automation-repository";
+import { AutomationCoordinator } from "./services/automation-coordinator";
+import { RevisionRepository } from "./repositories/revision-repository";
 
 export interface ServerRuntimeOptions {
   databasePath?: string;
@@ -32,6 +36,7 @@ export interface ServerRuntimeOptions {
   }>>;
   logger?: StructuredLogger;
   metrics?: MetricsRegistry;
+  onAcceptBackup?: (bookId: string) => Promise<unknown>;
 }
 
 export interface ServerRuntime {
@@ -40,6 +45,9 @@ export interface ServerRuntime {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
+  readonly authorDeliveryRepository: AuthorDeliveryRepository;
+  readonly automationCoordinator: AutomationCoordinator;
+  readonly revisionRepository: RevisionRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
@@ -62,10 +70,20 @@ export function createServerRuntime(
     const workspaceRepository = new WorkspaceRepository(database);
     const bookRepository = new BookRepository(database);
     const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
+    const authorDeliveryRepository = new AuthorDeliveryRepository(database);
     const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
     const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
+    productionRepository.setQualityGate((bookId, candidateId, readOnly) => authoringService.qualityGate(bookId, candidateId, readOnly));
+    const automationCoordinator = new AutomationCoordinator({
+      executionRepository: new AutomationExecutionRepository(database),
+      authorDeliveryRepository,
+      authoringService,
+      ...(options.onAcceptBackup ? { backupAfterAccept: options.onAcceptBackup } : {}),
+      logger: options.logger,
+    });
+    const revisionRepository = new RevisionRepository(database, bookRepository, productionRepository, memoryRepository);
     const logger = options.logger ?? new StructuredLogger();
     const metrics = options.metrics ?? new MetricsRegistry({ logger });
     const auditRepository = new AuditRepository(database);
@@ -79,14 +97,26 @@ export function createServerRuntime(
       modelPricing: options.modelPricing,
       monthlyTokenLimit: options.monthlyTokenLimit,
       monthlyBudgetMicros: options.monthlyBudgetMicros,
+      quotaProfile: (context) => {
+        if (!context?.bookId) return undefined;
+        const budget = authorDeliveryRepository.get(context.bookId).payload.budget;
+        return {
+          monthlyTokenLimit: budget.monthlyTokenLimit || undefined,
+          monthlyBudgetMicros: budget.monthlyBudgetMicros || undefined,
+          warningPercent: budget.warningPercent,
+        };
+      },
     });
     const shared = {
       bookRepository,
       authoringWorkspaceRepository,
+      authorDeliveryRepository,
       productionRepository,
       providerResolver,
       memoryService,
       authoringService,
+      automationCoordinator,
+      revisionRepository,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
       auditRepository,
@@ -102,6 +132,9 @@ export function createServerRuntime(
       bookRepository,
       productionRepository,
       authoringWorkspaceRepository,
+      authorDeliveryRepository,
+      automationCoordinator,
+      revisionRepository,
       memoryRepository,
       directorService: new DirectorService(shared),
       foundationService: new FoundationService(shared),

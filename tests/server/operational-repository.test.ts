@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
+import { BookRepository } from "../../src/server/repositories/book-repository";
 import {
   AuditRepository,
+  UsageQuotaExceededError,
   UsageRepository,
 } from "../../src/server/enterprise/operational-repository";
 
@@ -137,5 +139,52 @@ describe("operational repositories", () => {
     });
     expect(audit.list()).toEqual([]);
     expect(usage.getMonthlySummary()).toMatchObject({ requests: 0 });
+  });
+
+  it("attributes usage and reserves monthly quota without allowing concurrent overcommit", () => {
+    const database = createDatabase(":memory:");
+    databases.push(database);
+    migrate(database);
+    const repository = new UsageRepository(database);
+    const book = new BookRepository(database).createBook({ idea: "用量归因" });
+    repository.record({
+      provider: "openai",
+      model: "model-a",
+      bookId: book.id,
+      chapterNumber: 3,
+      stage: "draft",
+      inputTokens: 10,
+      outputTokens: 5,
+      estimatedCostMicros: 7,
+      status: "success",
+    });
+    const summary = repository.getMonthlySummary();
+    expect(summary.byBook).toMatchObject([{ bookId: book.id, requests: 1 }]);
+    expect(summary.byChapter).toMatchObject([{ bookId: book.id, chapterNumber: 3 }]);
+    expect(summary.byStage).toMatchObject([{ stage: "draft", requests: 1 }]);
+
+    const reservation = repository.reserveQuota({
+      bookId: book.id,
+      estimatedTokens: 20,
+      estimatedCostMicros: 0,
+      monthlyTokenLimit: 35,
+    });
+    expect(reservation.estimatedTokens).toBe(20);
+    expect(() => repository.reserveQuota({
+      bookId: book.id,
+      estimatedTokens: 1,
+      estimatedCostMicros: 0,
+      monthlyTokenLimit: 35,
+    })).toThrow(UsageQuotaExceededError);
+    repository.record({
+      provider: "openai",
+      model: "model-a",
+      inputTokens: 1,
+      outputTokens: 1,
+      estimatedCostMicros: 0,
+      status: "success",
+      reservationId: reservation.id,
+    });
+    expect(repository.getQuotaSnapshot({ monthlyTokenLimit: 35 }).tokensReserved).toBe(0);
   });
 });

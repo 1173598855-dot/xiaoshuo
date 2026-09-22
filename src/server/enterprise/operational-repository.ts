@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import type { ProductionStage } from "../../shared/auto-novel";
 
 export interface AuditEventInput {
   readonly requestId?: string;
@@ -124,6 +125,55 @@ export interface UsageEventInput {
   readonly estimatedCostMicros: number;
   readonly status: "success" | "error" | "blocked";
   readonly errorCode?: string;
+  readonly bookId?: string;
+  readonly chapterNumber?: number;
+  readonly stage?: ProductionStage | "connection" | "unknown";
+  readonly reservationId?: string;
+}
+
+export interface UsageQuotaBudget {
+  readonly monthlyTokenLimit?: number;
+  readonly monthlyBudgetMicros?: number;
+  readonly warningPercent?: number;
+}
+
+export interface UsageQuotaReservationInput extends UsageQuotaBudget {
+  readonly requestId?: string;
+  readonly bookId?: string;
+  readonly chapterNumber?: number;
+  readonly stage?: UsageEventInput["stage"];
+  readonly estimatedTokens: number;
+  readonly estimatedCostMicros: number;
+  readonly expiresAt?: string;
+}
+
+export interface UsageQuotaReservation {
+  readonly id: string;
+  readonly estimatedTokens: number;
+  readonly estimatedCostMicros: number;
+  readonly expiresAt: string;
+}
+
+export interface UsageQuotaSnapshot {
+  readonly status: "unlimited" | "ok" | "warning" | "paused";
+  readonly tokenLimit: number;
+  readonly budgetMicrosLimit: number;
+  readonly tokensUsed: number;
+  readonly costUsedMicros: number;
+  readonly tokensReserved: number;
+  readonly costReservedMicros: number;
+  readonly warningPercent: number;
+  readonly tokenRemaining: number | null;
+  readonly budgetRemainingMicros: number | null;
+}
+
+export class UsageQuotaExceededError extends Error {
+  readonly code = "QUOTA_EXCEEDED";
+
+  constructor(readonly snapshot: UsageQuotaSnapshot) {
+    super("Usage quota exceeded");
+    this.name = "UsageQuotaExceededError";
+  }
 }
 
 export interface UsageSummary {
@@ -158,6 +208,29 @@ export interface UsageSummary {
     readonly outputTokens: number;
     readonly estimatedCostMicros: number;
   }[];
+  readonly byBook: readonly {
+    readonly bookId: string;
+    readonly requests: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }[];
+  readonly byChapter: readonly {
+    readonly bookId: string;
+    readonly chapterNumber: number;
+    readonly requests: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }[];
+  readonly byStage: readonly {
+    readonly stage: string;
+    readonly requests: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }[];
+  readonly quota: UsageQuotaSnapshot;
 }
 
 export class UsageRepository {
@@ -177,8 +250,9 @@ export class UsageRepository {
       .prepare(
         `INSERT INTO usage_events
          (id, request_id, provider, model, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, estimated_cost_micros, status, error_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+          cache_read_tokens, cache_write_tokens, estimated_cost_micros, status, error_code,
+          book_id, chapter_number, stage, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       )
       .run(
         this.createId(),
@@ -192,8 +266,20 @@ export class UsageRepository {
         nonNegativeInteger(input.estimatedCostMicros),
         input.status,
         input.errorCode ? clamp(input.errorCode, 120) : null,
+        input.bookId ?? null,
+        input.chapterNumber === undefined ? null : positiveInteger(input.chapterNumber),
+        input.stage ?? null,
         this.now().toISOString(),
       );
+    if (input.reservationId) {
+      this.database
+        .prepare(
+          `UPDATE usage_reservations
+              SET status = ?, updated_at = ?
+            WHERE id = ? AND status = 'active'`,
+        )
+        .run(input.status === "success" ? "settled" : "released", this.now().toISOString(), input.reservationId);
+    }
   }
 
   getMonthlySummary(now = this.now()): UsageSummary {
@@ -242,6 +328,40 @@ export class UsageRepository {
          GROUP BY provider, model ORDER BY provider, model`,
       )
       .all(from, to) as unknown as UsageModelRow[];
+    const books = this.database
+      .prepare(
+        `SELECT COALESCE(book_id, 'unattributed') AS book_id, COUNT(*) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_events
+         WHERE created_at >= ? AND created_at < ?
+         GROUP BY COALESCE(book_id, 'unattributed') ORDER BY book_id`,
+      )
+      .all(from, to) as unknown as UsageBookRow[];
+    const chapters = this.database
+      .prepare(
+        `SELECT COALESCE(book_id, 'unattributed') AS book_id, chapter_number,
+                COUNT(*) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_events
+         WHERE created_at >= ? AND created_at < ? AND book_id IS NOT NULL AND chapter_number IS NOT NULL
+         GROUP BY book_id, chapter_number ORDER BY book_id, chapter_number`,
+      )
+      .all(from, to) as unknown as UsageChapterRow[];
+    const stages = this.database
+      .prepare(
+        `SELECT COALESCE(stage, 'unknown') AS stage, COUNT(*) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_events
+         WHERE created_at >= ? AND created_at < ?
+         GROUP BY COALESCE(stage, 'unknown') ORDER BY stage`,
+      )
+      .all(from, to) as unknown as UsageStageRow[];
     const inputTokens = integerOrZero(totals.input_tokens);
     const outputTokens = integerOrZero(totals.output_tokens);
     const cacheReadTokens = integerOrZero(totals.cache_read_tokens);
@@ -278,6 +398,123 @@ export class UsageRepository {
         outputTokens: integerOrZero(row.output_tokens),
         estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
       })),
+      byBook: books.map((row) => ({
+        bookId: row.book_id,
+        requests: integerOrZero(row.requests),
+        inputTokens: integerOrZero(row.input_tokens),
+        outputTokens: integerOrZero(row.output_tokens),
+        estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
+      })),
+      byChapter: chapters.map((row) => ({
+        bookId: row.book_id,
+        chapterNumber: positiveInteger(row.chapter_number),
+        requests: integerOrZero(row.requests),
+        inputTokens: integerOrZero(row.input_tokens),
+        outputTokens: integerOrZero(row.output_tokens),
+        estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
+      })),
+      byStage: stages.map((row) => ({
+        stage: row.stage,
+        requests: integerOrZero(row.requests),
+        inputTokens: integerOrZero(row.input_tokens),
+        outputTokens: integerOrZero(row.output_tokens),
+        estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
+      })),
+      quota: this.getQuotaSnapshot({ from, to }),
+    };
+  }
+
+  reserveQuota(input: UsageQuotaReservationInput): UsageQuotaReservation {
+    const now = this.now();
+    const expiresAt = input.expiresAt ?? new Date(now.getTime() + 5 * 60_000).toISOString();
+    const id = this.createId();
+    const estimatedTokens = nonNegativeInteger(input.estimatedTokens);
+    const estimatedCostMicros = nonNegativeInteger(input.estimatedCostMicros);
+    const fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.prepare("UPDATE usage_reservations SET status = 'released', updated_at = ? WHERE status = 'active' AND expires_at <= ?").run(now.toISOString(), now.toISOString());
+      const snapshot = this.getQuotaSnapshot({
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        ...(input.bookId ? { bookId: input.bookId } : {}),
+        monthlyTokenLimit: input.monthlyTokenLimit,
+        monthlyBudgetMicros: input.monthlyBudgetMicros,
+        warningPercent: input.warningPercent,
+      });
+      const tokenExceeded = snapshot.tokenLimit > 0 && snapshot.tokensUsed + snapshot.tokensReserved + estimatedTokens > snapshot.tokenLimit;
+      const budgetExceeded = snapshot.budgetMicrosLimit > 0 && snapshot.costUsedMicros + snapshot.costReservedMicros + estimatedCostMicros > snapshot.budgetMicrosLimit;
+      if (tokenExceeded || budgetExceeded) throw new UsageQuotaExceededError({ ...snapshot, status: "paused" });
+      this.database.prepare(
+        `INSERT INTO usage_reservations
+          (id, request_id, book_id, chapter_number, stage, estimated_tokens,
+           estimated_cost_micros, status, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+      ).run(
+        id,
+        input.requestId ?? null,
+        input.bookId ?? null,
+        input.chapterNumber === undefined ? null : positiveInteger(input.chapterNumber),
+        input.stage ?? null,
+        estimatedTokens,
+        estimatedCostMicros,
+        expiresAt,
+        now.toISOString(),
+        now.toISOString(),
+      );
+      this.database.exec("COMMIT");
+      return { id, estimatedTokens, estimatedCostMicros, expiresAt };
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  releaseReservation(reservationId: string): void {
+    this.database.prepare("UPDATE usage_reservations SET status = 'released', updated_at = ? WHERE id = ? AND status = 'active'").run(this.now().toISOString(), reservationId);
+  }
+
+  getQuotaSnapshot(options: UsageQuotaBudget & { from?: string; to?: string; bookId?: string } = {}): UsageQuotaSnapshot {
+    const now = this.now();
+    const from = options.from ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const to = options.to ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+    const usageFilter = options.bookId ? " AND book_id = ?" : "";
+    const totals = this.database.prepare(
+      `SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_events WHERE created_at >= ? AND created_at < ?${usageFilter}`,
+    ).get(...(options.bookId ? [from, to, options.bookId] : [from, to])) as { input_tokens: number; output_tokens: number; estimated_cost_micros: number };
+    const reservations = this.database.prepare(
+      `SELECT COALESCE(SUM(estimated_tokens), 0) AS estimated_tokens,
+              COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+         FROM usage_reservations
+         WHERE status = 'active' AND expires_at > ? AND created_at >= ? AND created_at < ?${options.bookId ? " AND book_id = ?" : ""}`,
+    ).get(...(options.bookId ? [now.toISOString(), from, to, options.bookId] : [now.toISOString(), from, to])) as { estimated_tokens: number; estimated_cost_micros: number };
+    const tokenLimit = nonNegativeInteger(options.monthlyTokenLimit);
+    const budgetMicrosLimit = nonNegativeInteger(options.monthlyBudgetMicros);
+    const warningPercent = Math.min(99, Math.max(1, nonNegativeInteger(options.warningPercent ?? 80)));
+    const tokensUsed = integerOrZero(totals.input_tokens) + integerOrZero(totals.output_tokens);
+    const costUsedMicros = integerOrZero(totals.estimated_cost_micros);
+    const tokensReserved = integerOrZero(reservations.estimated_tokens);
+    const costReservedMicros = integerOrZero(reservations.estimated_cost_micros);
+    const tokenRemaining = tokenLimit > 0 ? Math.max(0, tokenLimit - tokensUsed - tokensReserved) : null;
+    const budgetRemainingMicros = budgetMicrosLimit > 0 ? Math.max(0, budgetMicrosLimit - costUsedMicros - costReservedMicros) : null;
+    const tokenPercent = tokenLimit > 0 ? ((tokensUsed + tokensReserved) / tokenLimit) * 100 : 0;
+    const budgetPercent = budgetMicrosLimit > 0 ? ((costUsedMicros + costReservedMicros) / budgetMicrosLimit) * 100 : 0;
+    const percent = Math.max(tokenPercent, budgetPercent);
+    return {
+      status: tokenLimit === 0 && budgetMicrosLimit === 0 ? "unlimited" : percent >= 100 ? "paused" : percent >= warningPercent ? "warning" : "ok",
+      tokenLimit,
+      budgetMicrosLimit,
+      tokensUsed,
+      costUsedMicros,
+      tokensReserved,
+      costReservedMicros,
+      warningPercent,
+      tokenRemaining,
+      budgetRemainingMicros,
     };
   }
 
@@ -327,6 +564,26 @@ interface UsageProviderRow {
 interface UsageModelRow {
   provider: string;
   model: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_micros: number;
+}
+
+interface UsageBookRow {
+  book_id: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_micros: number;
+}
+
+interface UsageChapterRow extends UsageBookRow {
+  chapter_number: number;
+}
+
+interface UsageStageRow {
+  stage: string;
   requests: number;
   input_tokens: number;
   output_tokens: number;
@@ -383,12 +640,16 @@ function clamp(value: string, max: number): string {
   return value.slice(0, max);
 }
 
-function nonNegativeInteger(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+function nonNegativeInteger(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function nullableNonNegativeInteger(value: number | undefined): number | null {
   return value === undefined ? null : nonNegativeInteger(value);
+}
+
+function positiveInteger(value: number | null | undefined): number {
+  return Math.max(1, nonNegativeInteger(value ?? 1));
 }
 
 function integerOrZero(value: number | null | undefined): number {

@@ -29,7 +29,10 @@ interface DatabaseSchemaProfile {
 let canonicalProfile: DatabaseSchemaProfile | undefined;
 let legacyV1Profile: DatabaseSchemaProfile | undefined;
 let legacyV2Profile: DatabaseSchemaProfile | undefined;
+let legacyV1BeforeDeliveryProfile: DatabaseSchemaProfile | undefined;
+let legacyV2BeforeDeliveryProfile: DatabaseSchemaProfile | undefined;
 let legacyPreOperationalProfile: DatabaseSchemaProfile | undefined;
+let legacyBeforeDeliveryProfile: DatabaseSchemaProfile | undefined;
 
 export class DatabaseSchemaError extends Error {
   constructor() {
@@ -56,7 +59,10 @@ export function assertSupportedDatabaseSchemaBeforeMigration(
     getCanonicalProfile(),
     getLegacyV1Profile(),
     getLegacyV2Profile(),
+    getLegacyV1BeforeDeliveryProfile(),
+    getLegacyV2BeforeDeliveryProfile(),
     getLegacyPreOperationalProfile(),
+    getLegacyBeforeDeliveryProfile(),
   ];
   if (!supported.some((profile) => isDeepStrictEqual(actual, profile))) {
     throw new DatabaseSchemaError();
@@ -77,8 +83,9 @@ function getCanonicalProfile(): DatabaseSchemaProfile {
 
 function getLegacyV1Profile(): DatabaseSchemaProfile {
   if (legacyV1Profile) return legacyV1Profile;
-  const database = createPreOperationalDatabase();
+  const database = createCanonicalDatabase();
   try {
+    database.exec("DROP TABLE audit_events; DROP TABLE usage_events;");
     database.exec("ALTER TABLE generations DROP COLUMN provider_id");
     legacyV1Profile = readSchemaProfile(database);
     return legacyV1Profile;
@@ -89,8 +96,9 @@ function getLegacyV1Profile(): DatabaseSchemaProfile {
 
 function getLegacyV2Profile(): DatabaseSchemaProfile {
   if (legacyV2Profile) return legacyV2Profile;
-  const database = createPreOperationalDatabase();
+  const database = createCanonicalDatabase();
   try {
+    database.exec("DROP TABLE audit_events; DROP TABLE usage_events;");
     database.exec(`
       ALTER TABLE generations DROP COLUMN provider_id;
       ALTER TABLE generations
@@ -98,6 +106,33 @@ function getLegacyV2Profile(): DatabaseSchemaProfile {
     `);
     legacyV2Profile = readSchemaProfile(database);
     return legacyV2Profile;
+  } finally {
+    database.close();
+  }
+}
+
+function getLegacyV1BeforeDeliveryProfile(): DatabaseSchemaProfile {
+  if (legacyV1BeforeDeliveryProfile) return legacyV1BeforeDeliveryProfile;
+  const database = createPreOperationalDatabase();
+  try {
+    database.exec("ALTER TABLE generations DROP COLUMN provider_id");
+    legacyV1BeforeDeliveryProfile = readSchemaProfile(database);
+    return legacyV1BeforeDeliveryProfile;
+  } finally {
+    database.close();
+  }
+}
+
+function getLegacyV2BeforeDeliveryProfile(): DatabaseSchemaProfile {
+  if (legacyV2BeforeDeliveryProfile) return legacyV2BeforeDeliveryProfile;
+  const database = createPreOperationalDatabase();
+  try {
+    database.exec(`
+      ALTER TABLE generations DROP COLUMN provider_id;
+      ALTER TABLE generations ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'custom';
+    `);
+    legacyV2BeforeDeliveryProfile = readSchemaProfile(database);
+    return legacyV2BeforeDeliveryProfile;
   } finally {
     database.close();
   }
@@ -111,10 +146,22 @@ function getLegacyV2Profile(): DatabaseSchemaProfile {
  */
 function getLegacyPreOperationalProfile(): DatabaseSchemaProfile {
   if (legacyPreOperationalProfile) return legacyPreOperationalProfile;
-  const database = createPreOperationalDatabase();
+  const database = createCanonicalDatabase();
   try {
+    database.exec("DROP TABLE audit_events; DROP TABLE usage_events;");
     legacyPreOperationalProfile = readSchemaProfile(database);
     return legacyPreOperationalProfile;
+  } finally {
+    database.close();
+  }
+}
+
+function getLegacyBeforeDeliveryProfile(): DatabaseSchemaProfile {
+  if (legacyBeforeDeliveryProfile) return legacyBeforeDeliveryProfile;
+  const database = createPreOperationalDatabase();
+  try {
+    legacyBeforeDeliveryProfile = readSchemaProfile(database);
+    return legacyBeforeDeliveryProfile;
   } finally {
     database.close();
   }
@@ -128,7 +175,7 @@ function createCanonicalDatabase(): DatabaseSyncType {
 
 function createPreOperationalDatabase(): DatabaseSyncType {
   const database = createCanonicalDatabase();
-  database.exec("DROP TABLE audit_events; DROP TABLE usage_events;");
+  database.exec("DROP TABLE audit_events; DROP TABLE usage_events; DROP TABLE usage_reservations; DROP TABLE author_delivery_states; DROP TABLE automation_executions; DROP TABLE revision_notes;");
   return database;
 }
 

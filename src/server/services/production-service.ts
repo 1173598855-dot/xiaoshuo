@@ -19,6 +19,7 @@ import {
 } from "../../shared/memory";
 import type { AuthoringGenerationContext } from "../../shared/authoring-context";
 import { NormalizedProviderError } from "../providers/types";
+import type { ProviderGenerateInput } from "../providers/types";
 import type {
   PersistedProviderDescriptor,
   PersistedWorkflowDescriptor,
@@ -40,6 +41,7 @@ import {
   type StructuredLogger,
 } from "../enterprise/observability";
 import type { AuditRepository } from "../enterprise/operational-repository";
+import type { AutomationCoordinator } from "./automation-coordinator";
 import { getAuthoringGenerationContext, hashAuthoringGenerationContext } from "../authoring-context";
 
 const ReviewOutputSchema = z
@@ -81,6 +83,7 @@ export interface ProductionServiceDependencies {
   readonly metrics?: MetricsRegistry;
   readonly auditRepository?: AuditRepository;
   readonly logger?: StructuredLogger;
+  readonly automationCoordinator?: AutomationCoordinator;
   /** Resolve a key-free descriptor from a server-side secret store. */
   readonly resolvePersistedProvider?: PersistedProviderResolver;
   /** Resolve a key-free workflow envelope from a server-side secret store. */
@@ -213,6 +216,7 @@ export class ProductionService {
       book.book.style,
       book.book.targetChapterCharacters,
       writerConfig.reasoningLevel,
+      { bookId: run.bookId, chapterNumber, stage: "draft" },
     );
     const candidate = this.dependencies.productionRepository.createCandidate({
       runId,
@@ -245,6 +249,7 @@ export class ProductionService {
       book.book.style,
       book.book.targetChapterCharacters,
       reviewerConfig.reasoningLevel,
+      { bookId: run.bookId, chapterNumber, stage: "review" },
     );
     const { memoryDelta, ...reviewResult } = review;
     this.dependencies.productionRepository.updateCandidateReview(candidate.id, reviewResult);
@@ -255,6 +260,7 @@ export class ProductionService {
       inputHash: hashContext(candidateText),
       outputId: candidate.id,
     });
+    void this.dependencies.automationCoordinator?.afterGeneration(run.bookId, candidate.id).catch(() => undefined);
     return this.dependencies.productionRepository.getCandidate(candidate.id);
   }
 
@@ -426,6 +432,7 @@ export class ProductionService {
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
             writerConfig.reasoningLevel,
+            { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "draft" },
           );
           const stoppedAfterDraft = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterDraft) return stoppedAfterDraft;
@@ -481,6 +488,7 @@ export class ProductionService {
               bookDetails.book.style,
               bookDetails.book.targetChapterCharacters,
               repairerConfig.reasoningLevel,
+              { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "repair" },
             );
             const stoppedAfterRepair = this.getStoppedRun(runId, signal, lease);
             if (stoppedAfterRepair) return stoppedAfterRepair;
@@ -517,6 +525,7 @@ export class ProductionService {
             bookDetails.book.style,
             bookDetails.book.targetChapterCharacters,
             reviewerConfig.reasoningLevel,
+            { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "review" },
           );
           const stoppedAfterReview = this.getStoppedRun(runId, signal, lease);
           if (stoppedAfterReview) return stoppedAfterReview;
@@ -531,6 +540,7 @@ export class ProductionService {
             memoryDelta,
             lease,
           );
+          void this.dependencies.automationCoordinator?.afterGeneration(run.bookId, candidate.id).catch(() => undefined);
           this.dependencies.productionRepository.appendCheckpoint({
             runId,
             stage: "review",
@@ -568,6 +578,7 @@ export class ProductionService {
           chapter.revision,
           lease,
         );
+        void this.dependencies.automationCoordinator?.afterAccept(run.bookId, candidate.id).catch(() => undefined);
         this.dependencies.productionRepository.appendCheckpoint({
           runId,
           stage: "accept",
@@ -830,6 +841,7 @@ async function generateDraft(
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
+  usageContext?: ProviderGenerateInput["usageContext"],
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
@@ -852,6 +864,7 @@ async function generateDraft(
       ].join("\n"),
       maxOutputTokens: 12_000,
       reasoningLevel,
+      usageContext,
   }, signal, DRAFT_STAGE_TIMEOUT_MS);
   const text = result.text.trim();
   if (!text) {
@@ -875,6 +888,7 @@ async function reviewDraft(
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
+  usageContext?: ProviderGenerateInput["usageContext"],
 ) {
   const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
@@ -896,6 +910,7 @@ async function reviewDraft(
       ].join("\n"),
       maxOutputTokens: 2_000,
       reasoningLevel,
+      usageContext,
   }, signal, REVIEW_STAGE_TIMEOUT_MS);
   return parseStructuredProviderResult(result.text, ReviewOutputSchema);
 }
@@ -911,6 +926,7 @@ async function repairDraft(
   style = "",
   targetChapterCharacters = 2_500,
   reasoningLevel?: ReasoningLevel,
+  usageContext?: ProviderGenerateInput["usageContext"],
 ): Promise<string> {
   const memoryPrompt = buildMemoryPrompt(memoryContext, authoringContext);
   const result = await generateWithRetry(provider, {
@@ -928,6 +944,7 @@ async function repairDraft(
       ].join("\n"),
       maxOutputTokens: 12_000,
       reasoningLevel,
+      usageContext,
   }, signal, REPAIR_STAGE_TIMEOUT_MS);
   const text = result.text.trim();
   if (!text) {

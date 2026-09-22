@@ -14,6 +14,12 @@ export interface ProviderGenerateInput {
   userPrompt: string;
   maxOutputTokens: number;
   reasoningLevel?: ReasoningLevel;
+  /** Secret-free attribution used for usage accounting and quota reservations. */
+  usageContext?: {
+    readonly bookId?: string;
+    readonly chapterNumber?: number;
+    readonly stage?: "directions" | "foundation" | "outline" | "draft" | "review" | "repair" | "accept" | "connection" | "unknown";
+  };
 }
 
 export interface ProviderUsage {

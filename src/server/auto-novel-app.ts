@@ -37,6 +37,12 @@ import {
 } from "../shared/memory";
 import { SaveAuthoringWorkspaceInputSchema } from "../shared/authoring-workspace";
 import {
+  MergeRevisionInputSchema,
+  RestoreRevisionInputSchema,
+  RevisionReferenceSchema,
+  SaveAuthorDeliveryStateInputSchema,
+} from "../shared/author-delivery";
+import {
   ListProviderModelsInputSchema,
   ProviderModelListSchema,
   ProviderConfigSchema,
@@ -62,6 +68,8 @@ import { OPENAPI_DOCUMENT } from "./openapi";
 import { summarizeServerProvider } from "./enterprise/server-provider-config";
 import type { BookRepository } from "./repositories/book-repository";
 import type { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
+import type { AuthorDeliveryRepository } from "./repositories/author-delivery-repository";
+import type { RevisionRepository } from "./repositories/revision-repository";
 import type { ProductionRepository } from "./repositories/production-repository";
 import type { DirectorService } from "./services/director-service";
 import type { FoundationService } from "./services/foundation-service";
@@ -69,6 +77,7 @@ import type { ProductionService } from "./services/production-service";
 import type { ProductionWorker } from "./services/production-worker";
 import type { MemoryService } from "./services/memory-service";
 import type { AuthoringService } from "./services/authoring-service";
+import type { AutomationCoordinator } from "./services/automation-coordinator";
 import type { AuditRepository, UsageRepository } from "./enterprise/operational-repository";
 import {
   MetricsRegistry,
@@ -195,6 +204,9 @@ const MemoryPathIdSchema = z.string().uuid();
 export interface AutoNovelAppDependencies {
   readonly bookRepository: BookRepository;
   readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
+  readonly authorDeliveryRepository?: AuthorDeliveryRepository;
+  readonly automationCoordinator?: AutomationCoordinator;
+  readonly revisionRepository?: RevisionRepository;
   readonly productionRepository: ProductionRepository;
   readonly directorService: DirectorService;
   readonly foundationService: FoundationService;
@@ -631,6 +643,37 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     assertBookAccess(dependencies, bookId.data);
     return context.json(dependencies.bookRepository.listStorySnapshots(bookId.data));
   });
+  app.get("/api/books/:bookId/revisions", (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    if (!dependencies.revisionRepository) return context.json(apiError("REVISION_NOT_CONFIGURED", "修订时间线尚未配置。"), 503);
+    return context.json(dependencies.revisionRepository.list(context.req.param("bookId")));
+  });
+  app.post("/api/books/:bookId/revisions/diff", async (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    if (!dependencies.revisionRepository) return context.json(apiError("REVISION_NOT_CONFIGURED", "修订时间线尚未配置。"), 503);
+    const parsed = await parseJson(context.req.raw, z.object({
+      from: RevisionReferenceSchema,
+      to: RevisionReferenceSchema,
+    }).strict());
+    if (!parsed.success) return context.json(parsed.error, 400);
+    return context.json(dependencies.revisionRepository.diff(context.req.param("bookId"), parsed.data.from, parsed.data.to));
+  });
+  app.post("/api/books/:bookId/revisions/restore", async (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    if (!dependencies.revisionRepository) return context.json(apiError("REVISION_NOT_CONFIGURED", "修订时间线尚未配置。"), 503);
+    const parsed = await parseJson(context.req.raw, RestoreRevisionInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== context.req.param("bookId")) return context.json(apiError("VALIDATION_ERROR", "作品标识不一致。"), 400);
+    return context.json(dependencies.revisionRepository.restore(parsed.data));
+  });
+  app.post("/api/books/:bookId/revisions/merge", async (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    if (!dependencies.revisionRepository) return context.json(apiError("REVISION_NOT_CONFIGURED", "修订时间线尚未配置。"), 503);
+    const parsed = await parseJson(context.req.raw, MergeRevisionInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== context.req.param("bookId")) return context.json(apiError("VALIDATION_ERROR", "作品标识不一致。"), 400);
+    return context.json(dependencies.revisionRepository.merge(parsed.data));
+  });
 
   app.get("/api/books/:bookId/authoring-workspace", (context) => {
     const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
@@ -651,6 +694,25 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
       return context.json(apiError("VALIDATION_ERROR", "作者工作区标识不一致。"), 400);
     }
     return context.json(dependencies.authoringWorkspaceRepository.save(parsed.data));
+  });
+
+  app.get("/api/books/:bookId/author-delivery", (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    if (!dependencies.authorDeliveryRepository) return context.json(apiError("INTERNAL_ERROR", "作者交付配置暂不可用。"), 503);
+    return context.json(dependencies.authorDeliveryRepository.get(bookId.data));
+  });
+
+  app.patch("/api/books/:bookId/author-delivery", async (context) => {
+    const bookId = MemoryPathIdSchema.safeParse(context.req.param("bookId"));
+    if (!bookId.success) return context.json(apiError("VALIDATION_ERROR", "作品标识无效。"), 400);
+    assertBookAccess(dependencies, bookId.data);
+    if (!dependencies.authorDeliveryRepository) return context.json(apiError("INTERNAL_ERROR", "作者交付配置暂不可用。"), 503);
+    const parsed = await parseJson(context.req.raw, SaveAuthorDeliveryStateInputSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.bookId !== bookId.data) return context.json(apiError("VALIDATION_ERROR", "作者交付配置标识不一致。"), 400);
+    return context.json(dependencies.authorDeliveryRepository.save(parsed.data));
   });
 
   app.post("/api/books/:bookId/snapshots", async (context) => {
@@ -831,6 +893,11 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     assertBookAccess(dependencies, bookId.data);
     if (!dependencies.authoringService) return context.json(apiError("INTERNAL_ERROR", "一致性检查暂不可用。"), 503);
     return context.json(dependencies.authoringService.consistency(bookId.data));
+  });
+  app.get("/api/books/:bookId/quality-gate", (context) => {
+    assertBookAccess(dependencies, context.req.param("bookId"));
+    if (!dependencies.authoringService) return context.json(apiError("QUALITY_NOT_CONFIGURED", "质量门禁尚未配置。"), 503);
+    return context.json(dependencies.authoringService.qualityGate(context.req.param("bookId")));
   });
 
   app.post("/api/books/:bookId/replace", async (context) => {
@@ -1085,12 +1152,12 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     const parsed = await parseJson(context.req.raw, AcceptCandidateInputSchema);
     if (!parsed.success) return context.json(parsed.error, 400);
     assertCandidateAccess(dependencies, context.req.param("candidateId"));
-    return context.json(
-      await dependencies.productionRepository.acceptCandidate(
-        context.req.param("candidateId"),
-        parsed.data.expectedRevision,
-      ),
+    const result = await dependencies.productionRepository.acceptCandidate(
+      context.req.param("candidateId"),
+      parsed.data.expectedRevision,
     );
+    void dependencies.automationCoordinator?.afterAccept(result.run.bookId, result.candidate.id).catch(() => undefined);
+    return context.json(result);
   });
 
   app.get("/api/chapter-candidates/:candidateId", (context) => {
@@ -1178,8 +1245,22 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     context.json(apiError("NOT_FOUND", "请求的资源不存在。"), 404),
   );
   app.get("/api/usage", (context) => context.json(dependencies.usageRepository?.getMonthlySummary() ?? {
-    from: new Date().toISOString(), to: new Date().toISOString(), requests: 0, successfulRequests: 0, failedRequests: 0, blockedRequests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, totalTokens: 0, estimatedCostMicros: 0, byProvider: [], byModel: [],
+    from: new Date().toISOString(), to: new Date().toISOString(), requests: 0, successfulRequests: 0, failedRequests: 0, blockedRequests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cacheHitRate: 0, totalTokens: 0, estimatedCostMicros: 0, byProvider: [], byModel: [], byBook: [], byChapter: [], byStage: [], quota: { status: "unlimited", tokenLimit: 0, budgetMicrosLimit: 0, tokensUsed: 0, costUsedMicros: 0, tokensReserved: 0, costReservedMicros: 0, warningPercent: 80, tokenRemaining: null, budgetRemainingMicros: null },
   }));
+  app.get("/api/books/:bookId/quota", (context) => {
+    const bookId = context.req.param("bookId");
+    assertBookAccess(dependencies, bookId);
+    if (!dependencies.usageRepository || !dependencies.authorDeliveryRepository) {
+      return context.json(apiError("QUOTA_NOT_CONFIGURED", "作品配额尚未配置。"), 503);
+    }
+    const budget = dependencies.authorDeliveryRepository.get(bookId).payload.budget;
+    return context.json(dependencies.usageRepository.getQuotaSnapshot({
+      bookId,
+      monthlyTokenLimit: budget.monthlyTokenLimit || undefined,
+      monthlyBudgetMicros: budget.monthlyBudgetMicros || undefined,
+      warningPercent: budget.warningPercent,
+    }));
+  });
   app.onError((error, context) =>
     context.json({ error: toAutoNovelPublicError(error) }, autoNovelErrorStatus(error)),
   );

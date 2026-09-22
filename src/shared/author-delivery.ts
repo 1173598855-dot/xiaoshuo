@@ -96,8 +96,76 @@ export const RevisionTimelineItemSchema = z.object({
   chapterNumber: z.number().int().positive().nullable(),
   createdAt: TimestampSchema,
   restorable: z.boolean(),
+  note: z.string().trim().max(500).default(""),
 }).strict();
 export type RevisionTimelineItem = z.infer<typeof RevisionTimelineItemSchema>;
+
+export const RevisionReferenceSchema = z.object({
+  scope: RevisionScopeSchema,
+  id: z.string().trim().min(1).max(160),
+  revision: z.number().int().nonnegative(),
+}).strict();
+export type RevisionReference = z.infer<typeof RevisionReferenceSchema>;
+
+export const RevisionTimelineResponseSchema = z.object({
+  bookId: UuidSchema,
+  currentBookRevision: z.number().int().nonnegative(),
+  items: z.array(RevisionTimelineItemSchema).max(2_000),
+}).strict();
+export type RevisionTimelineResponse = z.infer<typeof RevisionTimelineResponseSchema>;
+
+export const RevisionDiffLineSchema = z.object({
+  type: z.enum(["same", "added", "removed"]),
+  text: z.string().max(4_000),
+}).strict();
+export type RevisionDiffLine = z.infer<typeof RevisionDiffLineSchema>;
+
+export const RevisionDiffResponseSchema = z.object({
+  bookId: UuidSchema,
+  from: RevisionReferenceSchema,
+  to: RevisionReferenceSchema,
+  changed: z.boolean(),
+  lines: z.array(RevisionDiffLineSchema).max(4_000),
+}).strict();
+export type RevisionDiffResponse = z.infer<typeof RevisionDiffResponseSchema>;
+
+export const RestoreRevisionInputSchema = z.object({
+  bookId: UuidSchema,
+  reference: RevisionReferenceSchema,
+  expectedBookRevision: z.number().int().nonnegative(),
+  expectedEntryRevision: z.number().int().positive().optional(),
+  note: z.string().trim().max(500).default(""),
+}).strict();
+export type RestoreRevisionInput = z.infer<typeof RestoreRevisionInputSchema>;
+
+export const MergeRevisionInputSchema = z.object({
+  bookId: UuidSchema,
+  snapshotId: UuidSchema,
+  expectedBookRevision: z.number().int().nonnegative(),
+  chapterPlanIds: z.array(UuidSchema).min(1).max(500),
+  note: z.string().trim().max(500).default(""),
+}).strict();
+export type MergeRevisionInput = z.infer<typeof MergeRevisionInputSchema>;
+
+export const AutomationRuleSchema = z.enum([
+  "quality-after-generation",
+  "backup-after-accept",
+  "fresh-quality-before-export",
+]);
+export type AutomationRule = z.infer<typeof AutomationRuleSchema>;
+
+export const AutomationExecutionSchema = z.object({
+  id: UuidSchema,
+  bookId: UuidSchema,
+  rule: AutomationRuleSchema,
+  idempotencyKey: z.string().trim().min(1).max(200),
+  status: z.enum(["running", "completed", "failed", "skipped"]),
+  result: z.record(z.string(), z.unknown()),
+  errorCode: z.string().trim().max(120).nullable(),
+  createdAt: TimestampSchema,
+  completedAt: TimestampSchema.nullable(),
+}).strict();
+export type AutomationExecution = z.infer<typeof AutomationExecutionSchema>;
 
 export const CostBudgetProfileSchema = z.object({
   monthlyTokenLimit: z.number().int().nonnegative(),
@@ -115,6 +183,28 @@ export const AutomationRulesSchema = z.object({
   updatedAt: TimestampSchema,
 }).strict();
 export type AutomationRules = z.infer<typeof AutomationRulesSchema>;
+
+export const AuthorDeliveryPayloadSchema = z.object({
+  publication: PublicationProfileSchema.omit({ bookId: true, revision: true, updatedAt: true }),
+  budget: CostBudgetProfileSchema.omit({ updatedAt: true }),
+  automation: AutomationRulesSchema.omit({ updatedAt: true }),
+}).strict();
+export type AuthorDeliveryPayload = z.infer<typeof AuthorDeliveryPayloadSchema>;
+
+export const AuthorDeliveryStateSchema = z.object({
+  bookId: UuidSchema,
+  revision: z.number().int().nonnegative(),
+  payload: AuthorDeliveryPayloadSchema,
+  updatedAt: TimestampSchema,
+}).strict();
+export type AuthorDeliveryState = z.infer<typeof AuthorDeliveryStateSchema>;
+
+export const SaveAuthorDeliveryStateInputSchema = z.object({
+  bookId: UuidSchema,
+  expectedRevision: z.number().int().nonnegative(),
+  payload: AuthorDeliveryPayloadSchema,
+}).strict();
+export type SaveAuthorDeliveryStateInput = z.infer<typeof SaveAuthorDeliveryStateInputSchema>;
 
 export const DEFAULT_AUTOMATION_RULES: AutomationRules = {
   qualityAfterGeneration: true,

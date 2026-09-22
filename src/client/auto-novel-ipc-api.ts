@@ -44,6 +44,7 @@ import {
 } from "../shared/memory";
 import { BatchReplaceInputSchema, BatchReplaceResultSchema, ChapterPlanPreviewEnvelopeSchema, ConsistencyReportSchema, ManuscriptImportInputSchema, ManuscriptImportResultSchema, ReorderChapterPlansInputSchema, SearchQuerySchema, SearchResponseSchema, StorySnapshotSchema, UpdateChapterPlansInputSchema, UsageSummarySchema, type BatchReplaceInput, type ManuscriptImportInput } from "../shared/authoring";
 import { AuthoringWorkspaceSchema, SaveAuthoringWorkspaceInputSchema } from "../shared/authoring-workspace";
+import { AuthorDeliveryStateSchema, MergeRevisionInputSchema, QualityGateReportSchema, RestoreRevisionInputSchema, RevisionDiffResponseSchema, RevisionTimelineResponseSchema, SaveAuthorDeliveryStateInputSchema } from "../shared/author-delivery";
 
 export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi {
   return {
@@ -80,6 +81,24 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     async saveAuthoringWorkspace(input) {
       return parseResult(await api.books.saveAuthoringWorkspace(SaveAuthoringWorkspaceInputSchema.parse(input)), AuthoringWorkspaceSchema);
     },
+    async getAuthorDeliveryState(bookId) {
+      return parseResult(await api.books.getAuthorDeliveryState(bookId), AuthorDeliveryStateSchema);
+    },
+    async saveAuthorDeliveryState(input) {
+      return parseResult(await api.books.saveAuthorDeliveryState(SaveAuthorDeliveryStateInputSchema.parse(input)), AuthorDeliveryStateSchema);
+    },
+    async listRevisionTimeline(bookId) {
+      return parseResult(await api.books.listRevisionTimeline(bookId), RevisionTimelineResponseSchema);
+    },
+    async diffRevisions(bookId, from, to) {
+      return parseResult(await api.books.diffRevisions({ bookId, from, to }), RevisionDiffResponseSchema);
+    },
+    async restoreRevision(input) {
+      return parseResult(await api.books.restoreRevision(RestoreRevisionInputSchema.parse(input)), z.unknown());
+    },
+    async mergeRevision(input) {
+      return parseResult(await api.books.mergeRevision(MergeRevisionInputSchema.parse(input)), BookDetailsSchema);
+    },
     async createBook(input, provider, idempotencyKey) {
       return parseResult(
         await api.books.create({
@@ -110,6 +129,9 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async checkConsistency(bookId) {
       return parseResult(await api.books.consistency(bookId), ConsistencyReportSchema);
+    },
+    async checkQualityGate(bookId) {
+      return parseResult(await api.books.qualityGate(bookId), QualityGateReportSchema);
     },
     async batchReplaceText(input: BatchReplaceInput) {
       return parseResult(await api.books.replaceText(BatchReplaceInputSchema.parse(input)), BatchReplaceResultSchema);

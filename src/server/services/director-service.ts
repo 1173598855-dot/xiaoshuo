@@ -51,9 +51,10 @@ export class DirectorService {
       {
         model: providerConfig.model,
         reasoningLevel: providerConfig.reasoningLevel,
-        ...prompt,
-        maxOutputTokens: 6_000,
-      },
+         ...prompt,
+         maxOutputTokens: 6_000,
+         usageContext: { bookId, stage: "directions" },
+       },
       signal,
     );
 

@@ -276,7 +276,11 @@ getAutoNovelServices(): AutoNovelServices {
     if (this.autoNovelServices?.runtime !== runtime) {
       this.autoNovelServices = {
         runtime,
-        services: createAutoNovelServices(runtime.database, this.providerResolver),
+        services: createAutoNovelServices(runtime.database, this.providerResolver, {
+          backupAfterAccept: async () => {
+            await this.createBackup("daily");
+          },
+        }),
       };
     }
     return this.autoNovelServices.services;
@@ -1425,4 +1429,3 @@ function samePendingRecovery(
       left.targetFingerprint === right.targetFingerprint)
   );
 }
-

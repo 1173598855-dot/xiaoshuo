@@ -4,6 +4,7 @@ import {
   BookFoundationSchema,
   BookSchema,
   ChapterPlanSchema,
+  ProductionStageSchema,
   StoryDirectionSchema,
 } from "./auto-novel";
 
@@ -197,5 +198,50 @@ export const UsageSummarySchema = z.object({
     outputTokens: z.number().int().nonnegative(),
     estimatedCostMicros: z.number().int().nonnegative(),
   }).strict()).default([]),
+  byBook: z.array(z.object({
+    bookId: z.string().min(1).max(80),
+    requests: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    estimatedCostMicros: z.number().int().nonnegative(),
+  }).strict()).default([]),
+  byChapter: z.array(z.object({
+    bookId: z.string().min(1).max(80),
+    chapterNumber: z.number().int().positive(),
+    requests: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    estimatedCostMicros: z.number().int().nonnegative(),
+  }).strict()).default([]),
+  byStage: z.array(z.object({
+    stage: z.union([ProductionStageSchema, z.literal("connection"), z.literal("unknown")]),
+    requests: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    estimatedCostMicros: z.number().int().nonnegative(),
+  }).strict()).default([]),
+  quota: z.object({
+    status: z.enum(["unlimited", "ok", "warning", "paused"]),
+    tokenLimit: z.number().int().nonnegative(),
+    budgetMicrosLimit: z.number().int().nonnegative(),
+    tokensUsed: z.number().int().nonnegative(),
+    costUsedMicros: z.number().int().nonnegative(),
+    tokensReserved: z.number().int().nonnegative(),
+    costReservedMicros: z.number().int().nonnegative(),
+    warningPercent: z.number().int().min(1).max(99),
+    tokenRemaining: z.number().int().nonnegative().nullable(),
+    budgetRemainingMicros: z.number().int().nonnegative().nullable(),
+  }).strict().default({
+    status: "unlimited",
+    tokenLimit: 0,
+    budgetMicrosLimit: 0,
+    tokensUsed: 0,
+    costUsedMicros: 0,
+    tokensReserved: 0,
+    costReservedMicros: 0,
+    warningPercent: 80,
+    tokenRemaining: null,
+    budgetRemainingMicros: null,
+  }),
 }).strict();
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;

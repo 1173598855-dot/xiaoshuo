@@ -56,8 +56,9 @@ export class FoundationService {
       {
         model: providerConfig.model,
         reasoningLevel: providerConfig.reasoningLevel,
-        ...buildFoundationPrompt(details.book, direction, authoringContext),
-        maxOutputTokens: 8_000,
+         ...buildFoundationPrompt(details.book, direction, authoringContext),
+         maxOutputTokens: 8_000,
+         usageContext: { bookId, stage: "foundation" },
       },
       signal,
     );
@@ -80,7 +81,8 @@ export class FoundationService {
           foundationData,
           authoringContext,
         ),
-        maxOutputTokens: 12_000,
+         maxOutputTokens: 12_000,
+         usageContext: { bookId, stage: "outline" },
       },
       signal,
     );
@@ -112,6 +114,7 @@ export class FoundationService {
       reasoningLevel: providerConfig.reasoningLevel,
       ...buildOutlinePrompt(details.book.idea, direction.title, details.book.targetChapters, details.foundation, authoringContext),
       maxOutputTokens: 12_000,
+      usageContext: { bookId, stage: "outline" },
     }, signal);
     const outline = parseStructuredProviderResult(result.text, OutlineModelOutputSchema);
     if (outline.plans.length !== details.chapterPlans.length) {

@@ -132,6 +132,15 @@ const AUTO_NOVEL_SCHEMA = `
     accepted_at TEXT
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS candidate_text_revisions (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES chapter_candidates(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (candidate_id, revision)
+  ) STRICT;
+
   CREATE TABLE IF NOT EXISTS story_snapshots (
     id TEXT PRIMARY KEY,
     book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -148,6 +157,37 @@ const AUTO_NOVEL_SCHEMA = `
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS author_delivery_states (
+    book_id TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS automation_executions (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    rule TEXT NOT NULL CHECK (rule IN ('quality-after-generation', 'backup-after-accept', 'fresh-quality-before-export')),
+    idempotency_key TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'skipped')),
+    result_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    UNIQUE (book_id, rule, idempotency_key)
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS revision_notes (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK (scope IN ('story', 'timeline', 'chapter', 'memory', 'candidate')),
+    entity_id TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
   ) STRICT;
 
   CREATE INDEX IF NOT EXISTS books_updated_idx
@@ -168,8 +208,16 @@ const AUTO_NOVEL_SCHEMA = `
     ON production_checkpoints(run_id, sequence DESC);
   CREATE INDEX IF NOT EXISTS chapter_candidates_book_idx
     ON chapter_candidates(book_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS candidate_text_revisions_candidate_idx
+    ON candidate_text_revisions(candidate_id, revision DESC);
   CREATE INDEX IF NOT EXISTS story_snapshots_book_idx
     ON story_snapshots(book_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS author_delivery_states_updated_idx
+    ON author_delivery_states(updated_at DESC, book_id);
+  CREATE INDEX IF NOT EXISTS automation_executions_book_idx
+    ON automation_executions(book_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS revision_notes_book_idx
+    ON revision_notes(book_id, created_at DESC);
 `;
 
 export function ensureAutoNovelSchema(database: DatabaseSync): void {

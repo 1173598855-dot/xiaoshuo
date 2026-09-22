@@ -1,6 +1,7 @@
 import type { ModelPricingTable } from "./config";
 import type { MetricsRegistry, StructuredLogger } from "./observability";
-import type { UsageRepository } from "./operational-repository";
+import type { UsageQuotaBudget, UsageRepository } from "./operational-repository";
+import type { ProviderGenerateInput } from "../providers/types";
 import { MeteredProviderResolver, ProviderFailoverResolver } from "../providers/enterprise-resolver";
 import type { ProviderResolver } from "../providers/resolver";
 import type { ProviderConfig } from "../../shared/contracts";
@@ -15,6 +16,7 @@ export interface OperationalProviderResolverOptions {
   readonly monthlyTokenLimit?: number;
   readonly monthlyBudgetMicros?: number;
   readonly now?: () => Date;
+  readonly quotaProfile?: (context: ProviderGenerateInput["usageContext"]) => UsageQuotaBudget | undefined;
 }
 
 export function createOperationalProviderResolver(
@@ -28,6 +30,7 @@ export function createOperationalProviderResolver(
     monthlyTokenLimit: options.monthlyTokenLimit,
     monthlyBudgetMicros: options.monthlyBudgetMicros,
     now: options.now,
+    quotaProfile: options.quotaProfile,
   });
   return new ProviderFailoverResolver(
     metered,

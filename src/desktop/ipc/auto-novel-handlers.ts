@@ -30,6 +30,7 @@ import {
   UpdateMemoryInputSchema,
 } from "../../shared/memory";
 import { SaveAuthoringWorkspaceInputSchema } from "../../shared/authoring-workspace";
+import { MergeRevisionInputSchema, RestoreRevisionInputSchema, SaveAuthorDeliveryStateInputSchema } from "../../shared/author-delivery";
 import type { ProviderVault } from "../provider-vault";
 import type { DesktopAuthService } from "../desktop-auth";
 import type { AutoNovelServices } from "../auto-novel-access";
@@ -156,6 +157,22 @@ export function registerAutoNovelIpcHandlers(
     dependencies.authService?.assertBookAccess(input.bookId);
     return dependencies.getServices().bookRepository.restoreStorySnapshot(input.bookId, input.snapshotId, input.expectedBookRevision);
   });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRevisionsList, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().revisionRepository.list(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRevisionDiff, z.object({ bookId: z.string().uuid(), from: z.object({ scope: z.enum(["story", "timeline", "chapter", "memory", "candidate"]), id: z.string().min(1).max(160), revision: z.number().int().nonnegative() }).strict(), to: z.object({ scope: z.enum(["story", "timeline", "chapter", "memory", "candidate"]), id: z.string().min(1).max(160), revision: z.number().int().nonnegative() }).strict() }).strict(), ({ bookId, from, to }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().revisionRepository.diff(bookId, from, to);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRevisionRestore, RestoreRevisionInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().revisionRepository.restore(input);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRevisionMerge, MergeRevisionInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().revisionRepository.merge(input);
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringWorkspaceGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
     dependencies.authService?.assertBookAccess(bookId);
     return dependencies.getServices().authoringWorkspaceRepository.get(bookId);
@@ -163,6 +180,14 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringWorkspaceSave, SaveAuthoringWorkspaceInputSchema, (input) => {
     dependencies.authService?.assertBookAccess(input.bookId);
     return dependencies.getServices().authoringWorkspaceRepository.save(input);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authorDeliveryGet, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().authorDeliveryRepository.get(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authorDeliverySave, SaveAuthorDeliveryStateInputSchema, (input) => {
+    dependencies.authService?.assertBookAccess(input.bookId);
+    return dependencies.getServices().authorDeliveryRepository.save(input);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
@@ -220,6 +245,10 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringConsistency, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
     dependencies.authService?.assertBookAccess(bookId);
     return dependencies.getServices().authoringService.consistency(bookId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.authoringQualityGate, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
+    dependencies.authService?.assertBookAccess(bookId);
+    return dependencies.getServices().authoringService.qualityGate(bookId);
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.authoringReplace, BatchReplaceInputSchema, (input) => {
     dependencies.authService?.assertBookAccess(input.bookId);
@@ -300,9 +329,13 @@ export function registerAutoNovelIpcHandlers(
     dependencies.authService?.assertRunAccess(runId);
     return dependencies.getServices().productionService.cancel(runId);
   });
-  register(dependencies, AUTO_NOVEL_CHANNELS.candidateAccept, CandidateAcceptRequestSchema, ({ candidateId, expectedRevision }) =>
-      (dependencies.authService?.assertCandidateAccess(candidateId), dependencies.getServices().productionRepository.acceptCandidate(candidateId, expectedRevision)),
-  );
+  register(dependencies, AUTO_NOVEL_CHANNELS.candidateAccept, CandidateAcceptRequestSchema, async ({ candidateId, expectedRevision }) => {
+    dependencies.authService?.assertCandidateAccess(candidateId);
+    const services = dependencies.getServices();
+    const result = await services.productionRepository.acceptCandidate(candidateId, expectedRevision);
+    void services.automationCoordinator.afterAccept(result.run.bookId, result.candidate.id).catch(() => undefined);
+    return result;
+  });
   register(
     dependencies,
     AUTO_NOVEL_CHANNELS.candidateGet,

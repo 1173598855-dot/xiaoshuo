@@ -4,12 +4,14 @@ import type { BookRepository } from "../repositories/book-repository";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { MemoryService } from "./memory-service";
 import { ExportBlockedByQualityError, UnsupportedExportFormatError } from "../export-errors";
+import type { AutomationCoordinator } from "./automation-coordinator";
 
 export interface ExportServiceDependencies {
   readonly bookRepository: BookRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryService?: MemoryService;
   readonly authoringService?: { consistency(bookId: string): { issues: readonly { severity: string }[] } };
+  readonly automationCoordinator?: Pick<AutomationCoordinator, "beforeExport" | "isExportBlockingEnabled">;
 }
 
 /** Build the same export payload for HTTP and Electron. */
@@ -18,8 +20,9 @@ export function exportBook(
   bookId: string,
   format: "markdown" | "txt" | "docx" | "epub",
 ): string {
+  dependencies.automationCoordinator?.beforeExport(bookId);
   const quality = dependencies.authoringService?.consistency(bookId);
-  if (quality?.issues.some((issue) => issue.severity === "error")) {
+  if ((dependencies.automationCoordinator?.isExportBlockingEnabled(bookId) ?? true) && quality?.issues.some((issue) => issue.severity === "error")) {
     throw new ExportBlockedByQualityError();
   }
   const details = dependencies.bookRepository.getBook(bookId);

@@ -42,6 +42,7 @@ interface RepositoryOptions {
   createId?: () => string;
   now?: () => string;
   authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
+  qualityGate?: (bookId: string, candidateId?: string, readOnly?: boolean) => { readonly issues: readonly { readonly blocking?: boolean; readonly severity: string }[] };
 }
 
 /**
@@ -292,6 +293,15 @@ export class CandidateMemoryReviewInvalidError extends Error {
   }
 }
 
+export class QualityGateBlockedError extends Error {
+  readonly code = "QUALITY_GATE_BLOCKED";
+
+  constructor(readonly blockingCount: number) {
+    super("Quality gate blocked this mutation");
+    this.name = "QualityGateBlockedError";
+  }
+}
+
 export class CandidateTextRevisionConflictError extends Error {
   readonly code = "CANDIDATE_TEXT_REVISION_CONFLICT";
 
@@ -326,6 +336,7 @@ export class ProductionRepository {
   private readonly bookRepository: BookRepository;
   private readonly memoryRepository: MemoryRepository;
   private readonly authoringWorkspaceRepository?: AuthoringWorkspaceRepository;
+  private qualityGate?: RepositoryOptions["qualityGate"];
 
   constructor(
     private readonly database: DatabaseSync,
@@ -336,6 +347,11 @@ export class ProductionRepository {
     this.bookRepository = new BookRepository(database);
     this.memoryRepository = new MemoryRepository(database);
     this.authoringWorkspaceRepository = options.authoringWorkspaceRepository;
+    this.qualityGate = options.qualityGate;
+  }
+
+  setQualityGate(qualityGate: NonNullable<RepositoryOptions["qualityGate"]>): void {
+    this.qualityGate = qualityGate;
   }
 
   createRun(
@@ -1053,6 +1069,10 @@ export class ProductionRepository {
     }
     const inserted = this.database.prepare(insertSql).run(...insertParameters);
     if (input.lease && Number(inserted.changes) !== 1) throw new ProductionRunLeaseLostError();
+    this.database.prepare(
+      `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
+       VALUES (?, ?, 0, ?, ?)`,
+    ).run(this.createId(), id, input.candidateText, timestamp);
     return this.getCandidate(id);
   }
 
@@ -1098,7 +1118,7 @@ export class ProductionRepository {
     repairCount: number,
     lease?: ProductionRunLease,
   ): ChapterCandidate {
-    this.getCandidate(candidateId);
+    const candidate = this.getCandidate(candidateId);
     const leaseGuard = lease
       ? ` AND EXISTS (SELECT 1 FROM production_runs r WHERE r.id = chapter_candidates.run_id
           AND r.id = ? AND r.status = 'running' AND r.lease_owner = ?
@@ -1119,6 +1139,12 @@ export class ProductionRepository {
       )
       .run(...parameters);
     if (lease && Number(result.changes) !== 1) throw new ProductionRunLeaseLostError();
+    if (Number(result.changes) === 1) {
+      this.database.prepare(
+        `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).run(this.createId(), candidateId, candidate.candidateTextRevision ?? 0, candidate.candidateText, this.now());
+    }
     return this.getCandidate(candidateId);
   }
 
@@ -1295,6 +1321,10 @@ export class ProductionRepository {
       }
       throw new CandidateAlreadySettledError(input.candidateId);
     }
+    this.database.prepare(
+      `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(this.createId(), input.candidateId, currentTextRevision, candidate.candidateText, this.now());
     return this.getCandidate(input.candidateId);
   }
 
@@ -1363,6 +1393,9 @@ export class ProductionRepository {
         }
 
       const bookDetails = this.bookRepository.getBook(candidate.bookId);
+      const quality = this.qualityGate?.(candidate.bookId, candidateId, true);
+      const blockingCount = quality?.issues.filter((issue) => issue.blocking === true || issue.severity === "error").length ?? 0;
+      if (blockingCount > 0) throw new QualityGateBlockedError(blockingCount);
       const projectId = this.database
         .prepare("SELECT project_id AS projectId FROM books WHERE id = ?")
         .get(candidate.bookId) as { projectId: string } | undefined;
@@ -1583,6 +1616,49 @@ export class ProductionRepository {
       )
       .all(project.projectId) as unknown as ChapterRow[];
     return rows.map(toChapter);
+  }
+
+  restoreChapterRevision(
+    chapterId: string,
+    targetRevision: number,
+    expectedBookRevision: number,
+    note = "",
+  ): Chapter {
+    return this.withTransaction(() => {
+      const chapter = this.getChapter(chapterId);
+      const bookRow = this.database.prepare(
+        `SELECT b.id, b.revision
+           FROM books b JOIN projects p ON p.id = b.project_id
+          WHERE p.id = ?`,
+      ).get(chapter.projectId) as { id: string; revision: number } | undefined;
+      if (!bookRow) throw new Error("Chapter book is missing");
+      if (bookRow.revision !== expectedBookRevision) {
+        throw new ProductionRevisionConflictError(expectedBookRevision, bookRow.revision);
+      }
+      const target = this.database.prepare(
+        `SELECT revision, title, content, status
+           FROM chapter_revisions WHERE chapter_id = ? AND revision = ?`,
+      ).get(chapterId, targetRevision) as { revision: number; title: string; content: string; status: Chapter["status"] } | undefined;
+      if (!target) throw new Error("Chapter revision is missing");
+      if (chapter.status === "locked") throw new ChapterLockedError(chapterId);
+      const timestamp = this.now();
+      this.database.prepare(
+        `INSERT INTO chapter_revisions (id, chapter_id, revision, title, content, status, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'restore', ?)`,
+      ).run(this.createId(), chapterId, chapter.revision, chapter.title, chapter.content, chapter.status, timestamp);
+      this.database.prepare(
+        `UPDATE chapters SET title = ?, content = ?, status = ?, revision = revision + 1, updated_at = ?
+          WHERE id = ? AND revision = ?`,
+      ).run(target.title, target.content, target.status, timestamp, chapterId, chapter.revision);
+      this.database.prepare(
+        "UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?",
+      ).run(timestamp, bookRow.id, expectedBookRevision);
+      this.database.prepare(
+        `INSERT INTO revision_notes (id, book_id, scope, entity_id, revision, note, created_at)
+         VALUES (?, ?, 'chapter', ?, ?, ?, ?)`,
+      ).run(this.createId(), bookRow.id, chapterId, chapter.revision + 1, note.slice(0, 500), timestamp);
+      return this.getChapter(chapterId);
+    });
   }
 
   importChapters(

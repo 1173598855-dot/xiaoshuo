@@ -32,6 +32,9 @@ const runtime = createAutoNovelRuntime({
   modelPricing: enterpriseConfig.modelPricing,
   logger,
   metrics,
+  onAcceptBackup: async () => {
+    await backupService.createBackup();
+  },
   resolvePersistedProvider: (descriptor) => {
     const provider = resolveServerProvider(descriptor, enterpriseConfig.serverProviders);
     if (!provider) throw new Error("No server Provider matches the persisted descriptor");

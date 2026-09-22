@@ -7,6 +7,7 @@ import type { ProviderResolver } from "./providers/resolver";
 import type { ProviderConfig } from "../shared/contracts";
 import { BookRepository } from "./repositories/book-repository";
 import { AuthoringWorkspaceRepository } from "./repositories/authoring-workspace-repository";
+import { AuthorDeliveryRepository } from "./repositories/author-delivery-repository";
 import { ProductionRepository } from "./repositories/production-repository";
 import { MemoryRepository } from "./repositories/memory-repository";
 import { DirectorService } from "./services/director-service";
@@ -28,6 +29,9 @@ import { InvitationRepository } from "./repositories/invitation-repository";
 import { AuthRepository } from "./repositories/auth-repository";
 import { MetricsRegistry, StructuredLogger } from "./enterprise/observability";
 import { createOperationalProviderResolver } from "./enterprise/provider-stack";
+import { AutomationExecutionRepository } from "./repositories/automation-repository";
+import { AutomationCoordinator } from "./services/automation-coordinator";
+import { RevisionRepository } from "./repositories/revision-repository";
 
 export interface AutoNovelRuntimeOptions {
   databasePath?: string;
@@ -48,12 +52,16 @@ export interface AutoNovelRuntimeOptions {
   resolvePersistedWorkflow?: PersistedWorkflowResolver;
   /** Worker remains opt-in so existing desktop/unit-test runtimes stay deterministic. */
   workerOptions?: ProductionWorkerOptions;
+  onAcceptBackup?: (bookId: string) => Promise<unknown>;
 }
 
 export interface AutoNovelRuntime {
   readonly database: DatabaseSync;
   readonly bookRepository: BookRepository;
   readonly authoringWorkspaceRepository: AuthoringWorkspaceRepository;
+  readonly authorDeliveryRepository: AuthorDeliveryRepository;
+  readonly automationCoordinator: AutomationCoordinator;
+  readonly revisionRepository: RevisionRepository;
   readonly productionRepository: ProductionRepository;
   readonly memoryRepository: MemoryRepository;
   readonly directorService: DirectorService;
@@ -80,10 +88,20 @@ export function createAutoNovelRuntime(
     new WorkspaceRepository(database);
     const bookRepository = new BookRepository(database);
     const authoringWorkspaceRepository = new AuthoringWorkspaceRepository(database);
+    const authorDeliveryRepository = new AuthorDeliveryRepository(database);
     const productionRepository = new ProductionRepository(database, { authoringWorkspaceRepository });
     const memoryRepository = new MemoryRepository(database);
     const memoryService = new MemoryService(memoryRepository);
     const authoringService = new AuthoringService(bookRepository, productionRepository, memoryService);
+    productionRepository.setQualityGate((bookId, candidateId, readOnly) => authoringService.qualityGate(bookId, candidateId, readOnly));
+    const automationCoordinator = new AutomationCoordinator({
+      executionRepository: new AutomationExecutionRepository(database),
+      authorDeliveryRepository,
+      authoringService,
+      ...(options.onAcceptBackup ? { backupAfterAccept: options.onAcceptBackup } : {}),
+      logger: options.logger,
+    });
+    const revisionRepository = new RevisionRepository(database, bookRepository, productionRepository, memoryRepository);
     const logger = options.logger ?? new StructuredLogger();
     const metrics = options.metrics ?? new MetricsRegistry({ logger });
     const auditRepository = new AuditRepository(database);
@@ -99,14 +117,26 @@ export function createAutoNovelRuntime(
       modelPricing: options.modelPricing,
       monthlyTokenLimit: options.monthlyTokenLimit,
       monthlyBudgetMicros: options.monthlyBudgetMicros,
+      quotaProfile: (context) => {
+        if (!context?.bookId) return undefined;
+        const budget = authorDeliveryRepository.get(context.bookId).payload.budget;
+        return {
+          monthlyTokenLimit: budget.monthlyTokenLimit || undefined,
+          monthlyBudgetMicros: budget.monthlyBudgetMicros || undefined,
+          warningPercent: budget.warningPercent,
+        };
+      },
     });
     const shared = {
       bookRepository,
       authoringWorkspaceRepository,
+      authorDeliveryRepository,
       productionRepository,
       providerResolver,
       memoryService,
       authoringService,
+      automationCoordinator,
+      revisionRepository,
       maxConcurrentRuns: options.maxConcurrentRuns,
       metrics,
       auditRepository,
@@ -129,6 +159,9 @@ export function createAutoNovelRuntime(
       database,
       bookRepository,
       authoringWorkspaceRepository,
+      authorDeliveryRepository,
+      automationCoordinator,
+      revisionRepository,
       productionRepository,
       memoryRepository,
       directorService: new DirectorService(shared),

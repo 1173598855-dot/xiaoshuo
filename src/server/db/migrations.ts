@@ -230,10 +230,35 @@ export function migrate(database: DatabaseSync): void {
     const usageColumns = database.prepare("PRAGMA table_xinfo(usage_events)").all() as Array<{ name: string }>;
     if (!usageColumns.some(({ name }) => name === "cache_read_tokens")) database.exec("ALTER TABLE usage_events ADD COLUMN cache_read_tokens INTEGER");
     if (!usageColumns.some(({ name }) => name === "cache_write_tokens")) database.exec("ALTER TABLE usage_events ADD COLUMN cache_write_tokens INTEGER");
+    if (!usageColumns.some(({ name }) => name === "book_id")) database.exec("ALTER TABLE usage_events ADD COLUMN book_id TEXT REFERENCES books(id) ON DELETE SET NULL");
+    if (!usageColumns.some(({ name }) => name === "chapter_number")) database.exec("ALTER TABLE usage_events ADD COLUMN chapter_number INTEGER");
+    if (!usageColumns.some(({ name }) => name === "stage")) database.exec("ALTER TABLE usage_events ADD COLUMN stage TEXT");
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS usage_events_book_created_idx
+        ON usage_events(book_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS usage_events_stage_created_idx
+        ON usage_events(stage, created_at DESC);
+      CREATE TABLE IF NOT EXISTS usage_reservations (
+        id TEXT PRIMARY KEY,
+        request_id TEXT,
+        book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
+        chapter_number INTEGER,
+        stage TEXT,
+        estimated_tokens INTEGER NOT NULL CHECK (estimated_tokens >= 0),
+        estimated_cost_micros INTEGER NOT NULL CHECK (estimated_cost_micros >= 0),
+        status TEXT NOT NULL CHECK (status IN ('active', 'settled', 'released')),
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS usage_reservations_active_idx
+        ON usage_reservations(status, expires_at);
+      CREATE INDEX IF NOT EXISTS usage_reservations_book_idx
+        ON usage_reservations(book_id, created_at DESC);
+    `);
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
     throw error;
   }
 }
-

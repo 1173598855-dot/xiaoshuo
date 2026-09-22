@@ -20,6 +20,7 @@ import type {
 } from "../shared/auto-novel";
 import type { BatchReplaceInput, BatchReplaceResult, ChapterPlanPreviewEnvelope, ConsistencyReport, ManuscriptImportInput, ManuscriptImportResult, ReorderChapterPlansInput, SearchQuery, SearchResponse, StorySnapshot, UpdateChapterPlansInput } from "../shared/authoring";
 import type { AuthoringWorkspace, SaveAuthoringWorkspaceInput } from "../shared/authoring-workspace";
+import type { AuthorDeliveryState, MergeRevisionInput, QualityGateReport, RestoreRevisionInput, RevisionDiffResponse, RevisionTimelineResponse, SaveAuthorDeliveryStateInput } from "../shared/author-delivery";
 import type { UsageSummary } from "../shared/authoring";
 import type {
   MemoryBookSnapshot,
@@ -54,6 +55,12 @@ export interface AutoNovelDesktopApiV2 {
     restoreSnapshot(input: { bookId: string; snapshotId: string; expectedBookRevision: number }): Promise<DesktopResult<BookDetails>>;
     getAuthoringWorkspace(bookId: string): Promise<DesktopResult<AuthoringWorkspace>>;
     saveAuthoringWorkspace(input: SaveAuthoringWorkspaceInput): Promise<DesktopResult<AuthoringWorkspace>>;
+    getAuthorDeliveryState(bookId: string): Promise<DesktopResult<AuthorDeliveryState>>;
+    saveAuthorDeliveryState(input: SaveAuthorDeliveryStateInput): Promise<DesktopResult<AuthorDeliveryState>>;
+    listRevisionTimeline(bookId: string): Promise<DesktopResult<RevisionTimelineResponse>>;
+    diffRevisions(input: { bookId: string; from: RestoreRevisionInput["reference"]; to: RestoreRevisionInput["reference"] }): Promise<DesktopResult<RevisionDiffResponse>>;
+    restoreRevision(input: RestoreRevisionInput): Promise<DesktopResult<unknown>>;
+    mergeRevision(input: MergeRevisionInput): Promise<DesktopResult<unknown>>;
     create(input: {
       input: CreateBookInput;
       providerId?: ProviderId;
@@ -67,6 +74,7 @@ export interface AutoNovelDesktopApiV2 {
     previewTimeline(input: { bookId: string; providerId: ProviderId }): Promise<DesktopResult<ChapterPlanPreviewEnvelope>>;
     search(input: { bookId: string; query: SearchQuery }): Promise<DesktopResult<SearchResponse>>;
     consistency(bookId: string): Promise<DesktopResult<ConsistencyReport>>;
+    qualityGate(bookId: string): Promise<DesktopResult<QualityGateReport>>;
     replaceText(input: BatchReplaceInput): Promise<DesktopResult<BatchReplaceResult>>;
     importManuscript(input: ManuscriptImportInput): Promise<DesktopResult<ManuscriptImportResult>>;
     usageSummary(): Promise<DesktopResult<UsageSummary>>;
@@ -132,6 +140,12 @@ export function createAutoNovelPreloadApiV2(
       restoreSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotRestore, input),
       getAuthoringWorkspace: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringWorkspaceGet, { bookId }),
       saveAuthoringWorkspace: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringWorkspaceSave, input),
+      getAuthorDeliveryState: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authorDeliveryGet, { bookId }),
+      saveAuthorDeliveryState: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authorDeliverySave, input),
+      listRevisionTimeline: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRevisionsList, { bookId }),
+      diffRevisions: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRevisionDiff, input),
+      restoreRevision: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRevisionRestore, input),
+      mergeRevision: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRevisionMerge, input),
       create: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksCreate, input),
       get: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksGet, { bookId }),
       updateTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelineUpdate, input),
@@ -140,6 +154,7 @@ export function createAutoNovelPreloadApiV2(
       previewTimeline: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.timelinePreview, input),
       search: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringSearch, input),
       consistency: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringConsistency, { bookId }),
+      qualityGate: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringQualityGate, { bookId }),
       replaceText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringReplace, input),
       importManuscript: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.authoringImport, input),
       usageSummary: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.usageSummary),

@@ -37,6 +37,11 @@ export class MemoryService {
     return this.repository.list(bookId, filter);
   }
 
+  /** Read the persisted ledger without opening a nested seed transaction. */
+  listPersisted(bookId: string, filter?: Partial<MemoryFilter>): readonly MemoryEntry[] {
+    return this.repository.list(bookId, filter);
+  }
+
   snapshot(bookId: string, filter?: Partial<MemoryFilter>): MemoryBookSnapshot {
     this.ensureSeeded(bookId);
     return MemoryBookSnapshotSchema.parse({

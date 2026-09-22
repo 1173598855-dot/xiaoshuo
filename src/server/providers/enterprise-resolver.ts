@@ -7,6 +7,7 @@ import {
   type StructuredLogger,
 } from "../enterprise/observability";
 import type { UsageRepository } from "../enterprise/operational-repository";
+import type { UsageQuotaBudget } from "../enterprise/operational-repository";
 import type { ProviderResolver } from "./resolver";
 import {
   NormalizedProviderError,
@@ -23,6 +24,7 @@ export interface MeteredProviderResolverOptions {
   readonly monthlyTokenLimit?: number;
   readonly monthlyBudgetMicros?: number;
   readonly now?: () => Date;
+  readonly quotaProfile?: (context: ProviderGenerateInput["usageContext"]) => UsageQuotaBudget | undefined;
 }
 
 /** Adds usage accounting and quota checks without persisting prompts or keys. */
@@ -42,10 +44,11 @@ export class MeteredProviderResolver implements ProviderResolver {
       kind: provider.kind,
       generate: async (input, signal) => {
         const startedAt = Date.now();
+        let reservationId: string | undefined;
         try {
-          this.assertQuota(config, input);
+          reservationId = this.assertQuota(config, input);
           const result = await provider.generate(input, signal);
-          this.recordUsage(config, result, "success");
+          this.recordUsage(config, result, "success", undefined, reservationId, input);
           this.options.metrics?.recordProvider({
             provider: config.kind,
             model: input.model,
@@ -60,6 +63,8 @@ export class MeteredProviderResolver implements ProviderResolver {
             null,
             errorCode === "QUOTA_EXCEEDED" ? "blocked" : "error",
             errorCode,
+            reservationId,
+            input,
           );
           this.options.metrics?.recordProvider({
             provider: config.kind,
@@ -74,39 +79,42 @@ export class MeteredProviderResolver implements ProviderResolver {
     };
   }
 
-  private assertQuota(config: ProviderConfig, input: ProviderGenerateInput): void {
+  private assertQuota(config: ProviderConfig, input: ProviderGenerateInput): string | undefined {
     const usageRepository = this.options.usageRepository;
-    if (!usageRepository) return;
-    const monthlyTokenLimit = this.options.monthlyTokenLimit;
-    const monthlyBudgetMicros = this.options.monthlyBudgetMicros;
-    if (monthlyTokenLimit === undefined && monthlyBudgetMicros === undefined) return;
+    if (!usageRepository) return undefined;
+    const budget = this.options.quotaProfile?.(input.usageContext) ?? {
+      monthlyTokenLimit: this.options.monthlyTokenLimit,
+      monthlyBudgetMicros: this.options.monthlyBudgetMicros,
+    };
+    const monthlyTokenLimit = budget.monthlyTokenLimit;
+    const monthlyBudgetMicros = budget.monthlyBudgetMicros;
+    if (!monthlyTokenLimit && !monthlyBudgetMicros) return undefined;
 
-    const summary = usageRepository.getMonthlySummary(this.now());
     const estimatedInputTokens = estimateInputTokens(input);
     const estimatedOutputTokens = Math.max(0, Math.trunc(input.maxOutputTokens));
     const estimatedTokens = estimatedInputTokens + estimatedOutputTokens;
-    if (
-      monthlyTokenLimit !== undefined &&
-      summary.totalTokens + estimatedTokens > monthlyTokenLimit
-    ) {
-      throw new NormalizedProviderError(
-        "QUOTA_EXCEEDED",
-        publicProviderErrorMessage("QUOTA_EXCEEDED"),
-      );
-    }
-
-    if (monthlyBudgetMicros !== undefined) {
-      const estimatedCost = estimateCostMicros(
-        config,
-        { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
-        this.options.modelPricing ?? {},
-      );
-      if (summary.estimatedCostMicros + estimatedCost > monthlyBudgetMicros) {
-        throw new NormalizedProviderError(
-          "QUOTA_EXCEEDED",
-          publicProviderErrorMessage("QUOTA_EXCEEDED"),
-        );
+    const estimatedCost = estimateCostMicros(
+      config,
+      { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
+      this.options.modelPricing ?? {},
+    );
+    try {
+      return usageRepository.reserveQuota({
+        requestId: currentRequestContext()?.requestId,
+        ...(input.usageContext?.bookId ? { bookId: input.usageContext.bookId } : {}),
+        ...(input.usageContext?.chapterNumber ? { chapterNumber: input.usageContext.chapterNumber } : {}),
+        ...(input.usageContext?.stage ? { stage: input.usageContext.stage } : {}),
+        estimatedTokens,
+        estimatedCostMicros: estimatedCost,
+        ...(monthlyTokenLimit !== undefined ? { monthlyTokenLimit } : {}),
+        ...(monthlyBudgetMicros !== undefined ? { monthlyBudgetMicros } : {}),
+        ...(budget.warningPercent !== undefined ? { warningPercent: budget.warningPercent } : {}),
+      }).id;
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "QUOTA_EXCEEDED") {
+        throw new NormalizedProviderError("QUOTA_EXCEEDED", publicProviderErrorMessage("QUOTA_EXCEEDED"));
       }
+      throw error;
     }
   }
 
@@ -115,6 +123,8 @@ export class MeteredProviderResolver implements ProviderResolver {
     result: ProviderResult | null,
     status: "success" | "error" | "blocked",
     errorCode?: string,
+    reservationId?: string,
+    input?: ProviderGenerateInput,
   ): void {
     const usageRepository = this.options.usageRepository;
     if (!usageRepository) return;
@@ -131,6 +141,10 @@ export class MeteredProviderResolver implements ProviderResolver {
         estimatedCostMicros: estimateCostMicros(config, usage, this.options.modelPricing ?? {}),
         status,
         ...(errorCode ? { errorCode } : {}),
+        ...(reservationId ? { reservationId } : {}),
+        ...(input?.usageContext?.bookId ? { bookId: input.usageContext.bookId } : {}),
+        ...(input?.usageContext?.chapterNumber ? { chapterNumber: input.usageContext.chapterNumber } : {}),
+        ...(input?.usageContext?.stage ? { stage: input.usageContext.stage } : {}),
       });
     } catch (error) {
       this.options.logger?.warn("usage.record_failed", {

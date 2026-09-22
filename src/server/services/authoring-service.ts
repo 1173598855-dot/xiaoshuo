@@ -3,6 +3,11 @@ import type { SearchQuery, SearchResponse, ConsistencyReport, ConsistencyIssue }
 import type { BookRepository } from "../repositories/book-repository";
 import type { ProductionRepository } from "../repositories/production-repository";
 import type { MemoryService } from "./memory-service";
+import {
+  QualityGateReportSchema,
+  type QualityGateReport,
+  type QualityGateIssue,
+} from "../../shared/author-delivery";
 
 export class AuthoringService {
   constructor(
@@ -46,9 +51,11 @@ export class AuthoringService {
     return { bookId, query: query.q, results };
   }
 
-  consistency(bookId: string): ConsistencyReport {
+  consistency(bookId: string, options: { readonly seed?: boolean } = {}): ConsistencyReport {
     const details = this.bookRepository.getBook(bookId);
-    const entries = this.memoryService.list(bookId, { includeArchived: true });
+    const entries = options.seed === false
+      ? this.memoryService.listPersisted(bookId, { includeArchived: true })
+      : this.memoryService.list(bookId, { includeArchived: true });
     const issues: ConsistencyIssue[] = [];
     const add = (issue: Omit<ConsistencyIssue, "id">) => issues.push({ id: randomUUID(), ...issue });
     const maxChapter = details.chapterPlans.length > 0 ? Math.max(...details.chapterPlans.map(({ chapterNumber }) => chapterNumber)) : 0;
@@ -83,6 +90,80 @@ export class AuthoringService {
       add({ severity: "error", code: "DUPLICATE_CHAPTER_NUMBER", title: "章纲编号重复", detail: "章纲存在重复章节编号，无法安全生产。", sourceType: "book", sourceId: details.book.id, chapterNumber: null });
     }
     return { bookId, bookRevision: details.book.revision, checkedAt: this.now().toISOString(), issues };
+  }
+
+  /**
+   * Shared, deterministic quality gate used by accept/export/automation.  The
+   * browser may add presentation-only heuristics, but it cannot weaken this
+   * report or bypass the blocking issues returned here.
+   */
+  qualityGate(bookId: string, candidateId: string | null = null, readOnly = false): QualityGateReport {
+    const consistency = this.consistency(bookId, { seed: !readOnly });
+    const issues: QualityGateIssue[] = consistency.issues.map((issue) => ({
+      id: `consistency-${issue.id}`,
+      category: issue.code.includes("FORESHADOWING")
+        ? "foreshadowing"
+        : issue.code.includes("TIMELINE")
+          ? "timeline-conflict"
+          : issue.code.includes("DUPLICATE_CHAPTER")
+            ? "duplicate-chapter"
+            : "name-drift",
+      certainty: "deterministic",
+      severity: issue.severity,
+      blocking: issue.severity === "error",
+      title: issue.title,
+      detail: issue.detail,
+      evidence: [issue.detail],
+      chapterNumber: issue.chapterNumber,
+      sourceId: issue.sourceId,
+      repairActions: [{
+        type: issue.sourceType === "memory" ? "memory" : "timeline",
+        label: issue.sourceType === "memory" ? "打开记忆中心" : "打开时间线",
+        targetId: issue.sourceId,
+        chapterNumber: issue.chapterNumber,
+      }],
+    }));
+    if (candidateId) {
+      const candidate = this.productionRepository.getCandidate(candidateId);
+      if (candidate.bookId !== bookId) {
+        issues.push({
+          id: `candidate-book-${candidateId}`,
+          category: "style-drift",
+          certainty: "deterministic",
+          severity: "error",
+          blocking: true,
+          title: "候选不属于当前作品",
+          detail: "候选作品边界校验失败，不能继续采纳或导出。",
+          evidence: [candidateId],
+          chapterNumber: null,
+          sourceId: candidateId,
+          repairActions: [],
+        });
+      }
+      if (candidate.review.status !== "passed") {
+        issues.push({
+          id: `candidate-review-${candidateId}`,
+          category: "style-drift",
+          certainty: "deterministic",
+          severity: "error",
+          blocking: true,
+          title: "候选尚未通过审核",
+          detail: "候选正文必须先通过审核才能进入正式正文。",
+          evidence: candidate.review.findings.slice(0, 8),
+          chapterNumber: null,
+          sourceId: candidateId,
+          repairActions: [{ type: "candidate", label: "打开候选审阅", targetId: candidateId, chapterNumber: null }],
+        });
+      }
+    }
+    return QualityGateReportSchema.parse({
+      bookId,
+      bookRevision: consistency.bookRevision,
+      checkedAt: consistency.checkedAt,
+      candidateId,
+      issues,
+      blockingCount: issues.filter((issue) => issue.blocking).length,
+    });
   }
 }
 

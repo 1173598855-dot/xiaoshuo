@@ -409,6 +409,7 @@ export class BookRepository {
     bookId: string,
     snapshotId: string,
     expectedBookRevision: number,
+    note = "",
   ): BookDetails {
     return this.withTransaction(() => {
       const current = this.requireBookRow(bookId);
@@ -528,6 +529,65 @@ export class BookRepository {
             timestamp,
           );
       }
+      this.insertRevisionNote(bookId, "story", snapshotId, expectedBookRevision + 1, note);
+      return this.getBook(bookId);
+    });
+  }
+
+  mergeStorySnapshot(
+    bookId: string,
+    snapshotId: string,
+    expectedBookRevision: number,
+    chapterPlanIds: readonly string[],
+    note = "",
+  ): BookDetails {
+    return this.withTransaction(() => {
+      const current = this.requireBookRow(bookId);
+      if (current.revision !== expectedBookRevision) {
+        throw new BookRevisionConflictError(expectedBookRevision, current.revision);
+      }
+      const row = this.database.prepare(
+        `SELECT id, book_id, name, base_revision, payload_json, created_at, updated_at
+           FROM story_snapshots WHERE id = ? AND book_id = ?`,
+      ).get(snapshotId, bookId) as StorySnapshotRow | undefined;
+      if (!row) throw new StorySnapshotNotFoundError(snapshotId);
+      const snapshot = toStorySnapshot(row);
+      const selected = new Set(chapterPlanIds);
+      if (selected.size !== chapterPlanIds.length || selected.size === 0) {
+        throw new ChapterPlanNotFoundError(chapterPlanIds[0] ?? "00000000-0000-4000-8000-000000000000");
+      }
+      const currentPlans = this.getChapterPlans(bookId);
+      const byId = new Map(currentPlans.map((plan) => [plan.id, plan]));
+      const sourceById = new Map(snapshot.payload.chapterPlans.map((plan) => [plan.id, plan]));
+      for (const planId of selected) {
+        if (!byId.has(planId) || !sourceById.has(planId)) throw new ChapterPlanNotFoundError(planId);
+      }
+      const timestamp = this.now();
+      const update = this.database.prepare(
+        `UPDATE chapter_plans
+            SET volume_number = ?, volume_title = ?, title = ?, summary = ?,
+                objective = ?, hook = ?, foreshadowing_json = ?, updated_at = ?
+          WHERE id = ? AND book_id = ?`,
+      );
+      for (const planId of selected) {
+        const plan = sourceById.get(planId)!;
+        update.run(
+          plan.volumeNumber,
+          plan.volumeTitle,
+          plan.title,
+          plan.summary,
+          plan.objective,
+          plan.hook,
+          JSON.stringify(plan.foreshadowing),
+          timestamp,
+          plan.id,
+          bookId,
+        );
+      }
+      this.database.prepare(
+        "UPDATE books SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?",
+      ).run(timestamp, bookId, expectedBookRevision);
+      this.insertRevisionNote(bookId, "timeline", snapshotId, expectedBookRevision + 1, note);
       return this.getBook(bookId);
     });
   }
@@ -1020,6 +1080,19 @@ export class BookRepository {
       this.database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  private insertRevisionNote(
+    bookId: string,
+    scope: "story" | "timeline" | "chapter" | "memory" | "candidate",
+    entityId: string,
+    revision: number,
+    note: string,
+  ): void {
+    this.database.prepare(
+      `INSERT INTO revision_notes (id, book_id, scope, entity_id, revision, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(this.createId(), bookId, scope, entityId, revision, note.slice(0, 500), this.now());
   }
 }
 
