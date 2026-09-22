@@ -177,6 +177,12 @@ export const QuotaSnapshotSchema = z.object({
   warningPercent: z.number().int().min(1).max(99),
   tokenRemaining: z.number().int().nonnegative().nullable(),
   budgetRemainingMicros: z.number().int().nonnegative().nullable(),
+  byStage: z.array(z.object({
+    stage: z.string().min(1).max(40),
+    requests: z.number().int().nonnegative(),
+    tokens: z.number().int().nonnegative(),
+    estimatedCostMicros: z.number().int().nonnegative(),
+  }).strict()).default([]),
 }).strict();
 export type QuotaSnapshot = z.infer<typeof QuotaSnapshotSchema>;
 
@@ -245,6 +251,7 @@ export const UsageSummarySchema = z.object({
     warningPercent: 80,
     tokenRemaining: null,
     budgetRemainingMicros: null,
+    byStage: [],
   }),
 }).strict();
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;

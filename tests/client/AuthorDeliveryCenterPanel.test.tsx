@@ -45,7 +45,7 @@ describe("AuthorDeliveryCenterPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "质量门禁" }));
     expect(await screen.findByText("质量门禁已通过")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "成本配额" }));
-    expect(await screen.findByText("未设置月度配额")).toBeInTheDocument();
+    expect(await screen.findByText("本作品未启用月度限额")).toBeInTheDocument();
     await waitFor(() => expect(api.checkConsistency).toHaveBeenCalledWith(book.book.id));
   });
 
@@ -53,7 +53,7 @@ describe("AuthorDeliveryCenterPanel", () => {
     const api = createApi();
     Object.assign(api, {
       checkQualityGate: vi.fn().mockResolvedValue({ bookId: book.book.id, bookRevision: 3, checkedAt: "2026-09-23T00:00:00.000Z", candidateId: null, issues: [], blockingCount: 0 }),
-      getBookQuota: vi.fn().mockResolvedValue({ status: "warning", tokenLimit: 2_000, budgetMicrosLimit: 0, tokensUsed: 1_600, costUsedMicros: 0, tokensReserved: 120, costReservedMicros: 0, warningPercent: 80, tokenRemaining: 280, budgetRemainingMicros: null }),
+      getBookQuota: vi.fn().mockResolvedValue({ status: "warning", tokenLimit: 2_000, budgetMicrosLimit: 0, tokensUsed: 1_600, costUsedMicros: 0, tokensReserved: 120, costReservedMicros: 0, warningPercent: 80, tokenRemaining: 280, budgetRemainingMicros: null, byStage: [{ stage: "draft", requests: 3, tokens: 180, estimatedCostMicros: 0 }] }),
       listAutomationExecutions: vi.fn().mockResolvedValue([{ id: "11111111-1111-4111-8111-111111111111", bookId: book.book.id, rule: "fresh-quality-before-export", idempotencyKey: "book:test", status: "completed", result: {}, errorCode: null, createdAt: "2026-09-23T00:00:00.000Z", completedAt: "2026-09-23T00:00:00.000Z" }]),
       listRevisionTimeline: vi.fn().mockResolvedValue({ bookId: book.book.id, currentBookRevision: 3, items: [{ id: "22222222-2222-4222-8222-222222222222", entityId: "22222222-2222-4222-8222-222222222222", reference: { scope: "story", id: "22222222-2222-4222-8222-222222222222", revision: 2 }, scope: "story", revision: 2, title: "交付快照", summary: "旧版本", source: "snapshot", chapterNumber: null, createdAt: "2026-09-22T00:00:00.000Z", restorable: true, note: "" }] }),
       diffRevisions: vi.fn().mockResolvedValue({ bookId: book.book.id, from: { scope: "story", id: "22222222-2222-4222-8222-222222222222", revision: 2 }, to: { scope: "story", id: "live:test", revision: 3 }, changed: true, lines: [{ type: "removed", text: "旧" }, { type: "added", text: "新" }] }),
@@ -61,8 +61,13 @@ describe("AuthorDeliveryCenterPanel", () => {
     render(<AuthorDeliveryCenterPanel book={book} chapters={[]} run={null} api={api} onClose={vi.fn()} onOpenManuscript={vi.fn()} onOpenTimeline={vi.fn()} onOpenMemory={vi.fn()} onOpenConsistency={vi.fn()} />);
     await screen.findByText("交付准备度");
     fireEvent.click(screen.getByRole("button", { name: "修订时间线" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Diff" }));
+    fireEvent.click(await screen.findByRole("button", { name: "比较" }));
     expect(await screen.findByText(/\+ 新/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "成本配额" }));
+    expect(await screen.findByText("本作品配额接近预警线")).toBeInTheDocument();
+    expect(screen.getByText("120 预留")).toBeInTheDocument();
+    expect(screen.getByText("写作")).toBeInTheDocument();
+    expect(screen.getByText("180 Token")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "自动化规则" }));
     expect(await screen.findByText("fresh-quality-before-export")).toBeInTheDocument();
   });

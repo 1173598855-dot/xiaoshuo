@@ -165,6 +165,12 @@ export interface UsageQuotaSnapshot {
   readonly warningPercent: number;
   readonly tokenRemaining: number | null;
   readonly budgetRemainingMicros: number | null;
+  readonly byStage: readonly {
+    readonly stage: string;
+    readonly requests: number;
+    readonly tokens: number;
+    readonly estimatedCostMicros: number;
+  }[];
 }
 
 export class UsageQuotaExceededError extends Error {
@@ -492,6 +498,16 @@ export class UsageRepository {
          FROM usage_reservations
          WHERE status = 'active' AND expires_at > ? AND created_at >= ? AND created_at < ?${options.bookId ? " AND book_id = ?" : ""}`,
     ).get(...(options.bookId ? [now.toISOString(), from, to, options.bookId] : [now.toISOString(), from, to])) as { estimated_tokens: number; estimated_cost_micros: number };
+    const stageFilter = options.bookId ? " AND book_id = ?" : "";
+    const stageRows = options.bookId
+      ? this.database.prepare(
+        `SELECT COALESCE(stage, 'unknown') AS stage, COUNT(*) AS requests,
+                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS tokens,
+                COALESCE(SUM(estimated_cost_micros), 0) AS estimated_cost_micros
+           FROM usage_events WHERE created_at >= ? AND created_at < ?${stageFilter}
+           GROUP BY COALESCE(stage, 'unknown') ORDER BY stage`,
+      ).all(from, to, options.bookId) as Array<{ stage: string; requests: number; tokens: number; estimated_cost_micros: number }>
+      : [];
     const tokenLimit = nonNegativeInteger(options.monthlyTokenLimit);
     const budgetMicrosLimit = nonNegativeInteger(options.monthlyBudgetMicros);
     const warningPercent = Math.min(99, Math.max(1, nonNegativeInteger(options.warningPercent ?? 80)));
@@ -515,6 +531,12 @@ export class UsageRepository {
       warningPercent,
       tokenRemaining,
       budgetRemainingMicros,
+      byStage: stageRows.map((row) => ({
+        stage: row.stage,
+        requests: integerOrZero(row.requests),
+        tokens: integerOrZero(row.tokens),
+        estimatedCostMicros: integerOrZero(row.estimated_cost_micros),
+      })),
     };
   }
 

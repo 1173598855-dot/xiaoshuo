@@ -95,7 +95,7 @@ export type RevisionReference = z.infer<typeof RevisionReferenceSchema>;
 
 export const RevisionTimelineItemSchema = z.object({
   id: z.string().trim().min(8).max(160),
-  entityId: z.string().trim().min(1).max(160).default(""),
+  entityId: z.string().trim().min(1).max(160).optional(),
   reference: RevisionReferenceSchema,
   scope: RevisionScopeSchema,
   revision: z.number().int().nonnegative(),
