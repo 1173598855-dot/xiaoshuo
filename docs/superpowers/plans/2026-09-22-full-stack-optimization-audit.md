@@ -16,6 +16,7 @@
 - 系统健康面板复用服务 ready、用量、作品一致性和桌面数据库状态，失败时只显示归一化错误。
 - 业务下拉统一迁移到可访问的 `ThemeSelect` listbox：菜单通过 portal 定位，绕开 Windows/Chromium 原生白色弹层，统一深色 surface、紫色 focus、键盘导航、Escape 回收和 reduced-motion；真实 Chromium E2E 会打开菜单并断言主题背景。
 - 复查截图反馈后补齐 `.memory-drawer`、审核候选、记忆变更和 `.manuscript-page` 的深色 surface/文字对比度；真实 Chromium 渲染检查确认记忆卡与审核正文的背景为 `#211f2e`、正文文字为 `#f4f2fb`。
+- 新增作者交付中心作为六项能力的统一入口：发布资料/manifest、质量门禁、修订时间线、成本配额、快照选择性章纲合并和本地自动化规则；发布配置、预算和规则隔离在本地交付层，不污染 AI workspace revision。
 
 ### Server / SQLite
 
@@ -35,14 +36,14 @@
 
 - `npm run security:dependencies`：0 high/critical vulnerabilities。
 - Vite 仍报告主 bundle 和 Three.js chunk 超过 500KB；这是已有的前端拆包优化项，不影响功能或发布验证，Three.js 已在交互打开后动态加载。
-- 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 从约 512KB 降到约 404KB（当前构建 404.29KB）；Three.js 仍只在打开灵感册时加载。
+- 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel、AuthorDeliveryCenterPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 当前约 412KB；Three.js 仍只在打开灵感册时加载。
 - 本地开发页面默认 favicon 404 仍是站点资源级非阻塞观察，不属于当前业务优化范围。
 
 ## 最终门禁
 
 - `npm run lint`：通过。
 - `npm run typecheck`：通过。
-- `npm run test:run`：98 文件、405 测试通过。
+- `npm run test:run`：99 文件、407 测试通过。
 - `npm run build` / server smoke：通过。
 - `npm run e2e`：8/8 通过（含主题化下拉的真实菜单打开与背景断言）。
 - `npm run smoke:desktop`：通过。

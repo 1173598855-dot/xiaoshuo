@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, Pause, Play, RotateCcw, Search, Settings2, Square, Terminal } from "lucide-react";
+import { Activity, CheckCircle2, CircleDot, Command, GitBranch, History, Library, PackageCheck, Pause, Play, RotateCcw, Search, Settings2, Square, Terminal } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { MemoryContextConfig } from "../../shared/memory";
@@ -46,6 +46,7 @@ interface ProductionRoomProps {
   onConfigureWorkflow: () => void;
   onOpenAssetLibrary?: () => void;
   onOpenCreatorDashboard?: () => void;
+  onOpenAuthorDelivery?: () => void;
   onOpenSystemHealth?: () => void;
   api?: AutoNovelApi;
   onOpenRun?: (runId: string) => void;
@@ -79,6 +80,7 @@ export function ProductionRoom({
   onConfigureWorkflow,
   onOpenAssetLibrary,
   onOpenCreatorDashboard,
+  onOpenAuthorDelivery,
   onOpenSystemHealth,
   api,
   onOpenRun,
@@ -136,6 +138,7 @@ export function ProductionRoom({
               { id: "memory", label: "记忆中心", icon: History, onSelect: onOpenMemory },
               { id: "timeline", label: "故事时间线", icon: GitBranch, onSelect: onOpenTimeline },
               { id: "authoring-hub", label: "创作中枢", icon: Activity, onSelect: onOpenAuthoringHub },
+              ...(onOpenAuthorDelivery ? [{ id: "author-delivery", label: "作者交付中心", icon: PackageCheck, onSelect: onOpenAuthorDelivery }] : []),
               { id: "system-health", label: "系统健康", icon: Activity, onSelect: onOpenSystemHealth ?? (() => undefined) },
               ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []),
               { id: "search", label: "全局搜索", icon: Search, onSelect: onOpenSearch },

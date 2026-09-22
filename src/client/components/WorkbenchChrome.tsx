@@ -12,6 +12,7 @@ import {
   Library,
   Menu,
   MoreHorizontal,
+  PackageCheck,
   Search,
   Settings2,
   Sparkles,
@@ -191,6 +192,7 @@ interface WorkbenchNavigationDrawerProps {
   onOpenData: () => void;
   onOpenAssetLibrary: () => void;
   onOpenCreatorDashboard: () => void;
+  onOpenAuthorDelivery: () => void;
   onOpenSystemHealth: () => void;
   onOpenAuthoringHub: () => void;
   onOpenContinuityRadar: () => void;
@@ -219,6 +221,7 @@ export function WorkbenchNavigationDrawer({
   onOpenData,
   onOpenAssetLibrary,
   onOpenCreatorDashboard,
+  onOpenAuthorDelivery,
   onOpenSystemHealth,
   onOpenAuthoringHub,
   onOpenContinuityRadar,
@@ -313,6 +316,7 @@ export function WorkbenchNavigationDrawer({
   ];
   const toolItems: Array<{ id: string; label: string; detail: string; icon: LucideIcon; action: () => void; disabled?: boolean }> = [
     { id: "dashboard", label: "创作统计", detail: "作品进度、最近作品与专注计时", icon: Activity, action: onOpenCreatorDashboard, disabled: false },
+    { id: "author-delivery", label: "作者交付中心", detail: "发布、质量、修订、成本与自动化", icon: PackageCheck, action: onOpenAuthorDelivery },
     { id: "system-health", label: "系统健康", detail: "服务、用量、备份与一致性状态", icon: Activity, action: onOpenSystemHealth },
     { id: "authoring-hub", label: "创作中枢", detail: "健康度、场景卡与生产配方", icon: Sparkles, action: onOpenAuthoringHub },
     { id: "continuity", label: "连续性雷达", detail: "查看故事流与风险节点", icon: Activity, action: onOpenContinuityRadar },

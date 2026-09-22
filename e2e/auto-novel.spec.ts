@@ -32,6 +32,22 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "章节上下文" })).toBeVisible();
+  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("menuitem", { name: "作者交付中心" }).click();
+  const deliveryCenter = page.getByRole("complementary", { name: "作者交付中心" });
+  await expect(deliveryCenter).toBeVisible();
+  await expect(deliveryCenter.getByRole("button", { name: "发布中心" })).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "质量门禁" }).click();
+  await expect(deliveryCenter.getByText("质量门禁已通过")).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "修订时间线" }).click();
+  await expect(deliveryCenter.getByText("统一修订时间线")).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "成本配额" }).click();
+  await expect(deliveryCenter.getByText("输入 Token")).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "快照合并" }).click();
+  await expect(deliveryCenter.getByRole("button", { name: "创建交付快照" })).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "自动化规则" }).click();
+  await expect(deliveryCenter.getByText("本地规则引擎")).toBeVisible();
+  await deliveryCenter.getByRole("button", { name: "关闭作者交付中心" }).click();
   await page.getByRole("button", { name: "连续性雷达" }).click();
   await expect(page.getByRole("complementary", { name: "故事连续性雷达" })).toBeVisible();
   for (const view of ["时间线", "关系流", "状态板", "AI 上下文", "总览"]) {

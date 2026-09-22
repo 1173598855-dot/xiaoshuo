@@ -26,6 +26,7 @@ function drawerProps() {
     onOpenData: vi.fn(),
     onOpenAssetLibrary: vi.fn(),
     onOpenCreatorDashboard: vi.fn(),
+    onOpenAuthorDelivery: vi.fn(),
     onOpenSystemHealth: vi.fn(),
     onOpenAuthoringHub: vi.fn(),
     onOpenContinuityRadar: vi.fn(),
