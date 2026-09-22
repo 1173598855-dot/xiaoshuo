@@ -18,6 +18,10 @@ import {
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RefineCandidateSelectionInputSchema,
+  RefineCandidateSelectionResponseSchema,
+  CheckCandidatePlanFulfillmentInputSchema,
+  CandidatePlanFulfillmentReportSchema,
   UpdateChapterPlanInputSchema,
   RewriteChapterInputSchema,
   type Book,
@@ -29,6 +33,10 @@ import {
   type ProductionRun,
   type StoryDirection,
   type UpdateChapterPlanInput,
+  type RefineCandidateSelectionInput,
+  type RefineCandidateSelectionResponse,
+  type CheckCandidatePlanFulfillmentInput,
+  type CandidatePlanFulfillmentReport,
   type ProductionRunSummary,
 } from "../shared/auto-novel";
 import {
@@ -192,6 +200,8 @@ export interface AutoNovelApi {
     input: UpdateCandidateMemoryReviewInput,
   ): Promise<ChapterCandidate>;
   updateCandidateText(input: UpdateCandidateTextInput): Promise<ChapterCandidate>;
+  refineCandidateSelection(input: RefineCandidateSelectionInput, provider: AutoNovelProviderInput): Promise<RefineCandidateSelectionResponse>;
+  checkCandidatePlanFulfillment(input: CheckCandidatePlanFulfillmentInput, provider: AutoNovelProviderInput): Promise<CandidatePlanFulfillmentReport>;
   refreshMemory(bookId: string): Promise<MemoryBookSnapshot>;
   getAuthoringWorkspace(bookId: string): Promise<AuthoringWorkspace>;
   saveAuthoringWorkspace(input: SaveAuthoringWorkspaceInput): Promise<AuthoringWorkspace>;
@@ -464,6 +474,24 @@ export function createAutoNovelApi(
         await requestJson(fetchImpl, `/api/chapter-candidates/${parsed.candidateId}/text`, {
           method: "PATCH",
           body: JSON.stringify(parsed),
+        }),
+      );
+    },
+    async refineCandidateSelection(input, provider) {
+      const parsed = RefineCandidateSelectionInputSchema.parse(input);
+      return RefineCandidateSelectionResponseSchema.parse(
+        await requestJson(fetchImpl, `/api/chapter-candidates/${parsed.candidateId}/refine-selection`, {
+          method: "POST",
+          body: JSON.stringify({ input: parsed, ...providerBody(provider) }),
+        }),
+      );
+    },
+    async checkCandidatePlanFulfillment(input, provider) {
+      const parsed = CheckCandidatePlanFulfillmentInputSchema.parse(input);
+      return CandidatePlanFulfillmentReportSchema.parse(
+        await requestJson(fetchImpl, `/api/chapter-candidates/${parsed.candidateId}/plan-fulfillment`, {
+          method: "POST",
+          body: JSON.stringify({ input: parsed, ...providerBody(provider) }),
         }),
       );
     },

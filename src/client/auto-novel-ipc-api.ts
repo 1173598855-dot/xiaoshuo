@@ -13,6 +13,10 @@ import {
   StoryDirectionSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RefineCandidateSelectionInputSchema,
+  RefineCandidateSelectionResponseSchema,
+  CheckCandidatePlanFulfillmentInputSchema,
+  CandidatePlanFulfillmentReportSchema,
   DesktopModelWorkflowSelectionSchema,
   type DesktopModelWorkflowSelection,
   RewriteChapterInputSchema,
@@ -266,6 +270,20 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
       return parseResult(
         await api.candidates.updateText(UpdateCandidateTextInputSchema.parse(input)),
         ChapterCandidateSchema,
+      );
+    },
+    async refineCandidateSelection(input, provider) {
+      const parsed = RefineCandidateSelectionInputSchema.parse(input);
+      return parseResult(
+        await api.candidates.refineSelection({ ...parsed, ...desktopProvider(provider) }),
+        RefineCandidateSelectionResponseSchema,
+      );
+    },
+    async checkCandidatePlanFulfillment(input, provider) {
+      const parsed = CheckCandidatePlanFulfillmentInputSchema.parse(input);
+      return parseResult(
+        await api.candidates.checkPlanFulfillment({ ...parsed, ...desktopProvider(provider) }),
+        CandidatePlanFulfillmentReportSchema,
       );
     },
     async refreshMemory(bookId) {

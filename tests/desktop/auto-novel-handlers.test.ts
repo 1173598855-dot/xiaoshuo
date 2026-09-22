@@ -209,6 +209,58 @@ describe("auto novel desktop IPC", () => {
     expect(services.productionRepository.getCandidate).toHaveBeenCalledWith(candidateId);
   });
 
+  it("keeps candidate-assist model calls behind validated Main-process channels", async () => {
+    const { handlers, services, providerVault } = createFixture();
+    const candidateId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
+    const refinement = {
+      candidateId,
+      candidateTextRevision: 0,
+      startOffset: 0,
+      endOffset: 3,
+      alternatives: [
+        { id: "alternative-1", label: "更凝练", text: "新句。", rationale: "收紧表达。" },
+        { id: "alternative-2", label: "更克制", text: "仍是新句。", rationale: "减弱语气。" },
+      ],
+    };
+    const planReport = {
+      candidateId,
+      bookRevision: 2,
+      candidateTextRevision: 0,
+      chapterNumber: 1,
+      checkedAt: "2026-09-23T00:00:00.000Z",
+      criteria: [],
+    };
+    const assistService = {
+      refineCandidateSelection: vi.fn(async () => refinement),
+      checkCandidatePlanFulfillment: vi.fn(async () => planReport),
+    };
+    (services as unknown as { productionService: unknown }).productionService = assistService;
+    const input = {
+      candidateId,
+      expectedCandidateTextRevision: 0,
+      startOffset: 0,
+      endOffset: 3,
+      selectedText: "原文。",
+      instruction: "更凝练",
+    };
+
+    const refined = await handlers.get(AUTO_NOVEL_CHANNELS.candidateSelectionRefine)?.({}, {
+      input,
+      providerId: "custom",
+    });
+    const checked = await handlers.get(AUTO_NOVEL_CHANNELS.candidatePlanFulfillment)?.({}, {
+      input: { candidateId, expectedCandidateTextRevision: 0 },
+      providerId: "custom",
+    });
+
+    expect(refined).toMatchObject({ ok: true, data: refinement });
+    expect(checked).toMatchObject({ ok: true, data: planReport });
+    expect(providerVault.resolveWorkflow).toHaveBeenCalledTimes(2);
+    expect(assistService.refineCandidateSelection).toHaveBeenCalledWith(input, expect.objectContaining({ mode: "single" }));
+    expect(assistService.checkCandidatePlanFulfillment).toHaveBeenCalledWith(candidateId, 0, expect.objectContaining({ mode: "single" }));
+    expect(JSON.stringify(refined) + JSON.stringify(checked)).not.toContain("sk-main-only-secret");
+  });
+
   it("updates a timeline only through the fixed Main-process channel", async () => {
     const { handlers, services, book } = createFixture();
     const planId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";

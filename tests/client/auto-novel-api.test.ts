@@ -66,4 +66,57 @@ describe("auto-novel HTTP API client", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, `/api/books/${bookId}/chapters`, expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(3, `/api/chapter-candidates/${candidateId}`, expect.anything());
   });
+
+  it("sends revision-frozen assist requests through the current provider boundary", async () => {
+    const candidateId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
+    const responses = [
+      {
+        candidateId,
+        candidateTextRevision: 2,
+        startOffset: 0,
+        endOffset: 3,
+        alternatives: [
+          { id: "alternative-1", label: "更凝练", text: "改后。", rationale: "压紧表达。" },
+          { id: "alternative-2", label: "更克制", text: "仍改后。", rationale: "收敛语气。" },
+        ],
+      },
+      {
+        candidateId,
+        bookRevision: 4,
+        candidateTextRevision: 2,
+        chapterNumber: 1,
+        checkedAt: "2026-09-23T00:00:00.000Z",
+        criteria: [{
+          key: "objective",
+          kind: "objective",
+          requirement: "做出选择。",
+          status: "fulfilled",
+          explanation: "找到明确行动。",
+          evidence: { quote: "候选原文。", startOffset: 0, endOffset: 5 },
+        }],
+      },
+    ];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(responses.shift()), { status: 200 })) as unknown as typeof fetch;
+    const api = createAutoNovelApi(fetchMock);
+    const refinementInput = {
+      candidateId,
+      expectedCandidateTextRevision: 2,
+      startOffset: 0,
+      endOffset: 3,
+      selectedText: "原文。",
+      instruction: "更克制",
+    };
+    const fulfillmentInput = { candidateId, expectedCandidateTextRevision: 2 };
+
+    expect((await api.refineCandidateSelection(refinementInput, provider)).alternatives).toHaveLength(2);
+    expect((await api.checkCandidatePlanFulfillment(fulfillmentInput, provider)).criteria[0].evidence?.quote).toBe("候选原文。");
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `/api/chapter-candidates/${candidateId}/refine-selection`, expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ input: refinementInput, provider }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `/api/chapter-candidates/${candidateId}/plan-fulfillment`, expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ input: fulfillmentInput, provider }),
+    }));
+  });
 });

@@ -1,25 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, CheckCircle2, Edit3, FileText, History, RotateCcw, Save, ShieldCheck, X } from "lucide-react";
 
-import type { ChapterCandidate } from "../../shared/auto-novel";
+import type { ChapterCandidate, PlanFulfillmentStatus } from "../../shared/auto-novel";
 import type {
   MemoryDeltaReview,
   MemoryDraft,
   MemoryResolve,
   MemoryUpdate,
 } from "../../shared/memory";
-import type { AutoNovelApi, AutoNovelRunDetails } from "../auto-novel-api";
+import type { AutoNovelApi, AutoNovelProviderInput, AutoNovelRunDetails } from "../auto-novel-api";
 
 interface ChapterReviewProps {
   details: AutoNovelRunDetails | null;
   api: AutoNovelApi;
+  provider?: AutoNovelProviderInput | null;
   onResume: () => Promise<void>;
   onRewrite?: (instruction?: string) => Promise<void>;
   onAccept?: () => Promise<void>;
 }
 
-export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: ChapterReviewProps) {
+export function ChapterReview({ details, api, provider, onResume, onRewrite, onAccept }: ChapterReviewProps) {
   const candidate = details?.candidate;
+  const activeCandidateKey = candidate ? `${candidate.id}:${candidate.candidateTextRevision ?? 0}` : "";
+  const activeCandidateKeyRef = useRef(activeCandidateKey);
+  const selectedPassageKeyRef = useRef("");
+  const refinementRequestRef = useRef(0);
+  const planRequestRef = useRef(0);
   const [review, setReview] = useState<MemoryDeltaReview | null>(null);
   const [reviewRevision, setReviewRevision] = useState(0);
   const [decisions, setDecisions] = useState<Set<string>>(new Set());
@@ -31,8 +37,21 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
   const [rewriteOpen, setRewriteOpen] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [historyPreviewId, setHistoryPreviewId] = useState<string | null>(null);
+  const [selectedPassage, setSelectedPassage] = useState<{ startOffset: number; endOffset: number; text: string } | null>(null);
+  const [refinementOpen, setRefinementOpen] = useState(false);
+  const [refinementInstruction, setRefinementInstruction] = useState("");
+  const [refinement, setRefinement] = useState<Awaited<ReturnType<AutoNovelApi["refineCandidateSelection"]>> | null>(null);
+  const [refinementBusy, setRefinementBusy] = useState(false);
+  const [refinementError, setRefinementError] = useState<string | null>(null);
+  const [planReport, setPlanReport] = useState<Awaited<ReturnType<AutoNovelApi["checkCandidatePlanFulfillment"]>> | null>(null);
+  const [planCheckBusy, setPlanCheckBusy] = useState(false);
+  const [planCheckError, setPlanCheckError] = useState<string | null>(null);
 
   useEffect(() => {
+    activeCandidateKeyRef.current = activeCandidateKey;
+    selectedPassageKeyRef.current = "";
+    refinementRequestRef.current += 1;
+    planRequestRef.current += 1;
     if (!candidate) {
       setReview(null);
       setDecisions(new Set());
@@ -45,10 +64,22 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     setDraftText(candidate.candidateText);
     setRewriteInstruction("");
     setRewriteOpen(false);
-    setSavedNotice(null);
     setHistoryPreviewId(null);
+    setSelectedPassage(null);
+    setRefinementOpen(false);
+    setRefinementInstruction("");
+    setRefinement(null);
+    setRefinementError(null);
+    setPlanReport(null);
+    setPlanCheckError(null);
+    setRefinementBusy(false);
+    setPlanCheckBusy(false);
     // Review edits are local to a candidate and must survive polling refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCandidateKey]);
+
+  useEffect(() => {
+    setSavedNotice(null);
   }, [candidate?.id]);
 
   const activeReview = review ?? candidate?.memoryDeltaReview;
@@ -65,6 +96,10 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
   const canConfirm = changeCount > 0 && (
     allIgnored || changes.every(({ key }) => decisions.has(key) || isIgnored(activeReview!, key))
   );
+  const planReportStale = Boolean(planReport && (
+    planReport.candidateTextRevision !== (candidate.candidateTextRevision ?? 0) ||
+    (details?.book.revision !== undefined && planReport.bookRevision !== details.book.revision)
+  ));
 
   const saveReview = async (
     nextReview: MemoryDeltaReview,
@@ -151,6 +186,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     }
     setBusy(true);
     setError(null);
+    setSavedNotice(null);
     try {
       const updated = await api.updateCandidateText({
         candidateId: candidate.id,
@@ -163,6 +199,7 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
       setDecisions(new Set());
       setEditing(false);
       await onResume();
+      setSavedNotice("候选正文已保存，正在重新审核。");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "候选正文保存失败。");
     } finally {
@@ -193,11 +230,143 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
     }
   };
 
+  const capturePassageSelection = (container: HTMLElement) => {
+    const next = readPassageSelection(container, candidate.candidateText);
+    const nextKey = next ? `${next.startOffset}:${next.endOffset}:${next.text}` : "";
+    if (selectedPassageKeyRef.current !== nextKey) {
+      refinementRequestRef.current += 1;
+      setRefinementBusy(false);
+      setRefinement(null);
+      setRefinementError(null);
+    }
+    selectedPassageKeyRef.current = nextKey;
+    setSelectedPassage(next);
+    if (!next) {
+      setRefinementOpen(false);
+      setRefinement(null);
+      setRefinementError(null);
+    }
+  };
+
+  const generatePassageRefinements = async () => {
+    if (!selectedPassage) return;
+    if (!provider) {
+      setRefinementError("先在模型设置中配置 Provider，再生成选区建议。");
+      return;
+    }
+    const instruction = refinementInstruction.trim();
+    if (!instruction) {
+      setRefinementError("写一句这段想怎么改，再生成建议。");
+      return;
+    }
+    if (selectedPassage.text.length > 4_000) {
+      setRefinementError("一次最多精修 4,000 字，请缩小选区。");
+      return;
+    }
+    const requestId = ++refinementRequestRef.current;
+    const candidateKey = activeCandidateKeyRef.current;
+    const passageKey = selectedPassageKeyRef.current;
+    setRefinementBusy(true);
+    setRefinementError(null);
+    setRefinement(null);
+    try {
+      const result = await api.refineCandidateSelection({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: candidate.candidateTextRevision ?? 0,
+        startOffset: selectedPassage.startOffset,
+        endOffset: selectedPassage.endOffset,
+        selectedText: selectedPassage.text,
+        instruction,
+      }, provider);
+      if (refinementRequestRef.current !== requestId || activeCandidateKeyRef.current !== candidateKey || selectedPassageKeyRef.current !== passageKey) return;
+      setRefinement(result);
+    } catch (refineError) {
+      if (refinementRequestRef.current === requestId && selectedPassageKeyRef.current === passageKey) {
+        setRefinementError(refineError instanceof Error ? refineError.message : "选区精修失败，请重试。");
+      }
+    } finally {
+      if (refinementRequestRef.current === requestId) setRefinementBusy(false);
+    }
+  };
+
+  const applyPassageRefinement = async (alternativeId: string) => {
+    if (!refinement || !selectedPassage || busy) return;
+    if (refinement.candidateId !== candidate.id || refinement.candidateTextRevision !== (candidate.candidateTextRevision ?? 0)) {
+      setRefinementError("候选正文已变化，请重新选择并生成建议。");
+      setRefinement(null);
+      return;
+    }
+    const alternative = refinement.alternatives.find(({ id }) => id === alternativeId);
+    if (!alternative || candidate.candidateText.slice(refinement.startOffset, refinement.endOffset) !== selectedPassage.text) {
+      setRefinementError("原选区已变化，请重新选择正文。");
+      setRefinement(null);
+      return;
+    }
+    const nextText = `${candidate.candidateText.slice(0, refinement.startOffset)}${alternative.text}${candidate.candidateText.slice(refinement.endOffset)}`;
+    setBusy(true);
+    setError(null);
+    setRefinementError(null);
+    setSavedNotice(null);
+    try {
+      const updated = await api.updateCandidateText({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: refinement.candidateTextRevision,
+        candidateText: nextText,
+      });
+      setDraftText(updated.candidateText);
+      setReview(updated.memoryDeltaReview);
+      setReviewRevision(updated.memoryReviewRevision);
+      setDecisions(new Set());
+      setSelectedPassage(null);
+      setRefinementOpen(false);
+      setRefinement(null);
+      setPlanReport(null);
+      setPlanCheckError(null);
+      try {
+        await onResume();
+        setSavedNotice("选区已应用到候选，审核已重新启动。");
+      } catch (resumeError) {
+        setSavedNotice("选区已应用到候选；重新审核启动失败。");
+        setError(`候选正文已更新，但审核没有启动：${resumeError instanceof Error ? resumeError.message : "请稍后重试。"}`);
+      }
+    } catch (applyError) {
+      setRefinementError(applyError instanceof Error ? applyError.message : "选区替换失败；候选正文未改变。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const checkPlanFulfillment = async () => {
+    if (!provider) {
+      setPlanCheckError("先在模型设置中配置 Provider，再检查章纲兑现情况。");
+      return;
+    }
+    const requestId = ++planRequestRef.current;
+    const candidateKey = activeCandidateKeyRef.current;
+    setPlanCheckBusy(true);
+    setPlanCheckError(null);
+    setPlanReport(null);
+    try {
+      const report = await api.checkCandidatePlanFulfillment({
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: candidate.candidateTextRevision ?? 0,
+      }, provider);
+      if (planRequestRef.current !== requestId || activeCandidateKeyRef.current !== candidateKey) return;
+      setPlanReport(report);
+    } catch (checkError) {
+      if (planRequestRef.current === requestId) {
+        setPlanCheckError(checkError instanceof Error ? checkError.message : "章纲兑现检查失败，请重试。");
+      }
+    } finally {
+      if (planRequestRef.current === requestId) setPlanCheckBusy(false);
+    }
+  };
+
   return (
     <section className="review-panel" aria-label="章节审核">
       <div className="panel-heading"><h2>最新章节审核</h2><span className="review-pass"><ShieldCheck size={15} /> {candidate.review.status === "passed" ? "审核通过" : "审核中"}</span></div>
       <div className="candidate-text-toolbar">
-        <span><CheckCircle2 size={14} /> 候选已隔离 · 正文版本 v{candidate.candidateTextRevision}</span>
+        <span><CheckCircle2 size={14} /> 候选已隔离 · 候选文本 v{candidate.candidateTextRevision}</span>
         {!editing ? <button className="ghost-button" type="button" disabled={busy || candidate.status !== "completed"} onClick={() => { setDraftText(candidate.candidateText); setEditing(true); }}><Edit3 size={14} /> 编辑候选</button> : null}
         {onRewrite ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setRewriteOpen((open) => !open)}><Edit3 size={14} /> AI 重写当前章</button> : null}
       </div>
@@ -216,8 +385,54 @@ export function ChapterReview({ details, api, onResume, onRewrite, onAccept }: C
             <button className="ghost-button" type="button" disabled={busy} onClick={() => { setDraftText(candidate.candidateText); setEditing(false); }}>取消</button>
           </div>
         </div>
-      ) : <p className="review-copy">{candidate.candidateText}</p>}
+      ) : (
+        <>
+          <p
+            className="review-copy"
+            tabIndex={0}
+            aria-label="候选正文，可选择片段进行精修"
+            onMouseUp={(event) => capturePassageSelection(event.currentTarget)}
+            onKeyUp={(event) => capturePassageSelection(event.currentTarget)}
+            onTouchEnd={(event) => capturePassageSelection(event.currentTarget)}
+          >{candidate.candidateText}</p>
+          {selectedPassage ? <div className="candidate-selection-toolbar">
+            <span>已选 {selectedPassage.text.length.toLocaleString("zh-CN")} 字</span>
+            <button className="ghost-button" type="button" disabled={busy || candidate.status !== "completed"} onClick={() => { setRefinementOpen((open) => !open); setRefinementError(null); setRefinement(null); }}>
+              <Edit3 size={14} />{refinementOpen ? "关闭精修" : "精修选区"}
+            </button>
+            {!provider ? <small>先配置模型以启用</small> : candidate.status !== "completed" ? <small>候选完成后可精修</small> : null}
+          </div> : null}
+          {refinementOpen && selectedPassage ? <section className="candidate-refinement" aria-label="选区精修">
+            <div className="candidate-assist-heading"><div><strong>精修这一段</strong><small>仅生成局部建议；选用后更新候选并重新审核</small></div><span>{selectedPassage.text.length.toLocaleString("zh-CN")} 字</span></div>
+            <div className="candidate-selection-preview"><span>选中原文</span><p>{selectedPassage.text}</p></div>
+            <label className="candidate-assist-instruction">精修要求<textarea aria-label="精修要求" maxLength={1_000} value={refinementInstruction} onChange={(event) => setRefinementInstruction(event.target.value)} placeholder="例如：压缩重复表达，保留事实和人物语气。" disabled={refinementBusy || busy} /></label>
+            <div className="candidate-assist-actions"><button className="secondary-button" type="button" disabled={refinementBusy || busy || !provider || !refinementInstruction.trim()} onClick={() => void generatePassageRefinements()}>{refinementBusy ? "正在生成 2–3 个版本…" : "生成局部建议"}</button><span>本次请求会计入模型用量</span></div>
+            {refinementError ? <p className="form-error" role="alert">{refinementError}</p> : null}
+            {refinement ? <div className="candidate-refinement-results" aria-label="局部精修建议">
+              {refinement.alternatives.map((alternative) => <article className="candidate-refinement-option" key={alternative.id}>
+                <div className="candidate-refinement-option-heading"><div><strong>{alternative.label}</strong><small>{alternative.rationale}</small></div><button className="primary-button" type="button" disabled={busy} onClick={() => void applyPassageRefinement(alternative.id)}>应用到候选</button></div>
+                <PassageDiff before={selectedPassage.text} after={alternative.text} />
+              </article>)}
+            </div> : null}
+          </section> : null}
+        </>
+      )}
       <CandidateDiff originalText={candidate.originalText || candidate.candidateText} candidateText={candidate.candidateText} />
+      {savedNotice && !delta ? <p className="review-save-notice" role="status">{savedNotice}</p> : null}
+      <section className="candidate-plan-fulfillment" aria-label="章纲兑现清单">
+        <div className="candidate-assist-heading"><div><strong>章纲兑现清单</strong><small>{!provider ? "先配置模型；检查不会阻断采纳或改动正文" : candidate.status !== "completed" ? "候选完成后可以检查，不影响采纳" : "仅供作者判断，不阻止采纳，也不会改动正文"}</small></div><button className="ghost-button" type="button" disabled={planCheckBusy || busy || candidate.status !== "completed" || !provider} onClick={() => void checkPlanFulfillment()}>{planCheckBusy ? "正在核对…" : planReport ? "重新检查" : "检查章纲兑现"}</button></div>
+        {planCheckError ? <p className="form-error" role="alert">{planCheckError}</p> : null}
+        {planReportStale ? <p className="candidate-assist-stale" role="status">候选或章纲已更新，这份报告已过期；请重新检查。</p> : null}
+        {planReport ? <div className="candidate-plan-criteria">
+          {planReport.criteria.map((criterion) => <article className={`candidate-plan-criterion is-${criterion.status}`} key={criterion.key}>
+            <div className="candidate-plan-criterion-heading"><strong>{criterion.kind === "objective" ? "章节目标" : criterion.kind === "hook" ? "章节钩子" : "伏笔"}</strong><span>{planFulfillmentLabel(criterion.status)}</span></div>
+            <p>{criterion.requirement}</p>
+            {criterion.evidence ? <blockquote>“{criterion.evidence.quote}”</blockquote> : null}
+            <small>{criterion.explanation}</small>
+          </article>)}
+        </div> : null}
+      </section>
+      {error && !delta ? <p className="form-error" role="alert">{error}</p> : null}
       {details && details.candidates.length > 1 ? <CandidateHistory candidates={details.candidates} currentId={candidate.id} previewId={historyPreviewId} onPreview={setHistoryPreviewId} onRestore={() => void restoreCandidateVersion()} busy={busy} /> : null}
       <div className="review-meta"><span>修复 {candidate.repairCount} 次</span><span>{candidate.review.status === "pending" ? "等待重新审核" : "审核结果可追溯"}</span></div>
       {onAccept && candidate.status === "completed" && candidate.review.status === "passed" ? <button className="primary-button review-accept-button" type="button" disabled={busy} onClick={() => void onAccept().catch((acceptError) => setError(acceptError instanceof Error ? acceptError.message : "重写候选采纳失败。"))}><CheckCircle2 size={15} /> 采纳当前候选进入正文</button> : null}
@@ -312,6 +527,48 @@ function CandidateDiff({ originalText, candidateText }: { originalText: string; 
       </div><div className="candidate-diff-legend"><span><i className="diff-swatch removed" />初始候选删除</span><span><i className="diff-swatch added" />当前候选新增</span></div></> : <p className="candidate-diff-collapsed">Diff 已收起，展开查看逐行变化。</p>}
     </section>
   );
+}
+
+function PassageDiff({ before, after }: { before: string; after: string }) {
+  const lines = useMemo(() => buildLineDiff(before, after), [before, after]);
+  return <section className="candidate-refinement-diff" aria-label="选区逐行对比">
+    <span className="candidate-refinement-diff-label">替换预览</span>
+    <div className="candidate-diff-body">
+      {lines.map((line, index) => <div className={`candidate-diff-line ${line.kind}`} key={`${line.kind}-${index}`}>
+        <span className="candidate-diff-marker">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span>
+        <code>{line.text || " "}</code>
+      </div>)}
+    </div>
+  </section>;
+}
+
+function readPassageSelection(container: HTMLElement, candidateText: string) {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return null;
+  const text = selection.toString();
+  if (!text.trim()) return null;
+  const prefix = range.cloneRange();
+  prefix.selectNodeContents(container);
+  try {
+    prefix.setEnd(range.startContainer, range.startOffset);
+  } catch {
+    return null;
+  }
+  const startOffset = prefix.toString().length;
+  const endOffset = startOffset + text.length;
+  if (candidateText.slice(startOffset, endOffset) !== text) return null;
+  return { startOffset, endOffset, text };
+}
+
+function planFulfillmentLabel(status: PlanFulfillmentStatus) {
+  switch (status) {
+    case "fulfilled": return "已兑现";
+    case "partial": return "部分兑现";
+    case "unfulfilled": return "未兑现";
+    case "uncertain": return "需人工判断";
+  }
 }
 
 type DiffLine = { kind: "same" | "added" | "removed"; text: string };

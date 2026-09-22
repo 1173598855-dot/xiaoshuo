@@ -165,6 +165,232 @@ describe("ProductionService", () => {
     expect(accepted.chapter.content).toBe("重写后的第一章正文。");
   });
 
+  it("returns three isolated passage refinements without changing candidate text", async () => {
+    const chapter = createFixture();
+    const source = "林渡接到信。主角打开信后发现地址错误。整晚下着雨。";
+    const selectedText = "主角打开信后发现地址错误。";
+    const startOffset = source.indexOf(selectedText);
+    const candidate = chapter.productionRepository.createCandidate({
+      runId: chapter.run.id,
+      bookId: chapter.run.bookId,
+      chapterId: chapter.productionRepository.getOrCreateChapter(chapter.run.bookId, "第一封信", 0).id,
+      baseRevision: 0,
+      contextHash: "a".repeat(64),
+      candidateText: source,
+    });
+    const prompts: string[] = [];
+    const usageContexts: unknown[] = [];
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(input: { systemPrompt: string; userPrompt?: string; usageContext?: unknown }) {
+        prompts.push(`${input.systemPrompt}\n${input.userPrompt ?? ""}`);
+        usageContexts.push(input.usageContext);
+        return {
+          text: JSON.stringify({ alternatives: [
+            { label: "更凝练", text: "林渡拆开信，地址却是假的。", rationale: "合并重复信息。" },
+            { label: "增强动作感", text: "林渡撕开信封，地址栏空无一物。", rationale: "用动作带出异常。" },
+            { label: "更有悬念", text: "信上的地址，林渡从未见过。", rationale: "延后解释。" },
+          ] }),
+          usage: { inputTokens: 30, outputTokens: 45 },
+        };
+      },
+    };
+    const service = new ProductionService({
+      ...chapter,
+      providerResolver: { resolve: () => provider },
+    });
+
+    const result = await service.refineCandidateSelection({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      startOffset,
+      endOffset: startOffset + selectedText.length,
+      selectedText,
+      instruction: "压缩重复信息",
+    }, chapter.providerConfig);
+
+    expect(result.alternatives).toHaveLength(3);
+    expect(result.alternatives[0]).toMatchObject({ label: "更凝练", text: "林渡拆开信，地址却是假的。" });
+    expect(prompts[0]).toContain("林渡接到信。");
+    expect(prompts[0]).toContain("整晚下着雨。");
+    expect(prompts[0]).toContain("压缩重复信息");
+    expect(usageContexts).toEqual([{ bookId: chapter.run.bookId, chapterNumber: 1, stage: "repair" }]);
+    expect(chapter.productionRepository.getCandidate(candidate.id)).toMatchObject({
+      candidateText: source,
+      candidateTextRevision: 0,
+      status: "completed",
+    });
+  });
+
+  it("rejects stale passage refinements before spending a provider request", async () => {
+    const chapter = createFixture();
+    const repositoryChapter = chapter.productionRepository.getOrCreateChapter(chapter.run.bookId, "第一封信", 0);
+    const candidate = chapter.productionRepository.createCandidate({
+      runId: chapter.run.id,
+      bookId: chapter.run.bookId,
+      chapterId: repositoryChapter.id,
+      baseRevision: 0,
+      contextHash: "b".repeat(64),
+      candidateText: "先有旧稿，再有新稿。",
+    });
+    chapter.productionRepository.editCandidateText({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      candidateText: "现在已经换成新稿。",
+    });
+    let providerCalls = 0;
+    const service = new ProductionService({
+      ...chapter,
+      providerResolver: { resolve: () => ({
+        kind: "openai-compatible" as const,
+        async generate() {
+          providerCalls += 1;
+          return { text: "{}", usage: null };
+        },
+      }) },
+    });
+
+    await expect(service.refineCandidateSelection({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      startOffset: 3,
+      endOffset: 3 + "旧稿，再有".length,
+      selectedText: "旧稿，再有",
+      instruction: "更简练",
+    }, chapter.providerConfig)).rejects.toMatchObject({ code: "CANDIDATE_TEXT_REVISION_CONFLICT" });
+    expect(providerCalls).toBe(0);
+  });
+
+  it("discards passage suggestions when the candidate changes during generation", async () => {
+    const chapter = createFixture();
+    const source = "开场原文。中间选段。结尾原文。";
+    const selectedText = "中间选段。";
+    const startOffset = source.indexOf(selectedText);
+    const repositoryChapter = chapter.productionRepository.getOrCreateChapter(chapter.run.bookId, "第一封信", 0);
+    const candidate = chapter.productionRepository.createCandidate({
+      runId: chapter.run.id,
+      bookId: chapter.run.bookId,
+      chapterId: repositoryChapter.id,
+      baseRevision: 0,
+      contextHash: "d".repeat(64),
+      candidateText: source,
+    });
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        chapter.productionRepository.editCandidateText({
+          candidateId: candidate.id,
+          expectedCandidateTextRevision: 0,
+          candidateText: "其他窗口已经保存的新候选。",
+        });
+        return {
+          text: JSON.stringify({ alternatives: [
+            { label: "版本一", text: "候选一。", rationale: "说明一。" },
+            { label: "版本二", text: "候选二。", rationale: "说明二。" },
+          ] }),
+          usage: null,
+        };
+      },
+    };
+    const service = new ProductionService({ ...chapter, providerResolver: { resolve: () => provider } });
+
+    await expect(service.refineCandidateSelection({
+      candidateId: candidate.id,
+      expectedCandidateTextRevision: 0,
+      startOffset,
+      endOffset: startOffset + selectedText.length,
+      selectedText,
+      instruction: "压缩",
+    }, chapter.providerConfig)).rejects.toMatchObject({ code: "CANDIDATE_TEXT_REVISION_CONFLICT" });
+    expect(chapter.productionRepository.getCandidate(candidate.id).candidateText).toBe("其他窗口已经保存的新候选。");
+  });
+
+  it("returns evidence-backed plan fulfillment without changing the candidate", async () => {
+    const chapter = createFixture();
+    const planText = "林渡在雨里拆开那封信。收件人一栏写着自己的名字。";
+    const repositoryChapter = chapter.productionRepository.getOrCreateChapter(chapter.run.bookId, "第一封信", 0);
+    const candidate = chapter.productionRepository.createCandidate({
+      runId: chapter.run.id,
+      bookId: chapter.run.bookId,
+      chapterId: repositoryChapter.id,
+      baseRevision: 0,
+      contextHash: "c".repeat(64),
+      candidateText: planText,
+    });
+    const usageContexts: unknown[] = [];
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(input: { usageContext?: unknown }) {
+        usageContexts.push(input.usageContext);
+        return {
+          text: JSON.stringify({ criteria: [
+            { key: "objective", status: "fulfilled", evidenceQuote: "林渡在雨里拆开那封信。", explanation: "主角确实打开了来信。" },
+            { key: "hook", status: "partial", evidenceQuote: "收件人一栏写着自己的名字。", explanation: "形成身份悬念，但章节结果尚未展开。" },
+            { key: "foreshadowing:0", status: "uncertain", evidenceQuote: "模型编造的原文。", explanation: "无法定位对应依据。" },
+          ] }),
+          usage: { inputTokens: 40, outputTokens: 35 },
+        };
+      },
+    };
+    const service = new ProductionService({
+      ...chapter,
+      providerResolver: { resolve: () => provider },
+    });
+
+    const report = await service.checkCandidatePlanFulfillment(candidate.id, 0, chapter.providerConfig);
+
+    expect(report.criteria).toMatchObject([
+      { key: "objective", status: "fulfilled", evidence: { quote: "林渡在雨里拆开那封信。", startOffset: 0 } },
+      { key: "hook", status: "partial", evidence: { quote: "收件人一栏写着自己的名字。" } },
+      { key: "foreshadowing:0", status: "uncertain", evidence: null },
+    ]);
+    expect(usageContexts).toEqual([{ bookId: chapter.run.bookId, chapterNumber: 1, stage: "review" }]);
+    expect(chapter.productionRepository.getCandidate(candidate.id)).toMatchObject({
+      candidateText: planText,
+      candidateTextRevision: 0,
+      status: "completed",
+    });
+  });
+
+  it("rejects a fulfillment report when the outline changes during the provider call", async () => {
+    const chapter = createFixture();
+    const repositoryChapter = chapter.productionRepository.getOrCreateChapter(chapter.run.bookId, "第一封信", 0);
+    const candidate = chapter.productionRepository.createCandidate({
+      runId: chapter.run.id,
+      bookId: chapter.run.bookId,
+      chapterId: repositoryChapter.id,
+      baseRevision: 0,
+      contextHash: "e".repeat(64),
+      candidateText: "林渡在雨里拆开那封信。",
+    });
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate() {
+        const currentBook = chapter.bookRepository.getBook(chapter.run.bookId).book;
+        const currentPlan = chapter.bookRepository.getChapterPlan(chapter.run.bookId, 1)!;
+        chapter.bookRepository.updateChapterPlan(chapter.run.bookId, {
+          bookId: chapter.run.bookId,
+          planId: currentPlan.id,
+          expectedBookRevision: currentBook.revision,
+          volumeNumber: currentPlan.volumeNumber,
+          volumeTitle: currentPlan.volumeTitle,
+          title: currentPlan.title,
+          summary: currentPlan.summary,
+          objective: "作者在模型检查中改写了目标。",
+          hook: currentPlan.hook,
+          foreshadowing: currentPlan.foreshadowing,
+        });
+        return { text: JSON.stringify({ criteria: [] }), usage: null };
+      },
+    };
+    const service = new ProductionService({ ...chapter, providerResolver: { resolve: () => provider } });
+    const bookRevision = chapter.bookRepository.getBook(chapter.run.bookId).book.revision;
+
+    await expect(service.checkCandidatePlanFulfillment(candidate.id, 0, chapter.providerConfig))
+      .rejects.toMatchObject({ code: "REVISION_CONFLICT", expectedRevision: bookRevision });
+    expect(chapter.productionRepository.getCandidate(candidate.id)).toMatchObject({ candidateText: "林渡在雨里拆开那封信。", candidateTextRevision: 0 });
+  });
+
   it("uses the current chapter instead of the previous accepted candidate", async () => {
     const fixture = createFixture();
     const firstChapter = fixture.productionRepository.getOrCreateChapter(

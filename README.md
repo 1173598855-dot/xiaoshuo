@@ -32,6 +32,8 @@
 - 记忆中心支持“自动推荐”或“仅发送选中”：作者可逐条勾选本地记忆，只有选中的条目会进入当前生产任务的 Provider prompt，空选择表示不发送记忆；这项选择冻结在生产 run 和候选上，不改变本地记忆账本；
 - 章节审核会逐条展示 AI 提议的记忆新增、更新和解决，作者确认后才会与正文在同一事务中落盘；全部忽略也可以继续生产；
 - 候选正文在 accept 前可以手动编辑；编辑采用 candidate text revision 乐观锁，保存后会清空旧审核/记忆提议并重新审核，Diff 保留初始候选与当前候选的逐行变化；
+- 候选审核支持选区精修：作者选择一段、填写要求后可比较 2–3 个局部版本；模型生成不写入正文，只有明确采用才按候选文本 revision 保存，并重新审核；
+- 候选审核可按需生成章纲兑现清单，对照本章目标、钩子和伏笔列出状态与可定位原文依据；报告不写入作品、不自动改稿，也不会阻止采纳；
 - 记忆中心会显示每条注入记忆的选择原因，支持查看完整 revision 历史并把条目回滚为新的手动修正 revision；
 - 记忆条目带独立 revision 和历史快照，可锁定/解锁或进行 JSON 高级修正；锁定内容不会被 AI 自动覆盖，手动修改遇到并发变化会提示冲突；
 - 时间线每章使用作品 revision 乐观锁保存；保存成功后后续生成、审核和记忆上下文都会读取新标题、摘要、章节目标、钩子与伏笔，冲突时保留当前编辑草稿；
@@ -129,6 +131,8 @@ npm run dev
 | `POST` | `/api/production-runs/:runId/pause\|resume\|cancel` | 控制任务 |
 | `POST` | `/api/production-runs/:runId/rewrite` | 为当前章节生成隔离重写候选 |
 | `GET` | `/api/chapter-candidates/:candidateId` | 读取候选及审核结果 |
+| `POST` | `/api/chapter-candidates/:candidateId/refine-selection` | 按候选文本 revision 生成 2–3 个选区精修备选 |
+| `POST` | `/api/chapter-candidates/:candidateId/plan-fulfillment` | 按需核对本章目标、钩子和伏笔并返回原文证据 |
 | `PATCH` | `/api/chapter-candidates/:candidateId/text\|memory-review` | 编辑候选或保存记忆审阅 |
 | `POST` | `/api/chapter-candidates/:candidateId/accept\|discard` | 原子采纳或丢弃候选 |
 | `GET` | `/api/books/:bookId/memory`、`/api/books/:bookId/memory/context/:chapterNumber` | 读取记忆账本 / 预览注入上下文 |

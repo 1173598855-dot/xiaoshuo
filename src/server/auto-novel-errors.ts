@@ -19,7 +19,7 @@ const AUTO_MESSAGES: Record<string, string> = {
   MEMORY_REVISION_CONFLICT: "记忆已在其他位置更新，请重新加载后再保存。",
   TIMELINE_REORDER_BLOCKED: "已采纳正文的时间线不能重排，请先从未采纳章节开始调整。",
   CHAPTER_LOCKED: "目标章节已锁定，请先解锁后再导入或修改。",
-  CONTENT_TOO_LARGE: "导入内容超过安全大小限制。",
+  CONTENT_TOO_LARGE: "内容超过本次处理的安全大小限制，请缩小范围后重试。",
   BACKUP_FAILED: "数据库备份失败，请检查备份目标和磁盘空间。",
   BACKUP_VERIFICATION_FAILED: "数据库备份校验失败，未将其视为可恢复副本。",
   BACKUP_NOT_CONFIGURED: "备份服务尚未配置。",

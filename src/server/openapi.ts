@@ -52,6 +52,8 @@ export const OPENAPI_DOCUMENT = {
     "/api/production-runs/{runId}/cancel": { post: { summary: "取消生产" } },
     "/api/production-runs/{runId}/rewrite": { post: { summary: "重写当前章节" } },
     "/api/chapter-candidates/{candidateId}": { get: { summary: "读取候选" } },
+    "/api/chapter-candidates/{candidateId}/refine-selection": { post: { summary: "按候选文本 revision 生成局部精修备选" } },
+    "/api/chapter-candidates/{candidateId}/plan-fulfillment": { post: { summary: "按需检查章纲兑现并返回原文证据，不阻断采纳" } },
     "/api/chapter-candidates/{candidateId}/accept": { post: { summary: "原子采纳候选" } },
     "/api/chapter-candidates/{candidateId}/discard": { post: { summary: "丢弃候选" } },
     "/api/books/{bookId}/export": { post: { summary: "导出正文（Markdown、TXT、DOCX 或 ePub）" } },

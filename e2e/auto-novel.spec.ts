@@ -191,6 +191,145 @@ test("opens the author navigation drawer and preserves focus on close", async ({
   await expect(trigger).toBeFocused();
 });
 
+test("refines a selected candidate passage and reviews outline fulfillment without gating acceptance", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "故事想法" }).fill("e2e-selected-passage · 一座只在凌晨移动的城");
+  await page.getByRole("button", { name: "开始开书" }).click();
+  await expect(page.getByText("自动方向 1")).toBeVisible();
+  await page.getByRole("button", { name: /选择这条路/ }).first().click();
+  await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+
+  const booksResponse = await page.request.get("/api/books");
+  const books = await booksResponse.json() as Array<{ id: string; idea: string }>;
+  const book = books.find((item) => item.idea === "e2e-selected-passage · 一座只在凌晨移动的城");
+  expect(book).toBeDefined();
+  const detailsResponse = await page.request.get(`/api/books/${book!.id}`);
+  const details = await detailsResponse.json() as { book: { revision: number }; chapterPlans: Array<{ chapterNumber: number; objective: string; hook: string; foreshadowing: string[] }> };
+  const runId = "a5537f37-48cb-4b0b-b0cc-e6eef08ce84b";
+  const candidateId = "a8f47dc7-59ab-45ad-b066-08e99578065b";
+  const candidateText = "窗外的风停了。门后传来一声呼唤。";
+  const now = "2026-09-23T00:00:00.000Z";
+  const run = {
+    id: runId,
+    bookId: book!.id,
+    kind: "production",
+    status: "paused",
+    stage: "review",
+    currentChapterNumber: 1,
+    version: 1,
+    idempotencyKey: "e2e-assist-run",
+    memoryContextConfig: { mode: "automatic", entryIds: [] },
+    errorCode: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  let candidate = {
+    id: candidateId,
+    bookId: book!.id,
+    runId,
+    chapterId: "bad613c4-5f87-4d77-a291-ce12d95fe26b",
+    memoryRevision: 0,
+    memoryContextHash: "0".repeat(64),
+    memoryDelta: null,
+    memoryDeltaReview: { approved: false, ignoredAddIndices: [], ignoredUpdateIds: [], ignoredResolveIds: [] },
+    memoryReviewRevision: 0,
+    originalText: candidateText,
+    candidateTextRevision: 0,
+    memoryContextConfig: { mode: "automatic", entryIds: [] },
+    baseRevision: 0,
+    context: { revision: 0, hash: "a".repeat(64) },
+    candidateText,
+    status: "completed",
+    review: { status: "passed", findings: [] },
+    repairCount: 0,
+    createdAt: now,
+    acceptedAt: null,
+  };
+  const runDetails = () => ({ run, checkpoints: [], candidate, book: details.book, candidates: [candidate], acceptedChapters: [] });
+
+  await page.route(`**/api/books/${book!.id}/production`, (route) => route.fulfill({ status: 202, json: run }));
+  await page.route(`**/api/production-runs/${runId}`, (route) => route.fulfill({ status: 200, json: runDetails() }));
+  await page.route(`**/api/production-runs/${runId}/resume`, (route) => route.fulfill({ status: 202, json: run }));
+  await page.route(`**/api/chapter-candidates/${candidateId}/refine-selection`, async (route) => {
+    const body = route.request().postDataJSON() as { input: { startOffset: number; endOffset: number } };
+    await route.fulfill({ status: 200, json: {
+      candidateId,
+      candidateTextRevision: 0,
+      startOffset: body.input.startOffset,
+      endOffset: body.input.endOffset,
+      alternatives: [
+        { id: "alternative-1", label: "更凝练", text: "窗外骤然安静。门后传来一声呼唤。", rationale: "收紧开场的节奏。" },
+        { id: "alternative-2", label: "增强动作感", text: "风声戛然而止。门后传来一声呼唤。", rationale: "用声音变化加强转场。" },
+        { id: "alternative-3", label: "加重悬念", text: "风停了。门后有人轻声唤她的名字。", rationale: "把悬念落到人物身上。" },
+      ],
+    } });
+  });
+  await page.route(`**/api/chapter-candidates/${candidateId}/plan-fulfillment`, async (route) => {
+    const evidence = candidate.candidateText;
+    const plan = details.chapterPlans[0];
+    await route.fulfill({ status: 200, json: {
+      candidateId,
+      bookRevision: details.book.revision,
+      candidateTextRevision: candidate.candidateTextRevision,
+      chapterNumber: 1,
+      checkedAt: now,
+      criteria: [
+        { key: "objective", kind: "objective", requirement: plan.objective, status: "partial", explanation: "异常出现了，主角的选择尚不明确。", evidence: { quote: evidence, startOffset: 0, endOffset: evidence.length } },
+        { key: "hook", kind: "hook", requirement: plan.hook, status: "fulfilled", explanation: "结尾保留了可追查的问题。", evidence: { quote: "门后传来一声呼唤。", startOffset: candidate.candidateText.indexOf("门后传来一声呼唤。"), endOffset: candidate.candidateText.length } },
+      ],
+    } });
+  });
+  await page.route(`**/api/chapter-candidates/${candidateId}/text`, async (route) => {
+    const body = route.request().postDataJSON() as { candidateText: string; expectedCandidateTextRevision: number };
+    candidate = { ...candidate, candidateText: body.candidateText, candidateTextRevision: body.expectedCandidateTextRevision + 1, review: { status: "pending", findings: [] }, memoryDelta: null };
+    await route.fulfill({ status: 200, json: candidate });
+  });
+
+  await page.getByRole("button", { name: "开始整本生产" }).click();
+  await expect(page.getByRole("region", { name: "章节审核" })).toBeVisible();
+  await page.getByRole("button", { name: "检查章纲兑现" }).click();
+  await expect(page.getByText("部分兑现")).toBeVisible();
+  await expect(page.getByText("异常出现了，主角的选择尚不明确。")).toBeVisible();
+  await expect(page.getByRole("button", { name: /采纳当前候选进入正文/ })).toBeEnabled();
+
+  const passage = page.locator(".review-copy");
+  await passage.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "精修选区" }).click();
+  await page.getByRole("textbox", { name: "精修要求" }).fill("让转场更利落");
+  await page.getByRole("button", { name: "生成局部建议" }).click();
+  await expect(page.locator(".candidate-refinement-option")).toHaveCount(3);
+  await expect(page.getByRole("region", { name: "选区逐行对比" }).first()).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.locator(".candidate-refinement").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("selection-refinement-desktop.png") });
+  await page.locator(".candidate-plan-fulfillment").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("plan-fulfillment-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".candidate-plan-fulfillment").scrollIntoViewIfNeeded();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect.poll(() => page.locator(".page-topbar").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(140);
+  await expect.poll(() => page.locator(".page-topbar .workbench-quick-actions").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("plan-fulfillment-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole("button", { name: "应用到候选" }).first().click();
+  await expect(page.getByRole("status")).toContainText("选区已应用到候选");
+  await expect(page.locator(".review-copy")).toContainText("窗外骤然安静。");
+  await expect(page.getByRole("button", { name: /采纳当前候选进入正文/ })).toHaveCount(0);
+
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole("region", { name: "章节审核" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+});
+
 test("keeps quick actions and reduced motion usable on mobile", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });

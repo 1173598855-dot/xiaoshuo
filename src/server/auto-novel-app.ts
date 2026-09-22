@@ -14,6 +14,8 @@ import {
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RefineCandidateSelectionInputSchema,
+  CheckCandidatePlanFulfillmentInputSchema,
   RewriteChapterInputSchema,
   UpdateChapterPlanInputSchema,
   resolveModelWorkflowProvider,
@@ -186,6 +188,16 @@ const ProductionStartRequestSchema = z.union([
       workflow: ModelWorkflowConfigSchema,
     })
     .strict(),
+]);
+
+const CandidateSelectionRefinementRequestSchema = z.union([
+  z.object({ input: RefineCandidateSelectionInputSchema, provider: ProviderConfigSchema }).strict(),
+  z.object({ input: RefineCandidateSelectionInputSchema, workflow: ModelWorkflowConfigSchema }).strict(),
+]);
+
+const CandidatePlanFulfillmentRequestSchema = z.union([
+  z.object({ input: CheckCandidatePlanFulfillmentInputSchema, provider: ProviderConfigSchema }).strict(),
+  z.object({ input: CheckCandidatePlanFulfillmentInputSchema, workflow: ModelWorkflowConfigSchema }).strict(),
 ]);
 
 const MemoryQuerySchema = z
@@ -1167,6 +1179,41 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
     assertCandidateAccess(dependencies, candidateId.data);
     return context.json(dependencies.productionRepository.getCandidate(candidateId.data));
+  });
+
+  app.post("/api/chapter-candidates/:candidateId/refine-selection", async (context) => {
+    const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
+    if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    assertCandidateAccess(dependencies, candidateId.data);
+    const parsed = await parseJson(context.req.raw, CandidateSelectionRefinementRequestSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.input.candidateId !== candidateId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "候选标识不一致。"), 400);
+    }
+    const alternatives = await dependencies.productionService.refineCandidateSelection(
+      parsed.data.input,
+      toWorkflow(parsed.data),
+      context.req.raw.signal,
+    );
+    return context.json(alternatives);
+  });
+
+  app.post("/api/chapter-candidates/:candidateId/plan-fulfillment", async (context) => {
+    const candidateId = MemoryPathIdSchema.safeParse(context.req.param("candidateId"));
+    if (!candidateId.success) return context.json(apiError("VALIDATION_ERROR", "候选标识无效。"), 400);
+    assertCandidateAccess(dependencies, candidateId.data);
+    const parsed = await parseJson(context.req.raw, CandidatePlanFulfillmentRequestSchema);
+    if (!parsed.success) return context.json(parsed.error, 400);
+    if (parsed.data.input.candidateId !== candidateId.data) {
+      return context.json(apiError("VALIDATION_ERROR", "候选标识不一致。"), 400);
+    }
+    const report = await dependencies.productionService.checkCandidatePlanFulfillment(
+      parsed.data.input.candidateId,
+      parsed.data.input.expectedCandidateTextRevision,
+      toWorkflow(parsed.data),
+      context.req.raw.signal,
+    );
+    return context.json(report);
   });
 
   app.post("/api/chapter-candidates/:candidateId/discard", (context) => {

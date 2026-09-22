@@ -26,7 +26,7 @@ function fixture() {
   const productionRepository = new ProductionRepository(database);
   const provider = {
     kind: "openai-compatible" as const,
-    async generate(input: { systemPrompt: string }) {
+    async generate(input: { systemPrompt: string; userPrompt?: string }) {
       if (input.systemPrompt.includes("自动导演")) {
         const countMatch = input.systemPrompt.match(/生成恰好 (\d+) 套/);
         const count = countMatch ? Number(countMatch[1]) : 3;
@@ -80,6 +80,25 @@ function fixture() {
       }
       if (input.systemPrompt.includes("审稿人")) {
         return { text: JSON.stringify({ status: "passed", findings: [] }), usage: null };
+      }
+      if (input.systemPrompt.includes("局部精修编辑")) {
+        return {
+          text: JSON.stringify({ alternatives: [
+            { label: "更凝练", text: "门后的人叫出了主角的名字。", rationale: "保持原句，供作者预览。" },
+            { label: "增强动作感", text: "主角停下脚步，门后的人叫出他的名字。", rationale: "用动作引出对白。" },
+            { label: "增加悬念", text: "那声音准确地叫出了主角的名字。", rationale: "强调未知说话者。" },
+          ] }),
+          usage: null,
+        };
+      }
+      if (input.systemPrompt.includes("章纲兑现核对员")) {
+        return {
+          text: JSON.stringify({ criteria: [
+            { key: "objective", status: "fulfilled", evidenceQuote: "门后的人叫出了主角的名字。", explanation: "定位到与本章目标相关的异常。" },
+            { key: "hook", status: "partial", evidenceQuote: "门后的人叫出了主角的名字。", explanation: "结尾形成悬念，仍由作者判断是否兑现。" },
+          ] }),
+          usage: null,
+        };
       }
       return { text: "门后的人叫出了主角的名字。", usage: null };
     },
@@ -448,6 +467,84 @@ describe("auto-novel HTTP app", () => {
     const candidateResponse = await app.request(`/api/chapter-candidates/${candidate.id}`);
     expect(candidateResponse.status).toBe(200);
     expect(await candidateResponse.json()).toMatchObject({ id: candidate.id });
+  });
+
+  it("exposes isolated selection refinements and a non-blocking plan fulfillment report", async () => {
+    const { app, provider, bookRepository, productionRepository } = fixture();
+    const created = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "候选片段精修", provider, idempotencyKey: "passage-assist-http" }),
+    });
+    const createdBody = await created.json() as { book: { id: string; revision: number }; directions: Array<{ id: string }> };
+    const selected = await app.request(`/api/books/${createdBody.book.id}/directions/${createdBody.directions[0].id}/select`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedBookRevision: createdBody.book.revision, provider }),
+    });
+    expect(selected.status).toBe(200);
+    const plan = bookRepository.getChapterPlan(createdBody.book.id, 1)!;
+    const chapter = productionRepository.getOrCreateChapter(createdBody.book.id, plan.title, 0);
+    const run = productionRepository.createRun(createdBody.book.id, "production", "passage-assist-run");
+    const candidateText = "门后的人叫出了主角的名字。";
+    const candidate = productionRepository.createCandidate({
+      runId: run.id,
+      bookId: createdBody.book.id,
+      chapterId: chapter.id,
+      baseRevision: chapter.revision,
+      contextHash: createHash("sha256").update(chapter.content).digest("hex"),
+      candidateText,
+    });
+
+    const refinement = await app.request(`/api/chapter-candidates/${candidate.id}/refine-selection`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: {
+          candidateId: candidate.id,
+          expectedCandidateTextRevision: 0,
+          startOffset: 0,
+          endOffset: candidateText.length,
+          selectedText: candidateText,
+          instruction: "增强悬念",
+        },
+        provider,
+      }),
+    });
+    expect(refinement.status).toBe(200);
+    const refinementBody = await refinement.json() as { alternatives: unknown[] };
+    expect(refinementBody.alternatives).toHaveLength(3);
+    expect(JSON.stringify(refinementBody)).not.toContain("sk-test-only");
+    const staleSelection = await app.request(`/api/chapter-candidates/${candidate.id}/refine-selection`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: {
+        candidateId: candidate.id,
+        expectedCandidateTextRevision: 0,
+        startOffset: 0,
+        endOffset: 1,
+        selectedText: "选区长度不符",
+        instruction: "更凝练",
+      }, provider }),
+    });
+    expect(staleSelection.status).toBe(400);
+
+    const fulfillment = await app.request(`/api/chapter-candidates/${candidate.id}/plan-fulfillment`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: { candidateId: candidate.id, expectedCandidateTextRevision: 0 }, provider }),
+    });
+    expect(fulfillment.status).toBe(200);
+    const fulfillmentBody = await fulfillment.json() as { candidateId: string; candidateTextRevision: number; criteria: Array<Record<string, unknown>> };
+    expect(fulfillmentBody).toMatchObject({ candidateId: candidate.id, candidateTextRevision: 0 });
+    expect(fulfillmentBody.criteria).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: "objective",
+        status: "fulfilled",
+        evidence: { quote: candidateText, startOffset: 0, endOffset: candidateText.length },
+      }),
+    ]));
+    expect(productionRepository.getCandidate(candidate.id)).toMatchObject({ candidateText, candidateTextRevision: 0, status: "completed" });
   });
 
   it("persists a selected memory allow-list on the production run", async () => {

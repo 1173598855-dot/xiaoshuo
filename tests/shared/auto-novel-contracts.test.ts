@@ -6,6 +6,7 @@ import {
   ModelWorkflowConfigSchema,
   PersistedChapterCandidateSchema,
   ProductionCommandInputSchema,
+  RefineCandidateSelectionInputSchema,
   resolveModelWorkflowProvider,
 } from "../../src/shared/auto-novel";
 import { ProviderConfigSchema } from "../../src/shared/contracts";
@@ -42,6 +43,23 @@ const secondProvider = ProviderConfigSchema.parse({
 });
 
 describe("auto-novel contracts", () => {
+  it("requires passage refinement offsets to match the selected UTF-16 text", () => {
+    const valid = {
+      candidateId: candidateFixture.id,
+      expectedCandidateTextRevision: 2,
+      startOffset: 4,
+      endOffset: 6,
+      selectedText: "水站",
+      instruction: "更克制",
+    };
+    expect(RefineCandidateSelectionInputSchema.safeParse(valid).success).toBe(true);
+    expect(RefineCandidateSelectionInputSchema.safeParse({
+      ...valid,
+      selectedText: "水",
+    }).success).toBe(false);
+    expect(RefineCandidateSelectionInputSchema.safeParse({ ...valid, startOffset: 6, endOffset: 6 }).success).toBe(false);
+  });
+
   it("accepts one idea without requiring manual character cards", () => {
     expect(
       CreateBookInputSchema.parse({
@@ -141,4 +159,3 @@ describe("auto-novel contracts", () => {
     ]);
   });
 });
-

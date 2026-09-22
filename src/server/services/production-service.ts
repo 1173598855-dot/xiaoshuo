@@ -5,8 +5,13 @@ import { ProviderConfigSchema, type ProviderConfig, type ReasoningLevel } from "
 import {
   type ChapterCandidate,
   type ChapterPlan,
+  CandidateSelectionAlternativeSchema,
+  CandidatePlanFulfillmentReportSchema,
   type ModelRole,
   type ModelWorkflowConfig,
+  RefineCandidateSelectionInputSchema,
+  RefineCandidateSelectionResponseSchema,
+  type RefineCandidateSelectionInput,
   type ProductionRun,
   resolveModelWorkflowProvider,
   ModelWorkflowConfigSchema,
@@ -26,9 +31,10 @@ import type {
   ProductionRepository,
   ProductionRunLease,
 } from "../repositories/production-repository";
+import { CandidateAlreadySettledError, CandidateStaleError, CandidateTextRevisionConflictError, ChapterLockedError } from "../repositories/production-repository";
 import { toPersistedWorkflowDescriptor } from "../repositories/production-repository";
 import type { ProductionRunDetailsSnapshot } from "../repositories/production-repository";
-import type { BookRepository } from "../repositories/book-repository";
+import { BookRevisionConflictError, type BookRepository } from "../repositories/book-repository";
 import type { AuthoringWorkspaceRepository } from "../repositories/authoring-workspace-repository";
 import type { ProviderResolver } from "../providers/resolver";
 import type { MemoryService } from "./memory-service";
@@ -52,8 +58,31 @@ const ReviewOutputSchema = z
   })
   .strict();
 
+const PassageRefinementOutputSchema = z.object({
+  alternatives: z.array(z.object({
+    label: z.string().trim().min(1).max(40),
+    text: z.string().trim().min(1).max(4_000),
+    rationale: z.string().trim().min(1).max(240),
+  }).strict()).min(2).max(3),
+}).strict();
+
+const PlanFulfillmentOutputSchema = z.object({
+  criteria: z.array(z.object({
+    key: z.string().trim().min(1).max(40),
+    status: z.enum(["fulfilled", "partial", "unfulfilled", "uncertain"]),
+    evidenceQuote: z.string().trim().max(600).nullable(),
+    explanation: z.string().trim().min(1).max(400),
+  }).strict()).max(22),
+}).strict().superRefine((output, context) => {
+  const keys = output.criteria.map(({ key }) => key);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({ code: "custom", path: ["criteria"], message: "Chapter plan assessment keys must be unique" });
+  }
+});
+
 const MAX_REPAIR_ATTEMPTS = 2;
 const MAX_TRANSIENT_RETRIES = 3;
+const MAX_PLAN_FULFILLMENT_CHARACTERS = 60_000;
 const TRANSIENT_RETRY_DELAYS_MS = [250, 500, 1000] as const;
 
 const PROVIDER_TIMEOUT_MS = 60_000;
@@ -262,6 +291,182 @@ export class ProductionService {
     });
     void this.dependencies.automationCoordinator?.afterGeneration(run.bookId, candidate.id).catch(() => undefined);
     return this.dependencies.productionRepository.getCandidate(candidate.id);
+  }
+
+  async refineCandidateSelection(
+    rawInput: RefineCandidateSelectionInput,
+    workflow: ModelWorkflowConfig | ProviderConfig,
+    signal?: AbortSignal,
+  ) {
+    const input = RefineCandidateSelectionInputSchema.parse(rawInput);
+    const candidate = this.dependencies.productionRepository.getCandidate(input.candidateId);
+    assertCandidateAvailableForAssistance(candidate);
+    const currentRevision = candidate.candidateTextRevision ?? 0;
+    if (currentRevision !== input.expectedCandidateTextRevision) {
+      throw new CandidateTextRevisionConflictError(input.expectedCandidateTextRevision, currentRevision);
+    }
+    if (candidate.candidateText.slice(input.startOffset, input.endOffset) !== input.selectedText) {
+      throw new NormalizedProviderError("REQUEST_INVALID", "选中的正文已变化，请重新选择后再精修。" );
+    }
+
+    const chapter = this.dependencies.productionRepository.getChapter(candidate.chapterId);
+    if (chapter.status === "locked") throw new ChapterLockedError(chapter.id);
+    if (chapter.revision !== candidate.baseRevision) throw new CandidateStaleError(candidate.id);
+    const chapterNumber = chapter.position + 1;
+    const plan = this.dependencies.bookRepository.getChapterPlan(candidate.bookId, chapterNumber);
+    if (!plan) throw new NormalizedProviderError("REQUEST_INVALID", "当前章节没有对应章纲，暂时无法精修。" );
+    const bookDetails = this.dependencies.bookRepository.getBook(candidate.bookId);
+    const book = bookDetails.book;
+    const writerConfig = resolveModelWorkflowProvider(normalizeWorkflow(workflow), "writer");
+    const contextBefore = candidate.candidateText.slice(Math.max(0, input.startOffset - 600), input.startOffset);
+    const contextAfter = candidate.candidateText.slice(input.endOffset, input.endOffset + 600);
+    const result = await generateWithRetry(this.dependencies.providerResolver.resolve(writerConfig), {
+      model: writerConfig.model,
+      systemPrompt: [
+        "你是中文长篇小说的局部精修编辑。只返回 JSON，不写章节其余部分。",
+        "严格保留选段中的角色身份、事实、时间顺序、叙事视角和已发生事件；只按作者要求改写选段。",
+        "返回 {\"alternatives\":[{\"label\":\"简短风格名\",\"text\":\"完整替换文本\",\"rationale\":\"简短说明\"}]}，提供 2 到 3 个明显不同的可替换版本，每个 text 不超过 4,000 字。",
+        "不要添加标题、Markdown、代码围栏或选段以外的正文。",
+      ].join("\n"),
+      userPrompt: [
+        `故事想法：${book.idea}`,
+        `章节：第${chapterNumber}章 ${plan.title}`,
+        `章节目标：${plan.objective}`,
+        `钩子：${plan.hook || "无"}`,
+        `全书文风：${bookDetails.foundation?.styleGuide || book.style || "沿用原文风格"}`,
+        `选段前文：${contextBefore || "（章节开头）"}`,
+        `待精修选段：${input.selectedText}`,
+        `选段后文：${contextAfter || "（章节结尾）"}`,
+        `作者要求：${input.instruction}`,
+      ].join("\n"),
+      maxOutputTokens: 6_000,
+      reasoningLevel: writerConfig.reasoningLevel,
+      usageContext: { bookId: candidate.bookId, chapterNumber, stage: "repair" },
+    }, signal, DRAFT_STAGE_TIMEOUT_MS);
+    const parsed = parseStructuredProviderResult(result.text, PassageRefinementOutputSchema);
+
+    const latest = this.dependencies.productionRepository.getCandidate(candidate.id);
+    const latestRevision = latest.candidateTextRevision ?? 0;
+    if (latestRevision !== input.expectedCandidateTextRevision) {
+      throw new CandidateTextRevisionConflictError(input.expectedCandidateTextRevision, latestRevision);
+    }
+    assertCandidateAvailableForAssistance(latest);
+    const latestBookRevision = this.dependencies.bookRepository.getBook(candidate.bookId).book.revision;
+    if (latestBookRevision !== book.revision) {
+      throw new BookRevisionConflictError(book.revision, latestBookRevision);
+    }
+    const latestChapter = this.dependencies.productionRepository.getChapter(candidate.chapterId);
+    if (latestChapter.revision !== chapter.revision) throw new CandidateStaleError(candidate.id);
+
+    return RefineCandidateSelectionResponseSchema.parse({
+      candidateId: candidate.id,
+      candidateTextRevision: currentRevision,
+      startOffset: input.startOffset,
+      endOffset: input.endOffset,
+      alternatives: parsed.alternatives.map((alternative, index) => CandidateSelectionAlternativeSchema.parse({
+        id: `alternative-${index + 1}`,
+        ...alternative,
+      })),
+    });
+  }
+
+  async checkCandidatePlanFulfillment(
+    candidateId: string,
+    expectedCandidateTextRevision: number,
+    workflow: ModelWorkflowConfig | ProviderConfig,
+    signal?: AbortSignal,
+  ) {
+    const candidate = this.dependencies.productionRepository.getCandidate(candidateId);
+    assertCandidateAvailableForAssistance(candidate);
+    const textRevision = candidate.candidateTextRevision ?? 0;
+    if (textRevision !== expectedCandidateTextRevision) {
+      throw new CandidateTextRevisionConflictError(expectedCandidateTextRevision, textRevision);
+    }
+    const chapter = this.dependencies.productionRepository.getChapter(candidate.chapterId);
+    if (chapter.revision !== candidate.baseRevision) throw new CandidateStaleError(candidate.id);
+    if (candidate.candidateText.length > MAX_PLAN_FULFILLMENT_CHARACTERS) {
+      throw new NormalizedProviderError("CONTENT_TOO_LARGE", "候选正文超过单次章纲兑现检查的长度上限。" );
+    }
+    const chapterNumber = chapter.position + 1;
+    const plan = this.dependencies.bookRepository.getChapterPlan(candidate.bookId, chapterNumber);
+    if (!plan) throw new NormalizedProviderError("REQUEST_INVALID", "当前章节没有对应章纲，暂时无法核对。" );
+    const book = this.dependencies.bookRepository.getBook(candidate.bookId);
+    const reviewerConfig = resolveModelWorkflowProvider(normalizeWorkflow(workflow), "reviewer");
+    const expectedCriteria = [
+      { key: "objective", kind: "objective" as const, requirement: plan.objective },
+      ...(plan.hook.trim() ? [{ key: "hook", kind: "hook" as const, requirement: plan.hook }] : []),
+      ...plan.foreshadowing.map((requirement, index) => ({
+        key: `foreshadowing:${index}`,
+        kind: "foreshadowing" as const,
+        requirement,
+      })),
+    ];
+    const result = await generateWithRetry(this.dependencies.providerResolver.resolve(reviewerConfig), {
+      model: reviewerConfig.model,
+      systemPrompt: [
+        "你是中文小说的章纲兑现核对员。只输出 JSON，不改写正文、不判断是否允许采纳。",
+        "逐项核对作者提供的目标、钩子和伏笔。状态只能是 fulfilled、partial、unfulfilled、uncertain。",
+        "只有能从候选正文原样引用的片段才可作为 evidenceQuote；禁止编造或改写引用。没有明确依据时使用 uncertain。",
+        "返回 {\"criteria\":[{\"key\":\"原样使用输入中的 key\",\"status\":\"...\",\"evidenceQuote\":\"原文片段或 null\",\"explanation\":\"简短说明\"}]}。",
+      ].join("\n"),
+      userPrompt: [
+        `作品：${book.book.title}`,
+        `章节：第${chapterNumber}章 ${plan.title}`,
+        `候选正文：\n${candidate.candidateText}`,
+        `待核对事项：\n${expectedCriteria.map((item) => `${item.key} [${item.kind}]：${item.requirement}`).join("\n")}`,
+      ].join("\n\n"),
+      maxOutputTokens: 2_000,
+      reasoningLevel: reviewerConfig.reasoningLevel,
+      usageContext: { bookId: candidate.bookId, chapterNumber, stage: "review" },
+    }, signal, REVIEW_STAGE_TIMEOUT_MS);
+    const parsed = parseStructuredProviderResult(result.text, PlanFulfillmentOutputSchema);
+
+    const latestCandidate = this.dependencies.productionRepository.getCandidate(candidateId);
+    const latestTextRevision = latestCandidate.candidateTextRevision ?? 0;
+    if (latestTextRevision !== expectedCandidateTextRevision) {
+      throw new CandidateTextRevisionConflictError(expectedCandidateTextRevision, latestTextRevision);
+    }
+    assertCandidateAvailableForAssistance(latestCandidate);
+    const latestChapter = this.dependencies.productionRepository.getChapter(candidate.chapterId);
+    if (latestChapter.revision !== chapter.revision) throw new CandidateStaleError(candidateId);
+    const latestBook = this.dependencies.bookRepository.getBook(candidate.bookId);
+    if (latestBook.book.revision !== book.book.revision) {
+      throw new BookRevisionConflictError(book.book.revision, latestBook.book.revision);
+    }
+
+    const rawByKey = new Map(parsed.criteria.map((item) => [item.key, item]));
+    const criteria = expectedCriteria.map((expected) => {
+      const assessment = rawByKey.get(expected.key);
+      if (!assessment) {
+        return {
+          ...expected,
+          status: "uncertain" as const,
+          explanation: "模型未返回这项检查结果，请人工判断。",
+          evidence: null,
+        };
+      }
+      const quote = assessment.evidenceQuote?.trim() ?? "";
+      const startOffset = quote ? candidate.candidateText.indexOf(quote) : -1;
+      const hasEvidence = startOffset >= 0;
+      const evidenceUnavailable = (Boolean(quote) && !hasEvidence) ||
+        (["fulfilled", "partial"].includes(assessment.status) && !hasEvidence);
+      return {
+        ...expected,
+        status: evidenceUnavailable ? "uncertain" as const : assessment.status,
+        explanation: evidenceUnavailable
+          ? "模型未提供可在正文中定位的原文依据，请人工判断。"
+          : assessment.explanation,
+        evidence: hasEvidence ? { quote, startOffset, endOffset: startOffset + quote.length } : null,
+      };
+    });
+    return CandidatePlanFulfillmentReportSchema.parse({
+      candidateId,
+      bookRevision: book.book.revision,
+      candidateTextRevision: textRevision,
+      chapterNumber,
+      checkedAt: new Date().toISOString(),
+      criteria,
+    });
   }
 
   start(
@@ -1049,6 +1254,15 @@ function errorCodeOf(error: unknown): string {
   }
   if (PERSISTED_ERROR_CODES.has(error.code)) return error.code;
   return "UNKNOWN_PROVIDER_ERROR";
+}
+
+function assertCandidateAvailableForAssistance(candidate: ChapterCandidate): void {
+  if (["accepted", "discarded", "expired"].includes(candidate.status)) {
+    throw new CandidateAlreadySettledError(candidate.id);
+  }
+  if (candidate.status !== "completed") {
+    throw new NormalizedProviderError("REQUEST_INVALID", "候选正文尚未生成完成，暂时不能执行作者辅助操作。" );
+  }
 }
 
 function hasMemoryChanges(delta: MemoryDelta): boolean {

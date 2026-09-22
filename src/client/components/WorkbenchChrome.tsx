@@ -105,7 +105,7 @@ export function WorkbenchQuickActions({
       {visibleActions.map((action) => {
         const Icon = action.icon;
         return (
-          <button className="workbench-quick-action" type="button" key={action.id} onClick={() => run(action)}>
+          <button className="workbench-quick-action" type="button" key={action.id} aria-label={action.label} title={action.label} onClick={() => run(action)}>
             <Icon size={15} />
             <span>{action.label}</span>
             {action.shortcut ? <kbd>{action.shortcut}</kbd> : null}
@@ -118,6 +118,7 @@ export function WorkbenchQuickActions({
             className="workbench-quick-action"
             ref={moreRef}
             type="button"
+            aria-label="更多"
             aria-haspopup="menu"
             aria-expanded={overflowOpen}
             onClick={() => setOverflowOpen((open) => !open)}

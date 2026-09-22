@@ -14,6 +14,10 @@ import type {
   StoryDirection,
   UpdateCandidateTextInput,
   UpdateCandidateMemoryReviewInput,
+  RefineCandidateSelectionInput,
+  RefineCandidateSelectionResponse,
+  CheckCandidatePlanFulfillmentInput,
+  CandidatePlanFulfillmentReport,
   RewriteChapterInput,
   UpdateChapterPlanInput,
   DesktopModelWorkflowSelection,
@@ -116,6 +120,8 @@ export interface AutoNovelDesktopApiV2 {
     discard(candidateId: string): Promise<DesktopResult<ChapterCandidate>>;
     updateMemoryReview(input: UpdateCandidateMemoryReviewInput): Promise<DesktopResult<ChapterCandidate>>;
     updateText(input: UpdateCandidateTextInput): Promise<DesktopResult<ChapterCandidate>>;
+    refineSelection(input: RefineCandidateSelectionInput & AutoNovelDesktopProviderSelection): Promise<DesktopResult<RefineCandidateSelectionResponse>>;
+    checkPlanFulfillment(input: CheckCandidatePlanFulfillmentInput & AutoNovelDesktopProviderSelection): Promise<DesktopResult<CandidatePlanFulfillmentReport>>;
   };
   readonly memory: {
     list(input: { bookId: string; filter?: Partial<MemoryFilter> }): Promise<DesktopResult<MemoryBookSnapshot>>;
@@ -183,6 +189,8 @@ export function createAutoNovelPreloadApiV2(
       discard: (candidateId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateDiscard, { candidateId }),
       updateMemoryReview: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateMemoryReview, input),
       updateText: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateTextUpdate, input),
+      refineSelection: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidateSelectionRefine, input),
+      checkPlanFulfillment: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.candidatePlanFulfillment, input),
     },
     memory: {
       list: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.memoryList, input),

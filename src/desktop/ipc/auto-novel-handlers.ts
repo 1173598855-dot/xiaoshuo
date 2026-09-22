@@ -7,6 +7,8 @@ import {
   ExportBookInputSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
+  RefineCandidateSelectionInputSchema,
+  CheckCandidatePlanFulfillmentInputSchema,
   RewriteChapterInputSchema,
   UpdateChapterPlanInputSchema,
   resolveModelWorkflowProvider,
@@ -96,6 +98,8 @@ const CandidateAcceptRequestSchema = z
   .strict();
 const CandidateDiscardRequestSchema = z.object({ candidateId: z.string().uuid() }).strict();
 const CandidateTextUpdateRequestSchema = UpdateCandidateTextInputSchema;
+const CandidateSelectionRefineRequestSchema = withProviderOrWorkflow({ input: RefineCandidateSelectionInputSchema });
+const CandidatePlanFulfillmentRequestSchema = withProviderOrWorkflow({ input: CheckCandidatePlanFulfillmentInputSchema });
 const ExportRequestSchema = ExportBookInputSchema.extend({ bookId: z.string().uuid() }).strict();
 const MemoryListRequestSchema = z.object({
   bookId: z.string().uuid(),
@@ -381,6 +385,20 @@ export function registerAutoNovelIpcHandlers(
     CandidateTextUpdateRequestSchema,
     (input) => (dependencies.authService?.assertCandidateAccess(input.candidateId), dependencies.getServices().productionRepository.editCandidateText(input)),
   );
+  register(dependencies, AUTO_NOVEL_CHANNELS.candidateSelectionRefine, CandidateSelectionRefineRequestSchema, async ({ input, ...rest }) => {
+    dependencies.authService?.assertCandidateAccess(input.candidateId);
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    return dependencies.getServices().productionService.refineCandidateSelection(input, workflow);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.candidatePlanFulfillment, CandidatePlanFulfillmentRequestSchema, async ({ input, ...rest }) => {
+    dependencies.authService?.assertCandidateAccess(input.candidateId);
+    const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    return dependencies.getServices().productionService.checkCandidatePlanFulfillment(
+      input.candidateId,
+      input.expectedCandidateTextRevision,
+      workflow,
+    );
+  });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksExport, ExportRequestSchema, ({ bookId, format }) => ({
     ...(dependencies.authService?.assertBookAccess(bookId), {}),
     format,

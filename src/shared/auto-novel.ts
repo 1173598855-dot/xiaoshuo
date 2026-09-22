@@ -437,6 +437,88 @@ export type UpdateCandidateTextInput = z.infer<
   typeof UpdateCandidateTextInputSchema
 >;
 
+export const RefineCandidateSelectionInputSchema = z.object({
+  candidateId: UuidSchema,
+  expectedCandidateTextRevision: z.number().int().nonnegative(),
+  /** UTF-16 code-unit offsets into the exact candidateText revision. */
+  startOffset: z.number().int().nonnegative().max(MAX_CHAPTER_CONTENT_CHARACTERS),
+  endOffset: z.number().int().positive().max(MAX_CHAPTER_CONTENT_CHARACTERS),
+  selectedText: z.string().min(1).max(4_000),
+  instruction: z.string().trim().min(1).max(1_000),
+}).strict().superRefine((input, context) => {
+  if (input.endOffset <= input.startOffset) {
+    context.addIssue({ code: "custom", path: ["endOffset"], message: "The selected range must not be empty" });
+  }
+  if (input.endOffset - input.startOffset !== input.selectedText.length) {
+    context.addIssue({ code: "custom", path: ["selectedText"], message: "The selected text length must match its UTF-16 offsets" });
+  }
+});
+export type RefineCandidateSelectionInput = z.infer<typeof RefineCandidateSelectionInputSchema>;
+
+export const CandidateSelectionAlternativeSchema = z.object({
+  id: z.string().trim().min(1).max(24),
+  label: z.string().trim().min(1).max(40),
+  text: z.string().trim().min(1).max(4_000),
+  rationale: z.string().trim().min(1).max(240),
+}).strict();
+export type CandidateSelectionAlternative = z.infer<typeof CandidateSelectionAlternativeSchema>;
+
+export const RefineCandidateSelectionResponseSchema = z.object({
+  candidateId: UuidSchema,
+  candidateTextRevision: z.number().int().nonnegative(),
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().positive(),
+  alternatives: z.array(CandidateSelectionAlternativeSchema).min(2).max(3),
+}).strict().superRefine((response, context) => {
+  if (response.endOffset <= response.startOffset) {
+    context.addIssue({ code: "custom", path: ["endOffset"], message: "The selected range must not be empty" });
+  }
+  const ids = response.alternatives.map(({ id }) => id);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["alternatives"], message: "Alternative ids must be unique" });
+  }
+});
+export type RefineCandidateSelectionResponse = z.infer<typeof RefineCandidateSelectionResponseSchema>;
+
+export const PlanFulfillmentStatusSchema = z.enum(["fulfilled", "partial", "unfulfilled", "uncertain"]);
+export type PlanFulfillmentStatus = z.infer<typeof PlanFulfillmentStatusSchema>;
+
+export const PlanFulfillmentEvidenceSchema = z.object({
+  quote: z.string().trim().min(1).max(600),
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().positive(),
+}).strict().superRefine((evidence, context) => {
+  if (evidence.endOffset <= evidence.startOffset || evidence.endOffset - evidence.startOffset !== evidence.quote.length) {
+    context.addIssue({ code: "custom", path: ["endOffset"], message: "Evidence offsets must match the quoted text" });
+  }
+});
+
+export const PlanFulfillmentCriterionSchema = z.object({
+  key: z.string().trim().min(1).max(40),
+  kind: z.enum(["objective", "hook", "foreshadowing"]),
+  requirement: z.string().trim().min(1).max(2_000),
+  status: PlanFulfillmentStatusSchema,
+  explanation: z.string().trim().min(1).max(400),
+  evidence: PlanFulfillmentEvidenceSchema.nullable(),
+}).strict();
+export type PlanFulfillmentCriterion = z.infer<typeof PlanFulfillmentCriterionSchema>;
+
+export const CandidatePlanFulfillmentReportSchema = z.object({
+  candidateId: UuidSchema,
+  bookRevision: z.number().int().nonnegative(),
+  candidateTextRevision: z.number().int().nonnegative(),
+  chapterNumber: z.number().int().positive(),
+  checkedAt: TimestampSchema,
+  criteria: z.array(PlanFulfillmentCriterionSchema).max(22),
+}).strict();
+export type CandidatePlanFulfillmentReport = z.infer<typeof CandidatePlanFulfillmentReportSchema>;
+
+export const CheckCandidatePlanFulfillmentInputSchema = z.object({
+  candidateId: UuidSchema,
+  expectedCandidateTextRevision: z.number().int().nonnegative(),
+}).strict();
+export type CheckCandidatePlanFulfillmentInput = z.infer<typeof CheckCandidatePlanFulfillmentInputSchema>;
+
 export const BookDetailsSchema = z
   .object({
     book: BookSchema,
