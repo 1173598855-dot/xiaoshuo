@@ -154,6 +154,12 @@ test("keeps quick actions and reduced motion usable on mobile", async ({ page })
   await expect(page.getByRole("complementary", { name: "创作资产库" })).toBeVisible();
   await page.getByRole("button", { name: "关闭创作资产库" }).click();
   await expect(page.getByRole("complementary", { name: "创作资产库" })).toHaveCount(0);
+  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("menuitem", { name: "创作统计" }).click();
+  await expect(page.getByRole("complementary", { name: "创作统计" })).toBeVisible();
+  await expect(page.getByText("专注计时")).toBeVisible();
+  await page.getByRole("button", { name: "关闭创作统计" }).click();
+  await expect(page.getByRole("complementary", { name: "创作统计" })).toHaveCount(0);
 });
 
 for (const viewport of [

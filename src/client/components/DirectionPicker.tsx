@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
+import { Activity, ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
 import { SpotlightCard } from "./SpotlightCard";
@@ -13,9 +13,10 @@ interface DirectionPickerProps {
   onBack: () => void;
   onOpenNavigation?: () => void;
   onOpenCommandPalette?: () => void;
+  onOpenCreatorDashboard?: () => void;
 }
 
-export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack, onOpenNavigation, onOpenCommandPalette }: DirectionPickerProps) {
+export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBack, onOpenNavigation, onOpenCommandPalette, onOpenCreatorDashboard }: DirectionPickerProps) {
   const [peekDirection, setPeekDirection] = useState<StoryDirection | null>(null);
   return (
     <main className="director-page">
@@ -23,7 +24,12 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
         <button className="text-button" type="button" onClick={onBack}>← 返回想法</button>
         <div className="page-topbar-actions">
           <span className="stage-progress"><span className="stage-progress-active" /> 自动导演 · {directions.length} 个方向</span>
-          <WorkbenchQuickActions actions={[]} onOpenNavigation={onOpenNavigation} onOpenCommandPalette={onOpenCommandPalette} />
+          <WorkbenchQuickActions
+            visibleActionCount={0}
+            actions={onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []}
+            onOpenNavigation={onOpenNavigation}
+            onOpenCommandPalette={onOpenCommandPalette}
+          />
         </div>
       </header>
       <WorkbenchStatusStrip

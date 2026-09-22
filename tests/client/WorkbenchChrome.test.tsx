@@ -25,6 +25,7 @@ function drawerProps() {
     onOpenWorkflow: vi.fn(),
     onOpenData: vi.fn(),
     onOpenAssetLibrary: vi.fn(),
+    onOpenCreatorDashboard: vi.fn(),
     onOpenAuthoringHub: vi.fn(),
     onOpenContinuityRadar: vi.fn(),
     onOpenTimeline: vi.fn(),
@@ -93,5 +94,15 @@ describe("WorkbenchChrome", () => {
     fireEvent.click(screen.getByRole("button", { name: /清除工具筛选/ }));
     fireEvent.click(screen.getByRole("button", { name: /完整动效/ }));
     expect(props.onToggleMotionMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the local creator dashboard available before a book is opened", () => {
+    const props = { ...drawerProps(), hasBook: false };
+    render(<WorkbenchNavigationDrawer {...props} />);
+
+    const dashboard = screen.getByRole("button", { name: /创作统计/ });
+    expect(dashboard).toBeEnabled();
+    fireEvent.click(dashboard);
+    expect(props.onOpenCreatorDashboard).toHaveBeenCalledOnce();
   });
 });

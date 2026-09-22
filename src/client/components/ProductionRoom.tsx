@@ -42,6 +42,7 @@ interface ProductionRoomProps {
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
   onOpenAssetLibrary?: () => void;
+  onOpenCreatorDashboard?: () => void;
   api?: AutoNovelApi;
   onOpenRun?: (runId: string) => void;
   onOpenCommandPalette?: () => void;
@@ -73,6 +74,7 @@ export function ProductionRoom({
   onConfigureProvider,
   onConfigureWorkflow,
   onOpenAssetLibrary,
+  onOpenCreatorDashboard,
   api,
   onOpenRun,
   onOpenCommandPalette,
@@ -114,6 +116,7 @@ export function ProductionRoom({
               { id: "memory", label: "记忆中心", icon: History, onSelect: onOpenMemory },
               { id: "timeline", label: "故事时间线", icon: GitBranch, onSelect: onOpenTimeline },
               { id: "authoring-hub", label: "创作中枢", icon: Activity, onSelect: onOpenAuthoringHub },
+              ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []),
               { id: "search", label: "全局搜索", icon: Search, onSelect: onOpenSearch },
               { id: "task-center", label: "任务中心", icon: History, onSelect: () => setTaskOpen(true) },
               ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),

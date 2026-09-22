@@ -82,6 +82,7 @@ describe("CreativeHome author entry", () => {
         onConfigureWorkflow={vi.fn()}
         onOpenAssetLibrary={vi.fn()}
         onOpenData={vi.fn()}
+        onOpenCreatorDashboard={vi.fn()}
         motionMode="full"
         onToggleMotionMode={vi.fn()}
       />,
@@ -93,6 +94,7 @@ describe("CreativeHome author entry", () => {
     expect(within(menu).getByRole("menuitem", { name: "数据管理" })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: "打开灵感册" })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: /新故事/ })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "创作统计" })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: "安静动效" })).toBeVisible();
   });
 

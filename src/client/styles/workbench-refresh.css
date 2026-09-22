@@ -615,6 +615,20 @@
     font-size: 10px;
   }
 
+  .workbench-quick-more-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: rgb(255 255 255 / 4%);
+    font-size: 9px;
+    line-height: 1;
+  }
+
   .workbench-nav-action {
     color: var(--text-primary);
     background: var(--surface-accent);

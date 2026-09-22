@@ -1,9 +1,9 @@
 # React Bits attribution
 
-This project includes adapted `CursorGrid`, `SpotlightCard`, `Dock`, and direction-card spotlight interactions based on the React Bits component library.
+This project includes adapted `CursorGrid`, `SpotlightCard`, `CountUp`-inspired number motion, `Dock`, and direction-card spotlight interactions based on the React Bits component library.
 
 - Source: <https://github.com/DavidHDev/react-bits>
-- Component references: `src/ts-default/Animations/CursorGrid/CursorGrid.tsx`, `src/ts-default/Components/SpotlightCard/SpotlightCard.tsx`, `src/ts-default/Components/TiltedCard/TiltedCard.tsx`, and `src/ts-default/Components/Dock/Dock.tsx`
+- Component references: `src/ts-default/Animations/CursorGrid/CursorGrid.tsx`, `src/ts-default/Components/SpotlightCard/SpotlightCard.tsx`, `src/ts-default/TextAnimations/CountUp/CountUp.tsx`, `src/ts-default/Components/TiltedCard/TiltedCard.tsx`, and `src/ts-default/Components/Dock/Dock.tsx`
 - License: MIT + Commons Clause License Condition v1.0
 - Copyright: © 2026 David Haz
 
@@ -15,6 +15,7 @@ The adapted component is used as part of the Xiaoyi Novel Workbench application.
 - Direction picker: `SpotlightCard` interaction on each candidate direction so focus and Space preview remain visible.
 - Production room: `Dock` pattern for high-frequency author actions; the existing top actions remain as the keyboard-readable source of truth.
 - Authoring hub and story branches: native drawer structure with the same spotlight/color vocabulary; dense data comparison is intentionally not turned into a decorative card grid.
+- Creator dashboard: `SpotlightCard` is reused for local stat cards and `CountUp`'s in-view number motion is reimplemented with `requestAnimationFrame`; the focus timer remains renderer-local and is not persisted.
 - Timeline, memory, candidate review, asset editor, authentication, and data-management dialogs: native semantic forms are retained because revision fields, text editing, focus traps, and error states are more important than animation. The Flutter login motion reference is documented separately.
 
 ## License text

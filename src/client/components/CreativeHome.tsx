@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
+import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
@@ -19,6 +19,7 @@ interface CreativeHomeProps {
   onConfigureWorkflow: () => void;
   onOpenAssetLibrary?: () => void;
   onOpenData?: () => void;
+  onOpenCreatorDashboard?: () => void;
   motionMode?: "full" | "quiet";
   onToggleMotionMode?: () => void;
   onOpenCommandPalette?: () => void;
@@ -37,6 +38,7 @@ export function CreativeHome({
   onConfigureWorkflow,
   onOpenAssetLibrary,
   onOpenData,
+  onOpenCreatorDashboard,
   motionMode = "full",
   onToggleMotionMode,
   onOpenCommandPalette,
@@ -79,6 +81,7 @@ export function CreativeHome({
             actions={[
               { id: "provider", label: "模型设置", icon: Settings2, onSelect: onConfigureProvider },
               { id: "workflow", label: "工作流", icon: Workflow, onSelect: onConfigureWorkflow },
+              ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []),
               ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
               ...(onOpenData ? [{ id: "data", label: "数据管理", icon: Database, onSelect: onOpenData }] : []),
               { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => document.querySelector<HTMLButtonElement>(".preset-book-cover")?.click() },

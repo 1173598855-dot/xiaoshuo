@@ -24,7 +24,7 @@ export function exportBook(
     .getChapters(bookId)
     .filter(({ revision }) => revision > 0);
   if (format === "docx") return toDocxDataUrl(details.book.title, chapters);
-  if (format === "epub") return toEpubDataUrl(details.book.title, chapters);
+  if (format === "epub") return toEpubDataUrl(details.book.title, chapters, details.book.idea);
   if (format === "markdown") {
     return [
       "# " + details.book.title,
@@ -94,7 +94,7 @@ function toDocxDataUrl(title: string, chapters: readonly { title: string; conten
   return `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${archive.toString("base64")}`;
 }
 
-function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[]): string {
+function toEpubDataUrl(title: string, chapters: readonly { title: string; content: string }[], description = ""): string {
   const chapterFiles = chapters.map((chapter, index) => ({
     id: `chapter-${index + 1}`,
     href: `chapter-${index + 1}.xhtml`,

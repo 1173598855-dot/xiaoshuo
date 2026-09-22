@@ -44,18 +44,21 @@ export function WorkbenchQuickActions({
   actions,
   onOpenNavigation,
   onOpenCommandPalette,
+  visibleActionCount = 2,
   ariaLabel = "快捷操作",
 }: {
   actions: readonly WorkbenchQuickAction[];
   onOpenNavigation?: () => void;
   onOpenCommandPalette?: () => void;
+  visibleActionCount?: number;
   ariaLabel?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
-  const visibleActions = actions.slice(0, 2);
-  const overflowActions = actions.slice(2);
+  const actionBoundary = Math.max(0, visibleActionCount);
+  const visibleActions = actions.slice(0, actionBoundary);
+  const overflowActions = actions.slice(actionBoundary);
 
   useEffect(() => {
     if (!overflowOpen) return;
@@ -111,6 +114,7 @@ export function WorkbenchQuickActions({
           >
             <MoreHorizontal size={15} />
             <span>更多</span>
+            <span className="workbench-quick-more-count" aria-hidden="true">{overflowActions.length}</span>
           </button>
           {overflowOpen ? (
             <div className="workbench-quick-menu" role="menu" aria-label="更多快捷操作">
@@ -177,6 +181,7 @@ interface WorkbenchNavigationDrawerProps {
   onOpenWorkflow: () => void;
   onOpenData: () => void;
   onOpenAssetLibrary: () => void;
+  onOpenCreatorDashboard: () => void;
   onOpenAuthoringHub: () => void;
   onOpenContinuityRadar: () => void;
   onOpenTimeline: () => void;
@@ -203,6 +208,7 @@ export function WorkbenchNavigationDrawer({
   onOpenWorkflow,
   onOpenData,
   onOpenAssetLibrary,
+  onOpenCreatorDashboard,
   onOpenAuthoringHub,
   onOpenContinuityRadar,
   onOpenTimeline,
@@ -282,7 +288,8 @@ export function WorkbenchNavigationDrawer({
     { page: "production", label: "自动生产室", detail: "逐章生产与候选审核", icon: Activity, disabled: !hasBook },
     { page: "manuscript", label: "正式正文", detail: "阅读已采纳章节", icon: FileText, disabled: !hasBook },
   ];
-  const toolItems: Array<{ id: string; label: string; detail: string; icon: LucideIcon; action: () => void }> = [
+  const toolItems: Array<{ id: string; label: string; detail: string; icon: LucideIcon; action: () => void; disabled?: boolean }> = [
+    { id: "dashboard", label: "创作统计", detail: "作品进度、最近作品与专注计时", icon: Activity, action: onOpenCreatorDashboard, disabled: false },
     { id: "authoring-hub", label: "创作中枢", detail: "健康度、场景卡与生产配方", icon: Sparkles, action: onOpenAuthoringHub },
     { id: "continuity", label: "连续性雷达", detail: "查看故事流与风险节点", icon: Activity, action: onOpenContinuityRadar },
     { id: "timeline", label: "故事时间线", detail: "编辑事件、伏笔与节奏", icon: BookOpen, action: onOpenTimeline },
@@ -344,7 +351,7 @@ export function WorkbenchNavigationDrawer({
           <div className="workbench-drawer-list">
             {visibleToolItems.map((item) => {
               const Icon = item.icon;
-              return <button className="workbench-drawer-item" type="button" key={item.id} disabled={!hasBook} onClick={() => closeAnd(item.action)}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
+              return <button className="workbench-drawer-item" type="button" key={item.id} disabled={item.disabled ?? !hasBook} onClick={() => closeAnd(item.action)}><span className="workbench-drawer-item-icon"><Icon size={16} /></span><span><strong>{item.label}</strong><small>{item.detail}</small></span><ChevronRight size={15} aria-hidden="true" /></button>;
             })}
             {matches({ label: "资产库", detail: "保存可复用的人物、世界与文风" }) ? <button className="workbench-drawer-item" type="button" onClick={() => closeAnd(onOpenAssetLibrary)}><span className="workbench-drawer-item-icon"><Library size={16} /></span><span><strong>资产库</strong><small>保存可复用的人物、世界与文风</small></span><ChevronRight size={15} aria-hidden="true" /></button> : null}
           </div></> : null}

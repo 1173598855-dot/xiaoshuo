@@ -16,7 +16,7 @@
 | [Anime.js](https://animejs.com/documentation/) | 官方文档覆盖 Timeline、Animation、Draggable、SVG、Text 与 WAAPI；官方仓库为 MIT，适合单点编排而非全站动画化。 | `StoryPulse` 使用 Anime.js 编排当前生产阶段的轻量入场；失败和 reduced-motion 时不播放。 |
 | [Aceternity UI](https://ui.aceternity.com/explore) | 组件目录适合研究 Spotlight、Card Hover、Keyboard、Empty State、Multi Step Loader 等模式；组件/区块许可按条目核验，Tailwind/Next 依赖不直接引入。 | 转为原生 TypeScript/CSS：导航筛选、工作流一键填充、故事状态轨道和状态面板，不复制其源码。 |
 
-## 已落地的 12 项升级
+## 已落地的 15 项升级
 
 1. 新增持久化动效偏好：完整动效 / 安静动效，默认尊重系统 `prefers-reduced-motion`。
 2. 安静动效会压低光晕、黑洞背景、书架倾斜和页面装饰转场，但保留成功、失败、加载等状态反馈。
@@ -32,6 +32,7 @@
 12. 模型设置增加“快速 / 平衡 / 深思”思考等级快捷按钮，工作流增加“用当前模型填充全部角色”，减少重复配置。
 13. 根据 MotionSites 公共预览里的 `Scroll Expansion Hero`、dark/editorial 和“主动作在滚动后仍可达”原则，首页写作路径增加滚动感知的当前阶段，移动端表单底部动作保持可见；实现为本地 IntersectionObserver/CSS 状态，不复制原 Prompt。
 14. 扩充顶栏“更多”快捷操作：首页可直接打开资产库、数据管理、灵感册、新故事和动效偏好；生产室增加创作中枢、全局搜索、任务中心、资产库、模型设置与工作流；正文页增加打印、DOCX 导出和返回生产室入口。菜单支持滚动容器，避免动作过多时溢出。
+15. 新增“创作统计”抽屉：用 `SpotlightCard` 聚合作品总数、创作中、已完成和已采纳字数，用轻量 CountUp 动效展示数字，提供当前作品章节进度、最近作品跳转和窗口级专注计时；同时在快捷菜单显示剩余动作数量，导航抽屉也提供同一入口。
 
 ## 视觉与交互验收重点
 
@@ -40,6 +41,7 @@
 - Anime.js 只负责一个有业务意义的阶段反馈，不把正文变成展示动画；
 - 动效控制、系统 reduced-motion、触摸端和键盘端均有降级路径；
 - 1440×960、1024×768、390×844 检查抽屉筛选、首页表单、书架、生产轨道和正文进度条不产生页面级横向滚动。
+- 创作统计在 390px 宽度下折叠为单列，关闭、最近作品跳转和计时按钮保持键盘可达；CountUp 在 reduced-motion 下直接显示最终值。
 
 ## 契约安全
 
