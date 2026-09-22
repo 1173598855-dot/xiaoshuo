@@ -88,7 +88,8 @@ describe("WorkflowDialog", () => {
     );
     fireEvent.click(screen.getByRole("combobox", { name: "模型工作流模式" }));
     fireEvent.click(screen.getByRole("option", { name: /多模型协作/ }));
-    fireEvent.change(screen.getByLabelText("内容审核服务商"), { target: { value: "ollama" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "内容审核服务商" }));
+    fireEvent.click(screen.getByRole("option", { name: "Ollama" }));
     fireEvent.click(screen.getByRole("button", { name: "应用工作流" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved = onSave.mock.calls[0][0];

@@ -21,6 +21,7 @@ import type {
 import { ReasoningLevelSchema } from "../../shared/contracts";
 import { ApiRequestError, type ClientProviderSettings } from "../api/transport";
 import type { SessionProviderSettings } from "../provider-session";
+import { ThemeSelect } from "./ThemeSelect";
 
 type ProviderDialogSettings = ClientProviderSettings | SessionProviderSettings;
 
@@ -72,7 +73,7 @@ export function ProviderDialog({
   const [connectionTestLoading, setConnectionTestLoading] = useState(false);
   const [connectionTestMessage, setConnectionTestMessage] = useState<string | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
-  const providerSelectRef = useRef<HTMLSelectElement>(null);
+  const providerSelectRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const modelListRequestRef = useRef(0);
   const modelListAbortRef = useRef<AbortController | null>(null);
@@ -425,18 +426,13 @@ export function ProviderDialog({
         <div className="dialog-body">
           <label className="form-field">
             <span>服务商</span>
-            <select
+            <ThemeSelect
               ref={providerSelectRef}
               aria-label="服务商"
               value={providerId}
-              onChange={(event) => selectProvider(event.target.value)}
-            >
-              {providers.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name}
-                </option>
-              ))}
-            </select>
+              options={providers.map((provider) => ({ value: provider.id, label: provider.name }))}
+              onChange={selectProvider}
+            />
           </label>
 
           <label className="form-field">
@@ -512,12 +508,17 @@ export function ProviderDialog({
 
           <label className="form-field">
             <span>思考等级</span>
-            <select aria-label="思考等级" value={reasoningLevel} onChange={(event) => setReasoningLevel(ReasoningLevelSchema.parse(event.target.value))}>
-              <option value="off">关闭（最快）</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高（更慢、更耗额度）</option>
-            </select>
+            <ThemeSelect
+              aria-label="思考等级"
+              value={reasoningLevel}
+              options={[
+                { value: "off", label: "关闭（最快）" },
+                { value: "low", label: "低" },
+                { value: "medium", label: "中" },
+                { value: "high", label: "高（更慢、更耗额度）" },
+              ]}
+              onChange={(value) => setReasoningLevel(ReasoningLevelSchema.parse(value))}
+            />
             <div className="reasoning-presets" role="group" aria-label="思考等级快捷选择">
               {([['off', '快速'], ['medium', '平衡'], ['high', '深思']] as const).map(([value, label]) => <button className={reasoningLevel === value ? "is-active" : ""} type="button" key={value} aria-pressed={reasoningLevel === value} onClick={() => setReasoningLevel(value)}>{label}</button>)}
             </div>

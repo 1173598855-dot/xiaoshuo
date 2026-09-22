@@ -13,6 +13,7 @@ import {
   type MemoryRevision,
 } from "../../shared/memory";
 import type { AutoNovelApi } from "../auto-novel-api";
+import { ThemeSelect } from "./ThemeSelect";
 
 interface MemoryPanelProps {
   bookId: string;
@@ -221,10 +222,15 @@ export function MemoryPanel({ bookId, chapterNumber, api, memoryContextConfig = 
         </button>
       </div>
       <div className="memory-toolbar">
-        <select value={kind} onChange={(event) => setKind(event.target.value as MemoryKind | "relevant" | "all")} aria-label={mode === "bible" ? "资料卡类型" : "记忆类型"}>
-          {mode === "bible" ? <option value="all">全部资料卡</option> : <option value="relevant">当前章节相关</option>}
-          {MemoryKindSchema.options.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
-        </select>
+        <ThemeSelect
+          value={kind}
+          aria-label={mode === "bible" ? "资料卡类型" : "记忆类型"}
+          options={[
+            ...(mode === "bible" ? [{ value: "all", label: "全部资料卡" }] : [{ value: "relevant", label: "当前章节相关" }]),
+            ...MemoryKindSchema.options.map((value) => ({ value, label: KIND_LABELS[value] })),
+          ]}
+          onChange={(value) => setKind(value as MemoryKind | "relevant" | "all")}
+        />
         <button className="ghost-button" type="button" disabled={busy} onClick={() => void refreshFoundation()}>
           <RefreshCw size={14} /> {mode === "bible" ? "同步 AI 资料卡" : "从设定补齐"}
         </button>

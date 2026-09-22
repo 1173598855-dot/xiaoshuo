@@ -8,6 +8,14 @@
 
 ## 结果
 
+### 作者交付闭环
+
+- 正文导出前预检复用一致性接口和当前章节/章纲投影，展示缺失章节、空章节和高优先级冲突后再进入 DOCX/ePub 导出。
+- 正文章节批注/书签只保存在当前浏览器本地，不进入正文、SQLite 或 Provider 请求。
+- 创作中枢上下文回放只记录记忆 revision、上下文 Hash、章节、作者工作区 revision、启用 Prompt 名称和配方名称，不保存 Provider 凭据。
+- 系统健康面板复用服务 ready、用量、作品一致性和桌面数据库状态，失败时只显示归一化错误。
+- 业务下拉统一迁移到可访问的 `ThemeSelect` listbox：菜单通过 portal 定位，绕开 Windows/Chromium 原生白色弹层，统一深色 surface、紫色 focus、键盘导航、Escape 回收和 reduced-motion；真实 Chromium E2E 会打开菜单并断言主题背景。
+
 ### Server / SQLite
 
 - Repository 的 chapter、memory、authoring workspace 和 candidate 写入继续使用 expected revision、事务和历史快照。
@@ -26,16 +34,16 @@
 
 - `npm run security:dependencies`：0 high/critical vulnerabilities。
 - Vite 仍报告主 bundle 和 Three.js chunk 超过 500KB；这是已有的前端拆包优化项，不影响功能或发布验证，Three.js 已在交互打开后动态加载。
-- 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 从约 512KB 降到约 397KB；Three.js 仍只在打开灵感册时加载。
+- 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 从约 512KB 降到约 404KB（当前构建 404.29KB）；Three.js 仍只在打开灵感册时加载。
 - 本地开发页面默认 favicon 404 仍是站点资源级非阻塞观察，不属于当前业务优化范围。
 
 ## 最终门禁
 
 - `npm run lint`：通过。
 - `npm run typecheck`：通过。
-- `npm run test:run`：95 文件、400 测试通过。
+- `npm run test:run`：98 文件、405 测试通过。
 - `npm run build` / server smoke：通过。
-- `npm run e2e`：7/7 通过。
+- `npm run e2e`：8/8 通过（含主题化下拉的真实菜单打开与背景断言）。
 - `npm run smoke:desktop`：通过。
 - `npm run desktop:test`：1/1 通过。
 - `npm run desktop:dist` + `node scripts/assert-desktop-artifact.mjs`：通过。

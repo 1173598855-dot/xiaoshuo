@@ -30,7 +30,8 @@ test("runs the full idea director and production room in Electron", async () => 
     await expect(window.getByRole("textbox", { name: "故事想法" })).toBeVisible();
 
     await window.getByRole("button", { name: "模型设置" }).click();
-    await window.getByRole("combobox", { name: "服务商" }).selectOption("custom");
+    await window.getByRole("combobox", { name: "服务商" }).click();
+    await window.getByRole("option", { name: "自定义兼容端点", exact: true }).click();
     await window.locator('input[aria-label="模型 ID"]').fill("test-model");
     await window.locator('input[aria-label="服务地址"]').fill("http://127.0.0.1:9000/v1");
     await window.getByRole("textbox", { name: "API Key" }).fill("sk-desktop-test-key");

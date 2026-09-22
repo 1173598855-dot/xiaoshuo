@@ -93,6 +93,17 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await page.getByRole("button", { name: "打开正式正文" }).click();
   await expect(page.getByRole("main", { name: "正式正文" })).toBeVisible();
   await expect(page.getByText("异常物件").first()).toBeVisible();
+  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("menuitem", { name: "导出前预检" }).click();
+  await expect(page.getByRole("complementary", { name: "导出前预检" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭导出前预检" }).click();
+  const firstChapter = page.locator(".manuscript-chapter").first();
+  await firstChapter.getByRole("button", { name: /添加书签/ }).click();
+  await expect(firstChapter.getByRole("button", { name: /取消第 .*章书签/ })).toHaveAttribute("aria-pressed", "true");
+  await firstChapter.getByRole("button", { name: /添加批注/ }).click();
+  await firstChapter.getByRole("textbox", { name: /章批注/ }).fill("回看这一章的场景节奏。");
+  await firstChapter.getByRole("button", { name: "保存批注" }).click();
+  await expect(firstChapter).toContainText("回看这一章的场景节奏。");
   await page.getByRole("button", { name: "返回生产室" }).click();
   await page.getByRole("complementary", { name: "章节上下文" }).getByRole("button", { name: "记忆中心" }).click();
   const persistedWorldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
@@ -115,6 +126,33 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await page.getByLabel("方向数量").fill("5");
   await page.getByRole("button", { name: "开始开书" }).click();
   await expect(page.getByText("自动方向 5")).toBeVisible();
+});
+
+test("keeps themed dropdowns in the dark workbench theme", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "模型设置" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+
+  const selectStyles = await page.evaluate(() => [...document.querySelectorAll(".theme-select-trigger")].map((element) => {
+    const styles = getComputedStyle(element);
+    return {
+      appearance: styles.appearance,
+      backgroundColor: styles.backgroundColor,
+      colorScheme: styles.colorScheme,
+    };
+  }));
+
+  expect(selectStyles.length).toBeGreaterThan(0);
+  for (const styles of selectStyles) {
+    expect(styles.appearance).toBe("none");
+    expect(styles.backgroundColor).toBe("rgb(33, 31, 46)");
+  }
+
+  await page.getByRole("combobox", { name: "服务商" }).click();
+  const optionMenu = page.getByRole("listbox", { name: "服务商选项" });
+  await expect(optionMenu).toBeVisible();
+  await expect(optionMenu).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.keyboard.press("Escape");
 });
 
 test("opens the author navigation drawer and preserves focus on close", async ({ page }) => {

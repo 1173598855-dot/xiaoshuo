@@ -12,6 +12,7 @@ import {
 import { ProviderIdSchema, type ProviderCatalogEntry, type ProviderConfig } from "../../shared/contracts";
 import type { ClientProviderSettings } from "../api/transport";
 import { resolveProviderSettings } from "../provider-session";
+import { ThemeSelect } from "./ThemeSelect";
 
 const roleLabels: Record<ModelRole, string> = {
   director: "规划导演",
@@ -264,12 +265,12 @@ export function WorkflowDialog({ open, platform, providers, settings, value, onS
           <div className="form-field"><span>工作方式</span><WorkflowModePicker value={mode} onChange={setMode} /></div>
           {mode === "single" ? (
             <>
-              <label className="form-field"><span>服务商</span><select aria-label="工作流服务商" value={providerId} onChange={(event) => setProviderId(event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+              <label className="form-field"><span>服务商</span><ThemeSelect aria-label="工作流服务商" value={providerId} options={providers.map((entry) => ({ value: entry.id, label: entry.name }))} onChange={setProviderId} /></label>
               <label className="form-field"><span>模型 ID</span><input aria-label="工作流模型 ID" value={model} onChange={(event) => setModel(event.target.value)} /></label>
             </>
           ) : (
             <div className="workflow-assignment-list">
-              {MODEL_ROLES.map((role) => <div className="workflow-assignment" key={role}><strong>{roleLabels[role]}</strong><select aria-label={`${roleLabels[role]}服务商`} value={assignments[role].providerId} onChange={(event) => updateAssignment(role, "providerId", event.target.value)}>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select><input aria-label={`${roleLabels[role]}模型 ID`} value={assignments[role].model} onChange={(event) => updateAssignment(role, "model", event.target.value)} placeholder="模型 ID" /></div>)}
+              {MODEL_ROLES.map((role) => <div className="workflow-assignment" key={role}><strong>{roleLabels[role]}</strong><ThemeSelect aria-label={`${roleLabels[role]}服务商`} value={assignments[role].providerId} options={providers.map((entry) => ({ value: entry.id, label: entry.name }))} onChange={(value) => updateAssignment(role, "providerId", value)} /><input aria-label={`${roleLabels[role]}模型 ID`} value={assignments[role].model} onChange={(event) => updateAssignment(role, "model", event.target.value)} placeholder="模型 ID" /></div>)}
               <div className="workflow-assignment-tools"><button className="ghost-button" type="button" onClick={fillAllAssignments}><Copy size={14} /> 用当前模型填充全部角色</button><small>先统一跑通，再按角色微调</small></div>
               <small className="muted-label">至少配置两个角色；需要密钥的跨服务商角色，请先在模型设置中分别保存凭据。</small>
             </div>

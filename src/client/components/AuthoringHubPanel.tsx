@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Activity, Brain, Check, GitBranch, MapPin, Network, Plus, Search, Sparkles, X } from "lucide-react";
+import { Activity, Brain, Check, GitBranch, History, MapPin, Network, Plus, Search, Sparkles, X } from "lucide-react";
 
 import type { BookDetails } from "../../shared/auto-novel";
 import type { ConsistencyReport } from "../../shared/authoring";
@@ -16,6 +16,7 @@ import type {
 } from "../../shared/authoring-workspace";
 import type { MemoryBookSnapshot, MemoryContextConfig } from "../../shared/memory";
 import type { AutoNovelApi } from "../auto-novel-api";
+import { ThemeSelect } from "./ThemeSelect";
 
 type HubTab = "health" | "scenes" | "context" | "relations" | "workspace" | "recipes";
 
@@ -40,7 +41,21 @@ interface Recipe {
   updatedAt: string;
 }
 
+interface ContextReplaySnapshot {
+  id: string;
+  capturedAt: string;
+  chapterNumber: number;
+  contextHash: string;
+  memoryRevision: number;
+  workspaceRevision: number;
+  mode: MemoryContextConfig["mode"];
+  entrySubjects: readonly string[];
+  promptNames: readonly string[];
+  recipeName: string | null;
+}
+
 const RECIPE_KEY = "xiaoyi.production-recipes.v1";
+const CONTEXT_REPLAY_KEY = "xiaoyi.context-replay.v1";
 
 export function AuthoringHubPanel({
   details,
@@ -65,6 +80,8 @@ export function AuthoringHubPanel({
   const [recipeInstruction, setRecipeInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contextHistory, setContextHistory] = useState<ContextReplaySnapshot[]>(() => loadContextReplay(details.book.id));
+  const [selectedReplayId, setSelectedReplayId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -105,6 +122,35 @@ export function AuthoringHubPanel({
     });
     return () => { cancelled = true; };
   }, [api, chapterNumber, details.book.id, memoryContextConfig]);
+
+  useEffect(() => {
+    if (!context) return;
+    const activePrompts = workspace?.promptVersions.filter((prompt) => prompt.active).map((prompt) => prompt.name) ?? [];
+    const recipe = workspace?.productionRecipes.find((candidate) => sameMemoryConfig(candidate.memoryContextConfig, memoryContextConfig));
+    const snapshot: ContextReplaySnapshot = {
+      id: `${context.contextHash}-${chapterNumber}-${workspace?.revision ?? 0}`,
+      capturedAt: new Date().toISOString(),
+      chapterNumber,
+      contextHash: context.contextHash,
+      memoryRevision: context.memoryRevision,
+      workspaceRevision: workspace?.revision ?? 0,
+      mode: memoryContextConfig.mode,
+      entrySubjects: context.entries.slice(0, 12).map((entry) => entry.subject),
+      promptNames: activePrompts,
+      recipeName: recipe?.name ?? null,
+    };
+    setContextHistory((current) => {
+      const next = [snapshot, ...current.filter((item) => item.id !== snapshot.id)].slice(0, 12);
+      try {
+        const all = JSON.parse(window.localStorage.getItem(CONTEXT_REPLAY_KEY) ?? "{}") as Record<string, unknown>;
+        all[details.book.id] = next;
+        window.localStorage.setItem(CONTEXT_REPLAY_KEY, JSON.stringify(all));
+      } catch {
+        // Context replay is a convenience; generation never depends on storage.
+      }
+      return next;
+    });
+  }, [chapterNumber, context, details.book.id, memoryContextConfig, workspace]);
 
   const health = useMemo(() => {
     const issues = report?.issues ?? [];
@@ -168,7 +214,7 @@ export function AuthoringHubPanel({
       {busy ? <p className="hub-loading" role="status">正在同步作品上下文…</p> : null}
       {tab === "health" ? <HealthTab score={health.score} issues={health.issues} memory={memory} onOpenConsistency={onOpenConsistency} onOpenSearch={onOpenSearch} onOpenBranches={onOpenBranches} /> : null}
       {tab === "scenes" ? <ScenesTab details={details} onOpenTimeline={onOpenTimeline} /> : null}
-      {tab === "context" ? <ContextTab details={details} context={context} workspace={workspace} chapterNumber={chapterNumber} onChapterChange={setChapterNumber} memoryContextConfig={memoryContextConfig} onOpenMemory={onOpenMemory} /> : null}
+      {tab === "context" ? <ContextTab details={details} context={context} workspace={workspace} chapterNumber={chapterNumber} onChapterChange={setChapterNumber} memoryContextConfig={memoryContextConfig} onOpenMemory={onOpenMemory} contextHistory={contextHistory} selectedReplayId={selectedReplayId} onSelectReplay={setSelectedReplayId} /> : null}
       {tab === "relations" ? <RelationsTab details={details} /> : null}
       {tab === "workspace" && workspace ? <WorkspaceTab workspace={workspace} onSave={persistWorkspace} /> : null}
       {tab === "recipes" ? <RecipesTab recipes={recipes} name={recipeName} instruction={recipeInstruction} onNameChange={setRecipeName} onInstructionChange={setRecipeInstruction} onSave={saveRecipe} onDelete={deleteRecipe} onApply={(recipe) => onMemoryContextConfigChange(recipe.memoryContextConfig)} /> : null}
@@ -198,11 +244,12 @@ function ScenesTab({ details, onOpenTimeline }: { details: BookDetails; onOpenTi
   return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">SCENE CARDS</span><h3>章节场景卡</h3></div><button className="ghost-button" type="button" onClick={onOpenTimeline}>编辑时间线</button></div>{details.chapterPlans.slice(0, 24).map((plan) => <article className="hub-scene-card" key={plan.id}><span className="hub-scene-number">{String(plan.chapterNumber).padStart(2, "0")}</span><div><strong>{plan.title}</strong><p>{plan.objective}</p><small>钩子：{plan.hook || "未设置"} · 伏笔 {plan.foreshadowing.length} 条</small></div></article>)}</div>;
 }
 
-function ContextTab({ details, context, workspace, chapterNumber, onChapterChange, memoryContextConfig, onOpenMemory }: { details: BookDetails; context: Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null; workspace: AuthoringWorkspace | null; chapterNumber: number; onChapterChange: (value: number) => void; memoryContextConfig: MemoryContextConfig; onOpenMemory: () => void }) {
+function ContextTab({ details, context, workspace, chapterNumber, onChapterChange, memoryContextConfig, onOpenMemory, contextHistory, selectedReplayId, onSelectReplay }: { details: BookDetails; context: Awaited<ReturnType<AutoNovelApi["getMemoryContext"]>> | null; workspace: AuthoringWorkspace | null; chapterNumber: number; onChapterChange: (value: number) => void; memoryContextConfig: MemoryContextConfig; onOpenMemory: () => void; contextHistory: readonly ContextReplaySnapshot[]; selectedReplayId: string | null; onSelectReplay: (id: string | null) => void }) {
   const activePrompts = workspace?.promptVersions.filter((prompt) => prompt.active) ?? [];
   const boundaries = workspace?.knowledgeBoundaries.filter(({ revealChapter }) => revealChapter === null || revealChapter <= chapterNumber) ?? [];
   const recipe = workspace?.productionRecipes.filter((candidate) => sameMemoryConfig(candidate.memoryContextConfig, memoryContextConfig)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).at(0);
-  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT INSPECTOR</span><h3>本次生成会带什么</h3></div><button className="ghost-button" type="button" onClick={onOpenMemory}><Brain size={14} />管理记忆</button></div><label className="hub-select-label">章节<select value={chapterNumber} onChange={(event) => onChapterChange(Number(event.target.value))}>{details.chapterPlans.map((plan) => <option value={plan.chapterNumber} key={plan.id}>第 {plan.chapterNumber} 章 · {plan.title}</option>)}</select></label><p className="hub-context-mode">模式：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送 ${memoryContextConfig.entryIds.length} 条`} · 已注入 {context?.entries.length ?? 0} 条记忆 · 作者工作区 v{workspace?.revision ?? 0}</p><div className="hub-context-rules"><span>术语 {workspace?.termLocks.length ?? 0}</span><span>人物边界 {boundaries.length}</span><span>启用 Prompt {activePrompts.length}</span><span>{recipe ? `配方：${recipe.name}` : "未匹配生产配方"}</span></div>{activePrompts.map((prompt) => <div className="hub-context-entry" key={prompt.id}><span>Prompt · {prompt.role}</span><strong>{prompt.name}</strong><small>{prompt.content}</small></div>)}{boundaries.map((boundary) => <div className="hub-context-entry" key={boundary.id}><span>知识边界 · {boundary.characterName}</span><strong>已知：{boundary.knows || "未填写"}</strong><small>未知：{boundary.doesNotKnow || "未填写"}</small></div>)}{context?.entries.map((entry) => <div className="hub-context-entry" key={entry.id}><span>{entry.kind}</span><strong>{entry.subject}</strong><small>{memorySummary(entry.content)}</small></div>)}</div>;
+  const selectedReplay = contextHistory.find((item) => item.id === selectedReplayId) ?? null;
+  return <div className="hub-tab-content"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT INSPECTOR</span><h3>本次生成会带什么</h3></div><button className="ghost-button" type="button" onClick={onOpenMemory}><Brain size={14} />管理记忆</button></div><label className="hub-select-label">章节<ThemeSelect aria-label="章节" value={chapterNumber} options={details.chapterPlans.map((plan) => ({ value: String(plan.chapterNumber), label: `第 ${plan.chapterNumber} 章 · ${plan.title}` }))} onChange={(value) => onChapterChange(Number(value))} /></label><p className="hub-context-mode">模式：{memoryContextConfig.mode === "automatic" ? "自动推荐" : `仅发送 ${memoryContextConfig.entryIds.length} 条`} · 已注入 {context?.entries.length ?? 0} 条记忆 · 作者工作区 v{workspace?.revision ?? 0}</p><div className="hub-context-rules"><span>术语 {workspace?.termLocks.length ?? 0}</span><span>人物边界 {boundaries.length}</span><span>启用 Prompt {activePrompts.length}</span><span>{recipe ? `配方：${recipe.name}` : "未匹配生产配方"}</span></div><section className="hub-context-replay" aria-label="上下文回放"><div className="hub-section-heading"><div><span className="eyebrow">CONTEXT REPLAY</span><h3>最近发送过什么</h3></div><History size={17} /></div>{contextHistory.length === 0 ? <p className="hub-muted-line">选择章节并加载上下文后，这里会保留本地回放摘要。</p> : <div className="hub-context-replay-list">{contextHistory.slice(0, 6).map((item) => <button className={`hub-context-replay-row${selectedReplayId === item.id ? " is-active" : ""}`} type="button" key={item.id} onClick={() => onSelectReplay(selectedReplayId === item.id ? null : item.id)}><span><strong>第 {item.chapterNumber} 章 · {item.entrySubjects.length} 条记忆</strong><small>{new Date(item.capturedAt).toLocaleString("zh-CN")} · v{item.workspaceRevision}</small></span><code>{item.contextHash.slice(0, 10)}…</code></button>)}</div>}{selectedReplay ? <div className="hub-context-replay-detail"><strong>回放摘要</strong><small>记忆 revision {selectedReplay.memoryRevision} · 模式 {selectedReplay.mode === "automatic" ? "自动推荐" : "仅发送选中"}</small><p>{selectedReplay.entrySubjects.length > 0 ? selectedReplay.entrySubjects.join("、") : "本次没有注入记忆"}</p><small>{selectedReplay.promptNames.length > 0 ? `Prompt：${selectedReplay.promptNames.join("、")}` : "没有启用作者 Prompt"}{selectedReplay.recipeName ? ` · 配方：${selectedReplay.recipeName}` : ""}</small></div> : null}</section>{activePrompts.map((prompt) => <div className="hub-context-entry" key={prompt.id}><span>Prompt · {prompt.role}</span><strong>{prompt.name}</strong><small>{prompt.content}</small></div>)}{boundaries.map((boundary) => <div className="hub-context-entry" key={boundary.id}><span>知识边界 · {boundary.characterName}</span><strong>已知：{boundary.knows || "未填写"}</strong><small>未知：{boundary.doesNotKnow || "未填写"}</small></div>)}{context?.entries.map((entry) => <div className="hub-context-entry" key={entry.id}><span>{entry.kind}</span><strong>{entry.subject}</strong><small>{memorySummary(entry.content)}</small></div>)}</div>;
 }
 
 function RelationsTab({ details }: { details: BookDetails }) {
@@ -336,6 +383,17 @@ function sameMemoryConfig(left: MemoryContextConfig, right: MemoryContextConfig)
   if (left.mode !== right.mode || left.entryIds.length !== right.entryIds.length) return false;
   const rightIds = new Set(right.entryIds);
   return left.entryIds.every((entryId) => rightIds.has(entryId));
+}
+
+function loadContextReplay(bookId: string): ContextReplaySnapshot[] {
+  try {
+    const all = JSON.parse(window.localStorage.getItem(CONTEXT_REPLAY_KEY) ?? "{}") as Record<string, unknown>;
+    const value = all[bookId];
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is ContextReplaySnapshot => Boolean(item && typeof item === "object" && typeof (item as ContextReplaySnapshot).id === "string" && typeof (item as ContextReplaySnapshot).capturedAt === "string"));
+  } catch {
+    return [];
+  }
 }
 
 function isRecipe(value: unknown): value is Recipe {

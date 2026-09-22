@@ -14,7 +14,7 @@
 .continuity-radar-loading, .continuity-radar-error { display: flex; align-items: center; gap: 8px; padding: 30px 24px; color: var(--text-secondary); font-size: 13px; }
 .continuity-radar-error { color: var(--state-danger); }
 .continuity-radar-chapter-picker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-bottom: 18px; color: var(--text-secondary); font-size: 11px; }
-.continuity-radar-chapter-picker select { min-height: 34px; min-width: 0; padding: 0 9px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); background: var(--surface-panel); }
+.continuity-radar-chapter-picker select { min-height: 34px; min-width: 0; padding: 0 34px 0 9px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); background: var(--surface-control); color-scheme: dark; }
 .continuity-radar-chapter-picker span { white-space: nowrap; }
 .continuity-health-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .continuity-metric { display: grid; gap: 5px; padding: 14px; border: 1px solid var(--border-default); border-radius: 9px; background: rgb(255 255 255 / 3%); }

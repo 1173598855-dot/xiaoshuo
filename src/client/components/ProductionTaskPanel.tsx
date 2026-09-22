@@ -3,6 +3,7 @@ import { History, RefreshCw, X } from "lucide-react";
 
 import type { ProductionRunSummary } from "../../shared/auto-novel";
 import type { AutoNovelApi } from "../auto-novel-api";
+import { ThemeSelect } from "./ThemeSelect";
 
 interface ProductionTaskPanelProps {
   bookId: string;
@@ -42,7 +43,7 @@ export function ProductionTaskPanel({ bookId, currentRunId, api, onClose, onOpen
   return (
     <aside className="story-drawer production-task-drawer" aria-label="生产任务中心">
       <div className="memory-drawer-header"><div><span className="eyebrow">RUN CENTER</span><h2>生产任务中心</h2><p className="story-drawer-subtitle">查看这本作品的任务历史、重试计划和恢复入口。</p></div><button className="icon-button" type="button" aria-label="关闭生产任务中心" onClick={onClose}><X size={18} /></button></div>
-      <div className="production-task-toolbar"><select aria-label="任务状态" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">全部任务</option><option value="queued">排队中</option><option value="running">生产中</option><option value="paused">已暂停</option><option value="failed">失败</option><option value="completed">已完成</option><option value="cancelled">已停止</option></select><button className="ghost-button" type="button" disabled={busy} onClick={() => void load()}><RefreshCw size={14} /> 刷新</button></div>
+      <div className="production-task-toolbar"><ThemeSelect aria-label="任务状态" value={status} options={[{ value: "all", label: "全部任务" }, { value: "queued", label: "排队中" }, { value: "running", label: "生产中" }, { value: "paused", label: "已暂停" }, { value: "failed", label: "失败" }, { value: "completed", label: "已完成" }, { value: "cancelled", label: "已停止" }]} onChange={setStatus} /><button className="ghost-button" type="button" disabled={busy} onClick={() => void load()}><RefreshCw size={14} /> 刷新</button></div>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="production-task-list">
         {visibleTasks.length === 0 && !busy ? <div className="memory-empty"><History size={18} /><span>还没有符合条件的生产任务。</span></div> : null}

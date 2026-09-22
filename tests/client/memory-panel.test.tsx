@@ -12,6 +12,11 @@ const worldId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
 const characterId = "b2fcea89-9d4e-4f45-84d2-a0e40d86f706";
 const timestamp = "2026-09-12T00:00:00.000Z";
 
+function selectMemoryKind(label: string): void {
+  fireEvent.click(screen.getByRole("combobox", { name: "记忆类型" }));
+  fireEvent.click(screen.getByRole("option", { name: label }));
+}
+
 function createApi() {
   const world = {
     id: worldId,
@@ -76,7 +81,7 @@ describe("MemoryPanel", () => {
     expect(screen.getByText("第 1 章将注入 1 条记忆")).toBeInTheDocument();
     expect(screen.queryByText("林默")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "character_state" } });
+    selectMemoryKind("人物状态");
     expect(screen.getByText("林默")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "锁定" }));
     await waitFor(() => expect(api.updateMemory).toHaveBeenCalledWith({
@@ -110,7 +115,7 @@ describe("MemoryPanel", () => {
     });
     render(<MemoryPanel bookId={bookId} chapterNumber={1} api={api} onClose={vi.fn()} />);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
+    selectMemoryKind("世界规则");
     expect(await screen.findByText(/手动修正/)).toBeInTheDocument();
   });
 
@@ -163,7 +168,7 @@ describe("MemoryPanel", () => {
     ]);
     (api.rollbackMemory as ReturnType<typeof vi.fn>).mockResolvedValue(world);
     render(<MemoryPanel bookId={bookId} chapterNumber={1} api={api} onClose={vi.fn()} />);
-    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
+    selectMemoryKind("世界规则");
     await screen.findByText("城市会移动");
     fireEvent.click(screen.getByRole("button", { name: "历史" }));
     expect(await screen.findByText("v1")).toBeInTheDocument();
@@ -214,7 +219,7 @@ describe("MemoryPanel", () => {
     );
 
     await screen.findByText("城市会移动");
-    fireEvent.change(screen.getByRole("combobox", { name: "记忆类型" }), { target: { value: "world_rule" } });
+    selectMemoryKind("世界规则");
     expect(screen.queryByRole("checkbox", { name: "发送“已归档规则”给当前 Provider" })).not.toBeInTheDocument();
   });
 
@@ -225,6 +230,6 @@ describe("MemoryPanel", () => {
     expect(await screen.findByRole("complementary", { name: "故事资料卡" })).toBeInTheDocument();
     expect(screen.getByText("林默")).toBeInTheDocument();
     expect(screen.getByText("已归档规则")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "资料卡类型" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "资料卡类型" })).toHaveTextContent("全部资料卡");
   });
 });

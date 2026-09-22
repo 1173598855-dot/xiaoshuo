@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Library, Plus, Trash2, X } from "lucide-react";
 import type { BookDetails } from "../../shared/auto-novel";
+import { ThemeSelect } from "./ThemeSelect";
 
 const ASSET_LIBRARY_KEY = "xiaoyi.creative-assets.v1";
 
@@ -100,7 +101,7 @@ export function AssetLibraryPanel({ sourceBook = null, onClose, onUseAsset }: As
       </div>
       <div className="asset-library-toolbar">
         <input aria-label="搜索创作资产" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索资产…" />
-        <select aria-label="资产类型" value={kind} onChange={(event) => setKind(event.target.value as CreativeAssetKind | "all")}><option value="all">全部类型</option>{Object.entries(KIND_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+        <ThemeSelect aria-label="资产类型" value={kind} options={[{ value: "all", label: "全部类型" }, ...Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }))]} onChange={(value) => setKind(value as CreativeAssetKind | "all")} />
         {sourceBook ? <button className="secondary-button asset-extract-button" type="button" onClick={extractFromBook}><Library size={14} /> 从当前作品提取</button> : null}
         {selectedIds.size > 1 ? <button className="secondary-button" type="button" onClick={combineSelected}>组合选中（{selectedIds.size}）</button> : null}
         <button className="primary-button" type="button" onClick={createAsset}><Plus size={14} /> 新建资产</button>
@@ -130,7 +131,7 @@ function extractBookAssets(book: BookDetails): CreativeAsset[] {
 }
 
 function AssetEditor({ asset, onChange, onCancel, onSave }: { asset: CreativeAsset; onChange: (asset: CreativeAsset) => void; onCancel: () => void; onSave: (asset: CreativeAsset) => void }) {
-  return <div className="asset-editor"><label>资产名称<input value={asset.name} onChange={(event) => onChange({ ...asset, name: event.target.value })} placeholder="例如：雨夜车站人物组" maxLength={80} autoFocus /></label><label>资产类型<select value={asset.kind} onChange={(event) => onChange({ ...asset, kind: event.target.value as CreativeAssetKind })}>{Object.entries(KIND_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>内容<textarea value={asset.content} onChange={(event) => onChange({ ...asset, content: event.target.value })} placeholder="写下可以反复使用的素材…" maxLength={8_000} /></label><div className="asset-editor-actions"><button className="primary-button" type="button" disabled={!asset.name.trim() || !asset.content.trim()} onClick={() => onSave(asset)}>保存资产</button><button className="ghost-button" type="button" onClick={onCancel}>取消</button></div></div>;
+  return <div className="asset-editor"><label>资产名称<input value={asset.name} onChange={(event) => onChange({ ...asset, name: event.target.value })} placeholder="例如：雨夜车站人物组" maxLength={80} autoFocus /></label><label>资产类型<ThemeSelect aria-label="编辑资产类型" value={asset.kind} options={Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }))} onChange={(value) => onChange({ ...asset, kind: value as CreativeAssetKind })} /></label><label>内容<textarea value={asset.content} onChange={(event) => onChange({ ...asset, content: event.target.value })} placeholder="写下可以反复使用的素材…" maxLength={8_000} /></label><div className="asset-editor-actions"><button className="primary-button" type="button" disabled={!asset.name.trim() || !asset.content.trim()} onClick={() => onSave(asset)}>保存资产</button><button className="ghost-button" type="button" onClick={onCancel}>取消</button></div></div>;
 }
 
 function loadAssets(): CreativeAsset[] {

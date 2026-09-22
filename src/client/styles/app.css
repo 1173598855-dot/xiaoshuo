@@ -579,7 +579,8 @@ button:disabled {
   border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-primary);
-  background: #fff;
+  background: var(--surface-control);
+  color-scheme: dark;
 }
 
 @media print {
@@ -1135,10 +1136,11 @@ button:disabled {
   flex: 1;
   min-height: 34px;
   padding: 6px 8px;
-  color: var(--text-secondary);
-  background: #fff;
+  color: var(--text-primary);
+  background: var(--surface-control);
   border: 1px solid var(--border-strong);
   border-radius: 5px;
+  color-scheme: dark;
 }
 
 .memory-context-note {

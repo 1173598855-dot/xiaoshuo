@@ -5,6 +5,7 @@ import type { BookDetails, ChapterPlan } from "../../shared/auto-novel";
 import type { MemoryContext, MemoryContextConfig } from "../../shared/memory";
 import type { ConsistencyIssue, ConsistencyReport } from "../../shared/authoring";
 import type { AutoNovelApi, AutoNovelRunDetails } from "../auto-novel-api";
+import { ThemeSelect } from "./ThemeSelect";
 import "./ContinuityRadarPanel.css";
 
 type RadarView = "overview" | "timeline" | "graph" | "board" | "context";
@@ -94,9 +95,13 @@ export function ContinuityRadarPanel({
         <div className="continuity-radar-body">
           <div className="continuity-radar-chapter-picker">
             <label htmlFor="continuity-radar-chapter">当前章节</label>
-            <select id="continuity-radar-chapter" value={selectedChapter} onChange={(event) => setSelectedChapter(Number(event.target.value))}>
-              {details.chapterPlans.map((plan) => <option key={plan.id} value={plan.chapterNumber}>第 {plan.chapterNumber} 章 · {plan.title}</option>)}
-            </select>
+            <ThemeSelect
+              id="continuity-radar-chapter"
+              aria-label="当前章节"
+              value={selectedChapter}
+              options={details.chapterPlans.map((plan) => ({ value: String(plan.chapterNumber), label: `第 ${plan.chapterNumber} 章 · ${plan.title}` }))}
+              onChange={(value) => setSelectedChapter(Number(value))}
+            />
             <span>正文 v{details.book.revision} · 记忆 v{context?.memoryRevision ?? 0}</span>
           </div>
           {view === "overview" ? <OverviewView plans={details.chapterPlans} acceptedNumbers={acceptedNumbers} issues={report?.issues ?? []} context={context} onOpenTimeline={onOpenTimeline} onOpenMemory={onOpenMemory} onOpenSearch={onOpenSearch} onOpenChapter={openChapter} /> : null}
