@@ -44,6 +44,7 @@
 - 桌面端当前使用离线授权：管理员用本地私钥生成签名邀请码，用户首次启动桌面端输入邀请码后才能注册账号。生成示例：`npm run desktop:invite -- --private-key secrets/desktop-invitation-private.pem --max-uses 1 --expires-at 2026-12-31T00:00:00.000Z`。私钥位于被 Git 忽略的 `secrets/` 目录，生产使用前应替换为自己的密钥对并重新构建桌面端。
 - 桌面发布包启用 ASAR、去除生产 source map、关闭打包版 DevTools、拒绝常见调试启动参数，并依赖 Windows 代码签名提高篡改和逆向成本；这些措施不能替代服务端授权，也不能保证离线程序绝对不可破解。
 - 本轮主动安全审查记录在 [`security_best_practices_report.md`](security_best_practices_report.md)，结论是没有新增 Critical/High 问题；浏览器 sessionStorage 会话和离线程序可被本机分析属于已记录的设计残余风险。
+- 全栈优化与发布门禁审查记录在 [`2026-09-22-full-stack-optimization-audit.md`](docs/superpowers/plans/2026-09-22-full-stack-optimization-audit.md)，覆盖 Server、SQLite、Worker、ProviderVault、Electron 和安装包验收。
 
 ## 界面方向
 
