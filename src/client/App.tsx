@@ -23,7 +23,6 @@ import { CreativeHome } from "./components/CreativeHome";
 import { DirectionPicker } from "./components/DirectionPicker";
 import { ProductionRoom } from "./components/ProductionRoom";
 import { ChapterReview } from "./components/ChapterReview";
-import { ProviderDialog } from "./components/ProviderDialog";
 import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
 import { MemoryPanel } from "./components/MemoryPanel";
@@ -32,18 +31,21 @@ import { StoryTimelinePanel } from "./components/StoryTimelinePanel";
 import { StoryBranchPanel } from "./components/StoryBranchPanel";
 import { ContinuityRadarPanel } from "./components/ContinuityRadarPanel";
 import { ConsistencyPanel, SearchPanel } from "./components/AuthoringToolsPanel";
-import { DataManagementDialog } from "./components/DataManagementDialog";
-import { WorkflowDialog } from "./components/WorkflowDialog";
-import { CommandPalette, type CommandAction } from "./components/CommandPalette";
+import type { CommandAction } from "./components/CommandPalette";
 import { AuthGate, type AuthMode, type AuthStatus } from "./components/AuthGate";
 import { ActivationGate } from "./components/ActivationGate";
-import { AssetLibraryPanel, type CreativeAsset } from "./components/AssetLibraryPanel";
+import type { CreativeAsset } from "./components/AssetLibraryPanel";
 import { CreatorDashboardPanel } from "./components/CreatorDashboardPanel";
 import { storeAccessToken } from "./access-token";
 import { WorkbenchNavigationDrawer, type MotionMode, type WorkbenchPage } from "./components/WorkbenchChrome";
 
 const ManuscriptView = lazy(() => import("./components/ManuscriptView").then(({ ManuscriptView: component }) => ({ default: component })));
 const AuthoringHubPanel = lazy(() => import("./components/AuthoringHubPanel").then(({ AuthoringHubPanel: component }) => ({ default: component })));
+const ProviderDialog = lazy(() => import("./components/ProviderDialog").then(({ ProviderDialog: component }) => ({ default: component })));
+const DataManagementDialog = lazy(() => import("./components/DataManagementDialog").then(({ DataManagementDialog: component }) => ({ default: component })));
+const WorkflowDialog = lazy(() => import("./components/WorkflowDialog").then(({ WorkflowDialog: component }) => ({ default: component })));
+const CommandPalette = lazy(() => import("./components/CommandPalette").then(({ CommandPalette: component }) => ({ default: component })));
+const AssetLibraryPanel = lazy(() => import("./components/AssetLibraryPanel").then(({ AssetLibraryPanel: component }) => ({ default: component })));
 
 type Page = WorkbenchPage;
 const MOTION_MODE_KEY = "xiaoyi.motion-mode.v1";
@@ -533,8 +535,9 @@ export function App() {
   if (accessTokenPrompt) {
     return <AuthGate mode={authMode} status={authStatus} retryAfterSeconds={authRetryAfter} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); setError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} />;
   }
-  const workflowDialog = () => <WorkflowDialog open={workflowOpen} platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} />;
-  const dataDialog = <DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} />;
+  const lazyPanelFallback = <div className="panel-loading" role="status">正在打开工作区工具…</div>;
+  const workflowDialog = () => <Suspense fallback={lazyPanelFallback}><WorkflowDialog open={workflowOpen} platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} /></Suspense>;
+  const dataDialog = <Suspense fallback={dataOpen ? lazyPanelFallback : null}><DataManagementDialog open={dataOpen} onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} /></Suspense>;
   const commandActions: readonly CommandAction[] = [
     { id: "workflow", label: "配置模型工作流", description: "选择单模型或多模型角色编排", icon: Workflow, shortcut: "W", onSelect: () => setWorkflowOpen(true) },
     { id: "provider", label: "打开模型设置", description: "管理 Provider、模型与会话凭据", icon: Settings2, shortcut: "P", onSelect: () => setProviderOpen(true) },
@@ -552,7 +555,7 @@ export function App() {
       { id: "review", label: "打开候选审核", description: "审核、重写或采纳当前候选", icon: ListChecks, shortcut: "R", onSelect: () => document.getElementById("chapter-review-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
     ] : []),
   ];
-  const commandPalette = <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />;
+  const commandPalette = <Suspense fallback={commandOpen ? lazyPanelFallback : null}><CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} /></Suspense>;
   const openProductionTool = (open: () => void) => {
     setNavigationOpen(false);
     setPage("production");
@@ -585,14 +588,14 @@ export function App() {
     onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
   />;
   const creatorDashboardPanel = creatorDashboardOpen ? <CreatorDashboardPanel books={books} currentBook={bookDetails} acceptedChapters={runState.details?.acceptedChapters ?? []} onClose={() => setCreatorDashboardOpen(false)} onOpenBook={(book) => { setCreatorDashboardOpen(false); void openBook(book); }} /> : null;
-  const assetPanel = assetOpen ? <AssetLibraryPanel sourceBook={page === "home" ? null : bookDetails} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => {
+  const assetPanel = assetOpen ? <Suspense fallback={lazyPanelFallback}><AssetLibraryPanel sourceBook={page === "home" ? null : bookDetails} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => {
     if (page === "home") {
       setAssetDraft({ id: asset.id, text: `${asset.name}\n\n${asset.content}` });
     } else {
       window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: `${asset.name}\n\n${asset.content}`, directionCount: 3, selectedPresetId: null, updatedAt: Date.now() }));
     }
     setAssetOpen(false);
-  }} /> : null;
+  }} /></Suspense> : null;
   if (page === "home") {
     return <><CreativeHome books={books} busy={busy} error={error} assetDraft={assetDraft} onCreateIdea={(input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); }} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenAssetLibrary={() => setAssetOpen(true)} onOpenData={() => setDataOpen(true)} onOpenCreatorDashboard={() => setCreatorDashboardOpen(true)} motionMode={motionMode} onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")} onOpenCommandPalette={() => setCommandOpen(true)} onOpenNavigation={() => setNavigationOpen(true)} onRetry={() => { setLoading(true); setError(null); void loadLibrary(); }} />{assetPanel}{creatorDashboardPanel}{navigationDrawer}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
   }
@@ -614,7 +617,7 @@ function providerDialog(
   onClearKey: (providerId: SaveProviderSettingsInput["providerId"]) => Promise<void>,
   onClose: (open: boolean) => void,
 ) {
-  return <ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onTestConnection={(input, signal) => apiClient.testProviderConnection(input, signal)} onClearKey={onClearKey} onClose={() => onClose(false)} />;
+  return <Suspense fallback={open ? <div className="panel-loading" role="status">正在打开模型设置…</div> : null}><ProviderDialog open={open} providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onTestConnection={(input, signal) => apiClient.testProviderConnection(input, signal)} onClearKey={onClearKey} onClose={() => onClose(false)} /></Suspense>;
 }
 
 function errorMessage(error: unknown, fallback = "操作失败，请稍后重试。"): string {

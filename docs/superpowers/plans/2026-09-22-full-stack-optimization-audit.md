@@ -26,6 +26,7 @@
 
 - `npm run security:dependencies`：0 high/critical vulnerabilities。
 - Vite 仍报告主 bundle 和 Three.js chunk 超过 500KB；这是已有的前端拆包优化项，不影响功能或发布验证，Three.js 已在交互打开后动态加载。
+- 本轮进一步把 ThreeBookModel、ProviderDialog、WorkflowDialog、DataManagementDialog、AssetLibraryPanel 和 CommandPalette 改为按需 chunk，首屏主 JS 从约 512KB 降到约 397KB；Three.js 仍只在打开灵感册时加载。
 - 本地开发页面默认 favicon 404 仍是站点资源级非阻塞观察，不属于当前业务优化范围。
 
 ## 最终门禁
