@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ArrowRight, Check, Compass, Play, Sparkles, X } from "lucide-react";
 
 import type { StoryDirection } from "../../shared/auto-novel";
@@ -22,6 +22,18 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
   const [peekDirection, setPeekDirection] = useState<StoryDirection | null>(null);
   const motionRef = useRef<HTMLElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
+  const peekCloseRef = useRef<HTMLButtonElement>(null);
+  const peekTriggerRef = useRef<HTMLElement | null>(null);
+
+  const openPeek = useCallback((direction: StoryDirection, trigger: HTMLElement) => {
+    peekTriggerRef.current = trigger;
+    setPeekDirection(direction);
+  }, []);
+
+  const closePeek = useCallback(() => {
+    setPeekDirection(null);
+    window.setTimeout(() => peekTriggerRef.current?.focus(), 0);
+  }, []);
 
   useEffect(() => {
     const root = motionRef.current;
@@ -37,8 +49,21 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
 
   useEffect(() => {
     if (!peekDirection || !peekRef.current) return;
+    peekCloseRef.current?.focus({ preventScroll: true });
     return runAnime([{ targets: peekRef.current, params: { opacity: [0, 1], translateY: ["12px", "0px"], scale: [.98, 1], duration: 280, ease: "out(4)" } }]);
   }, [peekDirection]);
+
+  useEffect(() => {
+    if (!peekDirection) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePeek();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [closePeek, peekDirection]);
 
   return (
     <main className="director-page" ref={motionRef}>
@@ -72,7 +97,7 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
       <section className="direction-grid" aria-label="故事方向">
         {directions.map((direction) => (
           <SpotlightCard className="direction-spotlight-shell" key={direction.id}>
-          <article className="direction-card" tabIndex={0} aria-label={`预览方向：${direction.title}`} onKeyDown={(event) => { if (event.target !== event.currentTarget || ![" ", "Enter"].includes(event.key)) return; event.preventDefault(); setPeekDirection(direction); }}>
+          <article className="direction-card" tabIndex={0} aria-label={`预览方向：${direction.title}`} onKeyDown={(event) => { if (event.target !== event.currentTarget || ![" ", "Enter"].includes(event.key)) return; event.preventDefault(); openPeek(direction, event.currentTarget); }}>
             <div className="direction-card-top">
               <span className="direction-index">{String(direction.rank).padStart(2, "0")}</span>
               <span className="direction-type"><Sparkles size={13} /> {direction.genre}</span>
@@ -90,14 +115,19 @@ export function DirectionPicker({ directions, busy, onSelect, onAutoSelect, onBa
             <div className="outline-preview">
               {direction.outlinePreview.map((item) => <span key={item}>{item}</span>)}
             </div>
-            <button className="select-direction-button" type="button" disabled={busy} onClick={() => onSelect(direction)}>
-              <Check size={16} /> 选择这条路 <ArrowRight size={16} />
-            </button>
+            <div className="direction-card-actions">
+              <button className="direction-preview-button" type="button" aria-label={`查看方向详情：${direction.title}`} onClick={(event) => openPeek(direction, event.currentTarget)}>
+                <Compass size={15} /> 先看完整方向
+              </button>
+              <button className="select-direction-button" type="button" disabled={busy} onClick={() => onSelect(direction)}>
+                <Check size={16} /> 选择这条路 <ArrowRight size={16} />
+              </button>
+            </div>
           </article>
           </SpotlightCard>
         ))}
       </section>
-      {peekDirection ? <div className="peek-preview" ref={peekRef} role="dialog" aria-modal="false" aria-label={`预览方向：${peekDirection.title}`}><div className="peek-preview-bar"><span>方向预览</span><button className="icon-button" type="button" aria-label="关闭方向预览" onClick={() => setPeekDirection(null)}><X size={16} /></button></div><h2>{peekDirection.title}</h2><p>{peekDirection.logline}</p><div className="peek-preview-grid"><div><span>读者承诺</span><strong>{peekDirection.promise}</strong></div><div><span>核心冲突</span><strong>{peekDirection.centralConflict}</strong></div></div><button className="primary-button" type="button" disabled={busy} onClick={() => { onSelect(peekDirection); setPeekDirection(null); }}><Check size={15} /> 选择这条路</button></div> : null}
+      {peekDirection ? <div className="peek-preview" ref={peekRef} role="dialog" aria-modal="false" aria-label={`预览方向：${peekDirection.title}`}><div className="peek-preview-bar"><span>方向预览</span><button ref={peekCloseRef} className="icon-button" type="button" aria-label="关闭方向预览" onClick={closePeek}><X size={16} /></button></div><h2>{peekDirection.title}</h2><p>{peekDirection.logline}</p><div className="peek-preview-grid"><div><span>读者承诺</span><strong>{peekDirection.promise}</strong></div><div><span>核心冲突</span><strong>{peekDirection.centralConflict}</strong></div></div><div className="peek-preview-ending"><span>故事最终走向</span><p>{peekDirection.endingDirection}</p></div><button className="primary-button" type="button" disabled={busy} onClick={() => { onSelect(peekDirection); closePeek(); }}><Check size={15} /> 选择这条路</button></div> : null}
     </main>
   );
 }

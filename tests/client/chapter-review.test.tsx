@@ -61,6 +61,26 @@ function createDetails(): AutoNovelRunDetails {
 }
 
 describe("ChapterReview memory review", () => {
+  it("keeps optional outline checks and historical candidates collapsed by default", () => {
+    const details = createDetails();
+    details.candidate = { ...details.candidate!, memoryDelta: null };
+    details.candidates = [
+      { ...details.candidate, id: "old-candidate-0000-4000-8000-000000000000", candidateText: "历史版本正文。" },
+      details.candidate,
+    ];
+    render(<ChapterReview details={details} api={{} as AutoNovelApi} onResume={vi.fn(async () => undefined)} />);
+
+    expect(screen.getByText("章纲兑现清单", { selector: "summary" }).closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText(/候选版本历史/).closest("details")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("章纲兑现清单", { selector: "summary" }));
+    expect(screen.getByText("章纲兑现清单", { selector: "summary" }).closest("details")).toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "检查章纲兑现" })).toBeVisible();
+    fireEvent.click(screen.getByText(/候选版本历史/));
+    expect(screen.getByText(/候选版本历史/).closest("details")).toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: /历史候选/ })).toBeVisible();
+  });
+
   it("lets the author confirm an item and resume production", async () => {
     const details = createDetails();
     const api = {
@@ -255,6 +275,7 @@ describe("ChapterReview memory review", () => {
     } as unknown as AutoNovelApi;
     render(<ChapterReview details={details} api={api} onResume={vi.fn(async () => undefined)} provider={{ kind: "openai-compatible", model: "test-model", baseUrl: "https://models.example.test/v1", apiKey: "test-key" }} onAccept={vi.fn(async () => undefined)} />);
 
+    fireEvent.click(screen.getByText("章纲兑现清单", { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "检查章纲兑现" }));
 
     expect(await screen.findByText("异常已建立，但主角还没有明确选择。")).toBeInTheDocument();
@@ -271,6 +292,7 @@ describe("ChapterReview memory review", () => {
     } as unknown as AutoNovelApi;
     render(<ChapterReview details={details} api={api} onResume={vi.fn(async () => undefined)} provider={{ kind: "openai-compatible", model: "test-model", baseUrl: "https://models.example.test/v1", apiKey: "test-key" }} onAccept={vi.fn(async () => undefined)} />);
 
+    fireEvent.click(screen.getByText("章纲兑现清单", { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "检查章纲兑现" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("模型暂时不可用");
@@ -288,6 +310,7 @@ describe("ChapterReview memory review", () => {
     const onResume = vi.fn(async () => undefined);
     render(<ChapterReview details={details} api={api} onResume={onResume} />);
 
+    fireEvent.click(screen.getByText(/候选版本历史/));
     fireEvent.click(screen.getByRole("button", { name: /历史候选/ }));
     expect(screen.getByText("历史版本正文。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /恢复为当前候选/ }));

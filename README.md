@@ -13,6 +13,8 @@
 - 生产任务会保存检查点，关闭应用后可以继续；
 - 首页提供悬疑短篇、都市连载和东方幻想预设，也可以只输入自己的想法；方向数量可在 1–12 之间调整；未完成想法会自动保存并在下次打开时恢复，也可以把当前写作方式保存为自定义预设；作品列表显示当前阶段；
 - 首页资产库支持保存、搜索、编辑、删除、复制和带入人物、世界观、章法与文风素材，内容默认只保存在当前浏览器本地。
+- 首页“情节火花”可抽取一条冲突线索，作者决定加入后才写进本地故事草稿；支持重抽，不调用模型。实现与验收记录见 [`2026-09-24-story-spark.md`](docs/superpowers/plans/2026-09-24-story-spark.md)。
+- 2026-09-24 工作台改版让“继续作品 / 新建故事”并列呈现，方向卡可先预览再选择，生产室默认聚焦当前候选；章节规划、历史、生产日志和作者工具按需展开，往返正文时恢复章节与阅读位置。实现边界与验收记录见[改版设计](docs/superpowers/specs/2026-09-24-workbench-rearchitecture-design.md)和[实施计划](docs/superpowers/plans/2026-09-24-workbench-rearchitecture.md)。
 - 顶栏“更多”提供创作统计入口：聚合本地作品数量、当前作品章节进度、已采纳字数、最近作品和只在当前窗口运行的专注计时；统计面板只读现有数据，不写入作品正文或数据库。
 - 动效偏好、快捷操作和模型推理预设采用 Uiverse 风格的轻量按压/切换反馈，但仍使用原生语义控件、统一 token、键盘焦点和 reduced-motion 降级；实现说明见 [`docs/third-party/uiverse.md`](docs/third-party/uiverse.md)。
 - 作者工作台增加 Aceternity 风格的 Spotlight、Background Beams、Tracing Beam 和 Moving Border 沉浸层，全部改写为本地 SVG/CSS，随安静动效和 reduced-motion 自动降级；实现说明见 [`docs/third-party/aceternity-ui.md`](docs/third-party/aceternity-ui.md)。

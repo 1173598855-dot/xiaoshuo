@@ -4,6 +4,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../src/client/App";
+import {
+  appShellReducer,
+  initialAppShellState,
+} from "../../src/client/app/app-shell-state";
 
 const baseBook = {
   id: "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c",
@@ -83,6 +87,89 @@ afterEach(() => {
 });
 
 describe("auto-novel full client flow", () => {
+  it("routes global tools through one exclusive AppShell overlay state", () => {
+    const navigationOpen = appShellReducer(initialAppShellState, { type: "open-navigation" });
+    expect(navigationOpen.navigationOpen).toBe(true);
+
+    const providerOpen = appShellReducer(navigationOpen, { type: "open-tool", tool: "provider" });
+    expect(providerOpen).toEqual({
+      activeTool: "provider",
+      navigationOpen: false,
+      commandOpen: false,
+    });
+
+    const workflowOpen = appShellReducer(providerOpen, { type: "open-tool", tool: "workflow" });
+    expect(workflowOpen.activeTool).toBe("workflow");
+    expect(workflowOpen.navigationOpen).toBe(false);
+    expect(appShellReducer(workflowOpen, { type: "close-tool" }).activeTool).toBeNull();
+  });
+
+  it("restores a paused production run without resuming it automatically", async () => {
+    const selectedBook = {
+      ...baseBook,
+      status: "ready-to-draft" as const,
+      revision: 2,
+      selectedDirectionId: direction.id,
+    };
+    const pausedRun = {
+      id: "c2fcea89-9d4e-4f45-8c55-777777777777",
+      bookId: baseBook.id,
+      kind: "production" as const,
+      status: "paused" as const,
+      stage: "draft" as const,
+      currentChapterNumber: 1,
+      version: 3,
+      idempotencyKey: "paused-run",
+      errorCode: null,
+      memoryContextConfig: { mode: "automatic" as const, entryIds: [] },
+      createdAt: baseBook.createdAt,
+      updatedAt: baseBook.updatedAt,
+    };
+    const recovered = {
+      book: selectedBook,
+      directions: [{ ...direction, selected: true }],
+      foundation: {
+        id: "17f8d4d5-517b-45fb-8c55-777777777777",
+        bookId: baseBook.id,
+        worldRules: ["规则"],
+        characters: [],
+        styleGuide: "克制",
+        facts: [],
+        revision: 1,
+        createdAt: baseBook.createdAt,
+        updatedAt: baseBook.updatedAt,
+      },
+      chapterPlans: [plan],
+      run: pausedRun,
+    };
+    const runDetails = {
+      run: pausedRun,
+      checkpoints: [],
+      candidate: null,
+      book: selectedBook,
+      candidates: [],
+      acceptedChapters: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/books") && init?.method !== "POST") return json([selectedBook]);
+      if (url.endsWith("/api/providers")) return json([provider]);
+      if (url.endsWith("/api/books/recoverable/details")) return json([recovered]);
+      if (url.endsWith(`/api/production-runs/${pausedRun.id}`)) return json(runDetails);
+      if (url.includes(`/api/production-runs/${pausedRun.id}/resume`)) return json(pausedRun, 202);
+      throw new Error(`Unhandled request ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: /从检查点继续/ })).toBeEnabled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining(`/api/production-runs/${pausedRun.id}/resume`),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("takes the one-click path straight to production", async () => {
     const selectedBook = {
       ...baseBook,
@@ -271,7 +358,8 @@ describe("auto-novel full client flow", () => {
     fireEvent.change(screen.getByPlaceholderText("邀请码"), { target: { value: "xiaoyi-test-code" } });
     fireEvent.click(screen.getByRole("button", { name: "注册并登录" }));
 
-    await waitFor(() => expect(screen.getByText("一个想法。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "新建故事" })).toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "故事想法" })).toBeVisible();
     expect(sessionStorage.getItem("xiaoyi.access-token.v1")).toContain("account-session-token");
   });
 });

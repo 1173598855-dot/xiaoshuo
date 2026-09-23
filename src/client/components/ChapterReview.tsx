@@ -419,7 +419,8 @@ export function ChapterReview({ details, api, provider, onResume, onRewrite, onA
       )}
       <CandidateDiff originalText={candidate.originalText || candidate.candidateText} candidateText={candidate.candidateText} />
       {savedNotice && !delta ? <p className="review-save-notice" role="status">{savedNotice}</p> : null}
-      <section className="candidate-plan-fulfillment" aria-label="章纲兑现清单">
+      <details className="candidate-plan-fulfillment" aria-label="章纲兑现清单">
+        <summary>章纲兑现清单</summary>
         <div className="candidate-assist-heading"><div><strong>章纲兑现清单</strong><small>{!provider ? "先配置模型；检查不会阻断采纳或改动正文" : candidate.status !== "completed" ? "候选完成后可以检查，不影响采纳" : "仅供作者判断，不阻止采纳，也不会改动正文"}</small></div><button className="ghost-button" type="button" disabled={planCheckBusy || busy || candidate.status !== "completed" || !provider} onClick={() => void checkPlanFulfillment()}>{planCheckBusy ? "正在核对…" : planReport ? "重新检查" : "检查章纲兑现"}</button></div>
         {planCheckError ? <p className="form-error" role="alert">{planCheckError}</p> : null}
         {planReportStale ? <p className="candidate-assist-stale" role="status">候选或章纲已更新，这份报告已过期；请重新检查。</p> : null}
@@ -431,11 +432,10 @@ export function ChapterReview({ details, api, provider, onResume, onRewrite, onA
             <small>{criterion.explanation}</small>
           </article>)}
         </div> : null}
-      </section>
+      </details>
       {error && !delta ? <p className="form-error" role="alert">{error}</p> : null}
-      {details && details.candidates.length > 1 ? <CandidateHistory candidates={details.candidates} currentId={candidate.id} previewId={historyPreviewId} onPreview={setHistoryPreviewId} onRestore={() => void restoreCandidateVersion()} busy={busy} /> : null}
+      {details && details.candidates.length > 1 ? <details><summary>候选版本历史 · {details.candidates.length} 个版本</summary><CandidateHistory candidates={details.candidates} currentId={candidate.id} previewId={historyPreviewId} onPreview={setHistoryPreviewId} onRestore={() => void restoreCandidateVersion()} busy={busy} /></details> : null}
       <div className="review-meta"><span>修复 {candidate.repairCount} 次</span><span>{candidate.review.status === "pending" ? "等待重新审核" : "审核结果可追溯"}</span></div>
-      {onAccept && candidate.status === "completed" && candidate.review.status === "passed" ? <button className="primary-button review-accept-button" type="button" disabled={busy} onClick={() => void onAccept().catch((acceptError) => setError(acceptError instanceof Error ? acceptError.message : "重写候选采纳失败。"))}><CheckCircle2 size={15} /> 采纳当前候选进入正文</button> : null}
       {delta ? (
         <div className="review-memory-panel">
           <div className="review-memory-heading">
@@ -474,6 +474,7 @@ export function ChapterReview({ details, api, provider, onResume, onRewrite, onA
         </div>
       ) : null}
       {candidate.memoryDelta?.conflicts.length ? <div className="review-memory-meta"><span className="review-conflict">模型报告冲突 {candidate.memoryDelta.conflicts.length} 条，已保留原记忆。</span></div> : null}
+      {onAccept && candidate.status === "completed" && candidate.review.status === "passed" ? <button className="primary-button review-accept-button" type="button" disabled={busy} onClick={() => void onAccept().catch((acceptError) => setError(acceptError instanceof Error ? acceptError.message : "重写候选采纳失败。"))}><CheckCircle2 size={15} /> 采纳当前候选进入正文</button> : null}
     </section>
   );
 }

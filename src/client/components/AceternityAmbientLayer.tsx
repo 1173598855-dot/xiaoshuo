@@ -1,30 +1,45 @@
 import { useEffect, useRef } from "react";
 
+import { isMotionSuppressed, useMotionEnabled } from "../motion/motion-policy";
 import "./AceternityAmbientLayer.css";
 
 type AmbientVariant = "home" | "direction" | "production" | "manuscript";
 
 export function AceternityAmbientLayer({ variant }: { variant: AmbientVariant }) {
   const layerRef = useRef<HTMLDivElement>(null);
+  const motionEnabled = useMotionEnabled();
 
   useEffect(() => {
+    if (!motionEnabled) return undefined;
     const layer = layerRef.current;
-    if (!layer || typeof window.matchMedia !== "function") return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const quietMode = document.documentElement.dataset.motionMode === "quiet";
-    if (reducedMotion || quietMode) return;
+    if (!layer || typeof window.matchMedia !== "function") return undefined;
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return undefined;
+
+    let pointerFrame = 0;
+    let pointerX = 0;
+    let pointerY = 0;
 
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType === "touch") return;
-      layer.style.setProperty("--aceternity-spotlight-x", `${event.clientX}px`);
-      layer.style.setProperty("--aceternity-spotlight-y", `${event.clientY}px`);
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      if (pointerFrame) return;
+      pointerFrame = window.requestAnimationFrame(() => {
+        pointerFrame = 0;
+        if (isMotionSuppressed()) return;
+        layer.style.setProperty("--aceternity-spotlight-x", `${pointerX}px`);
+        layer.style.setProperty("--aceternity-spotlight-y", `${pointerY}px`);
+      });
     };
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onPointerMove);
-  }, []);
+    return () => {
+      if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+      window.removeEventListener("pointermove", onPointerMove);
+    };
+  }, [motionEnabled]);
 
   return (
-    <div ref={layerRef} className={`aceternity-ambient-layer is-${variant}`} data-testid="aceternity-ambient" data-variant={variant} aria-hidden="true">
+    <div ref={layerRef} className={`aceternity-ambient-layer is-${variant}${motionEnabled ? "" : " is-motion-suppressed"}`} data-testid="aceternity-ambient" data-variant={variant} aria-hidden="true">
       <span className="aceternity-ambient-spotlight" />
       <svg className="aceternity-ambient-beams" viewBox="0 0 1440 900" preserveAspectRatio="none">
         <defs>

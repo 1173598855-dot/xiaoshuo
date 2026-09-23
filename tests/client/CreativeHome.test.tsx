@@ -24,6 +24,66 @@ function renderHome() {
 }
 
 describe("CreativeHome author entry", () => {
+  it("puts continuing a saved story beside creating a new one", () => {
+    const book = {
+      id: "71d98eb2-ec4f-4f18-8fd5-5666de8a9b17",
+      title: "雨夜车站",
+      idea: "一座只在雨夜出现的车站。",
+      genre: "悬疑",
+      style: "克制、紧凑。",
+      targetChapters: 8,
+      targetChapterCharacters: 2_000,
+      directionCount: 3,
+      status: "paused" as const,
+      revision: 1,
+      selectedDirectionId: "4fd5a8ad-78e9-4d7f-9c29-dbc7f4556e4c",
+      createdAt: "2026-09-24T00:00:00.000Z",
+      updatedAt: "2026-09-24T01:00:00.000Z",
+    };
+    const onOpenBook = vi.fn();
+    render(
+      <CreativeHome
+        books={[book]}
+        busy={false}
+        error={null}
+        onCreateIdea={vi.fn()}
+        onOpenBook={onOpenBook}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+      />,
+    );
+
+    const firstActions = screen.getByRole("region", { name: "继续创作或新建故事" });
+    expect(within(firstActions).getByRole("heading", { name: "继续作品" })).toBeInTheDocument();
+    expect(within(firstActions).getByRole("heading", { name: "新建故事" })).toBeInTheDocument();
+    fireEvent.click(within(firstActions).getByRole("button", { name: "继续作品：雨夜车站" }));
+    expect(onOpenBook).toHaveBeenCalledWith(book);
+  });
+
+  it("keeps review-first and one-click creation actions distinct", () => {
+    const onCreateIdea = vi.fn();
+    render(
+      <CreativeHome
+        books={[]}
+        busy={false}
+        error={null}
+        onCreateIdea={onCreateIdea}
+        onOpenBook={vi.fn()}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+      />,
+    );
+    const idea = screen.getByRole("textbox", { name: "故事想法" });
+    fireEvent.change(idea, { target: { value: "一场只发生在旧车站的暴雨" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "开始开书" }));
+    expect(onCreateIdea).toHaveBeenNthCalledWith(1, { idea: "一场只发生在旧车站的暴雨", directionCount: 3 }, false);
+
+    fireEvent.change(idea, { target: { value: "一座会在午夜移动的城市" } });
+    fireEvent.click(screen.getByRole("button", { name: "一键开写" }));
+    expect(onCreateIdea).toHaveBeenNthCalledWith(2, { idea: "一座会在午夜移动的城市", directionCount: 3 }, true);
+  });
+
   it("mounts a local Aceternity ambient layer without changing the author flow", () => {
     renderHome();
 
@@ -37,12 +97,14 @@ describe("CreativeHome author entry", () => {
 
     await waitFor(() => expect(screen.getByRole("textbox", { name: "故事想法" })).toHaveValue("一封会回信的信"));
     expect(screen.getByRole("status")).toHaveTextContent("已恢复上次未完成的草稿");
+    fireEvent.click(screen.getByText("更多构思工具"));
     expect(screen.getByRole("spinbutton", { name: "方向数量" })).toHaveValue(5);
   });
 
   it("saves a custom preset without leaving the story form", async () => {
     renderHome();
     fireEvent.change(screen.getByRole("textbox", { name: "故事想法" }), { target: { value: "一座只在雨夜出现的车站" } });
+    fireEvent.click(screen.getByText("更多构思工具"));
     fireEvent.click(screen.getByRole("button", { name: "保存为预设" }));
     fireEvent.change(screen.getByRole("textbox", { name: "预设名称" }), { target: { value: "雨夜车站" } });
     fireEvent.click(screen.getByRole("button", { name: "保存预设" }));
@@ -62,6 +124,7 @@ describe("CreativeHome author entry", () => {
 
   it("gives clear feedback when a preset is adopted", () => {
     renderHome();
+    fireEvent.click(screen.getByText("更多构思工具"));
     fireEvent.click(screen.getByRole("button", { name: /灵感册翻一页/ }));
     fireEvent.click(screen.getByRole("button", { name: "采用这套写法" }));
 
@@ -71,10 +134,40 @@ describe("CreativeHome author entry", () => {
 
   it("can seed a new idea without leaving the author form", () => {
     renderHome();
+    fireEvent.click(screen.getByText("更多构思工具"));
     fireEvent.click(screen.getByRole("button", { name: /换个灵感/ }));
 
     expect(screen.getByRole("textbox", { name: "故事想法" })).not.toHaveValue("");
     expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("字"))).toBe(true);
+  });
+
+  it("draws a local plot spark and inserts it only when the author chooses", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      renderHome();
+      const idea = screen.getByRole("textbox", { name: "故事想法" });
+      fireEvent.change(idea, { target: { value: "一个只在雨夜开门的旧书店" } });
+      fireEvent.click(screen.getByText("更多构思工具"));
+      fireEvent.click(screen.getByRole("button", { name: "抽一条情节火花" }));
+
+      const spark = screen.getByRole("group", { name: "情节火花建议" });
+      const firstSpark = spark.textContent;
+      expect(screen.getByRole("region", { name: "情节火花" })).toHaveClass("is-lit");
+      expect(firstSpark).toContain("有代价的愿望");
+      expect(idea).toHaveValue("一个只在雨夜开门的旧书店");
+      expect(screen.getByRole("button", { name: "开始开书" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "再抽一条情节火花" }));
+      const rerolledSpark = screen.getByRole("group", { name: "情节火花建议" });
+      expect(rerolledSpark.textContent).not.toBe(firstSpark);
+      fireEvent.click(within(rerolledSpark).getByRole("button", { name: "加入构思" }));
+
+      expect((idea as HTMLTextAreaElement).value).toContain("情节火花");
+      expect(screen.getByRole("region", { name: "情节火花" })).not.toHaveClass("is-lit");
+      expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("已加入情节火花"))).toBe(true);
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it("exposes a useful overflow menu instead of a single leftover action", () => {
@@ -123,5 +216,28 @@ describe("CreativeHome author entry", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("本地服务暂时没连上");
     fireEvent.click(screen.getByRole("button", { name: "重新连接" }));
     expect(onRetry).toHaveBeenCalledOnce();
+    });
   });
-});
+
+  it("turns a preset page immediately when the saved motion preference is quiet", () => {
+    window.localStorage.setItem("xiaoyi.motion-mode.v1", "quiet");
+    renderHome();
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    expect(document.querySelector(".preset-book-turn-page")).not.toBeInTheDocument();
+  });
+
+  it("finishes an active preset turn as soon as quiet mode is enabled", async () => {
+    renderHome();
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(document.querySelector(".preset-book-turn-page")).toBeInTheDocument();
+    document.documentElement.dataset.motionMode = "quiet";
+
+    await waitFor(() => expect(screen.getByText("2 / 3")).toBeInTheDocument());
+    expect(document.querySelector(".preset-book-turn-page")).not.toBeInTheDocument();
+  });

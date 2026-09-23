@@ -1,9 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Activity, BookOpen, FileText, GitBranch, ListChecks, PackageCheck, Search, Settings2, Sparkles, Workflow } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import type {
   DesktopCommand,
-  ListProviderModelsInput,
   ProviderCatalogEntry,
   ProviderConfig,
   SaveProviderSettingsInput,
@@ -22,34 +20,18 @@ import type { AutoNovelDesktopApiV2 } from "../desktop/auto-novel-preload-api-v2
 import { CreativeHome } from "./components/CreativeHome";
 import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
-import type { CommandAction } from "./components/CommandPalette";
 import type { AuthMode, AuthStatus } from "./components/AuthGate";
-import type { CreativeAsset } from "./components/AssetLibraryPanel";
 import { storeAccessToken } from "./access-token";
-import { WorkbenchNavigationDrawer, type MotionMode, type WorkbenchPage } from "./components/WorkbenchChrome";
+import type { MotionMode, WorkbenchPage } from "./components/WorkbenchChrome";
+import { AppShell } from "./app/AppShell";
+import { useAppShellState } from "./app/app-shell-state";
 
 const ActivationGate = lazy(() => import("./components/ActivationGate").then(({ ActivationGate: component }) => ({ default: component })));
 const AuthGate = lazy(() => import("./components/AuthGate").then(({ AuthGate: component }) => ({ default: component })));
 const DirectionPicker = lazy(() => import("./components/DirectionPicker").then(({ DirectionPicker: component }) => ({ default: component })));
 const ProductionRoom = lazy(() => import("./components/ProductionRoom").then(({ ProductionRoom: component }) => ({ default: component })));
 const ChapterReview = lazy(() => import("./components/ChapterReview").then(({ ChapterReview: component }) => ({ default: component })));
-const MemoryPanel = lazy(() => import("./components/MemoryPanel").then(({ MemoryPanel: component }) => ({ default: component })));
-const StoryBiblePanel = lazy(() => import("./components/StoryBiblePanel").then(({ StoryBiblePanel: component }) => ({ default: component })));
-const StoryTimelinePanel = lazy(() => import("./components/StoryTimelinePanel").then(({ StoryTimelinePanel: component }) => ({ default: component })));
-const StoryBranchPanel = lazy(() => import("./components/StoryBranchPanel").then(({ StoryBranchPanel: component }) => ({ default: component })));
-const ContinuityRadarPanel = lazy(() => import("./components/ContinuityRadarPanel").then(({ ContinuityRadarPanel: component }) => ({ default: component })));
-const ConsistencyPanel = lazy(() => import("./components/AuthoringToolsPanel").then(({ ConsistencyPanel: component }) => ({ default: component })));
-const SearchPanel = lazy(() => import("./components/AuthoringToolsPanel").then(({ SearchPanel: component }) => ({ default: component })));
-const CreatorDashboardPanel = lazy(() => import("./components/CreatorDashboardPanel").then(({ CreatorDashboardPanel: component }) => ({ default: component })));
-const SystemHealthPanel = lazy(() => import("./components/SystemHealthPanel").then(({ SystemHealthPanel: component }) => ({ default: component })));
 const ManuscriptView = lazy(() => import("./components/ManuscriptView").then(({ ManuscriptView: component }) => ({ default: component })));
-const AuthoringHubPanel = lazy(() => import("./components/AuthoringHubPanel").then(({ AuthoringHubPanel: component }) => ({ default: component })));
-const ProviderDialog = lazy(() => import("./components/ProviderDialog").then(({ ProviderDialog: component }) => ({ default: component })));
-const DataManagementDialog = lazy(() => import("./components/DataManagementDialog").then(({ DataManagementDialog: component }) => ({ default: component })));
-const WorkflowDialog = lazy(() => import("./components/WorkflowDialog").then(({ WorkflowDialog: component }) => ({ default: component })));
-const CommandPalette = lazy(() => import("./components/CommandPalette").then(({ CommandPalette: component }) => ({ default: component })));
-const AssetLibraryPanel = lazy(() => import("./components/AssetLibraryPanel").then(({ AssetLibraryPanel: component }) => ({ default: component })));
-const AuthorDeliveryCenterPanel = lazy(() => import("./components/AuthorDeliveryCenterPanel").then(({ AuthorDeliveryCenterPanel: component }) => ({ default: component })));
 
 type Page = WorkbenchPage;
 const MOTION_MODE_KEY = "xiaoyi.motion-mode.v1";
@@ -61,31 +43,16 @@ export function App() {
       ? createAutoNovelIpcApi(bridge)
       : createAutoNovelApi((input, init) => globalThis.fetch(input, init));
   }, []);
+  const appShell = useAppShellState();
+  const { state: shellState, openTool, closeTool, openNavigation, closeNavigation, openCommand, closeCommand, toggleCommand } = appShell;
   const [page, setPage] = useState<Page>("home");
   const [books, setBooks] = useState<readonly Book[]>([]);
   const [bookDetails, setBookDetails] = useState<BookDetails | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [providers, setProviders] = useState<readonly ProviderCatalogEntry[]>([]);
   const [providerSettings, setProviderSettings] = useState<ClientProviderSettings | null>(null);
-  const [providerOpen, setProviderOpen] = useState(false);
-  const [workflowOpen, setWorkflowOpen] = useState(false);
-  const [assetOpen, setAssetOpen] = useState(false);
-  const [creatorDashboardOpen, setCreatorDashboardOpen] = useState(false);
-  const [systemHealthOpen, setSystemHealthOpen] = useState(false);
-  const [authorDeliveryOpen, setAuthorDeliveryOpen] = useState(false);
   const [assetDraft, setAssetDraft] = useState<{ id: string; text: string } | null>(null);
-  const [commandOpen, setCommandOpen] = useState(false);
-  const [navigationOpen, setNavigationOpen] = useState(false);
   const [workflowInput, setWorkflowInput] = useState<ModelWorkflowConfig | DesktopModelWorkflowSelection | null>(null);
-  const [dataOpen, setDataOpen] = useState(false);
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [timelineOpen, setTimelineOpen] = useState(false);
-  const [branchesOpen, setBranchesOpen] = useState(false);
-  const [authoringHubOpen, setAuthoringHubOpen] = useState(false);
-  const [storyBibleOpen, setStoryBibleOpen] = useState(false);
-  const [continuityRadarOpen, setContinuityRadarOpen] = useState(false);
-  const [consistencyOpen, setConsistencyOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [memoryContextConfig, setMemoryContextConfig] = useState<MemoryContextConfig>(DEFAULT_MEMORY_CONTEXT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -231,37 +198,37 @@ export function App() {
       if (typeof runId !== "string" || !runId) return;
       setRunId(runId);
       setPage("production");
-      setAssetOpen(false);
+      closeTool("assets");
     };
     window.addEventListener("xiaoyi-open-production-run", openRun);
     return () => window.removeEventListener("xiaoyi-open-production-run", openRun);
-  }, []);
+  }, [closeTool]);
 
   useEffect(() => {
     return apiClient.onDesktopCommand((command: DesktopCommand) => {
-      if (command.type === "provider-settings") setProviderOpen(true);
-      if (command.type === "import" || command.type === "export") setDataOpen(true);
+      if (command.type === "provider-settings") openTool("provider");
+      if (command.type === "import" || command.type === "export") openTool("data");
       if (command.type === "update-downloaded") setError("新版本已下载，重启桌面端即可完成更新。");
       if (command.type === "shutdown-requested") {
         void apiClient.resolveClose({ requestId: command.requestId, canClose: true });
       }
     });
-  }, []);
+  }, [openTool]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setCommandOpen((open) => !open);
+        toggleCommand();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [toggleCommand]);
 
   const requireProvider = () => {
     if (providerInput) return providerInput;
-    setProviderOpen(true);
+    openTool("provider");
     setError("请先配置一个模型，之后只需要输入故事想法。" );
     return null;
   };
@@ -331,9 +298,9 @@ export function App() {
           ? "production"
           : "directions",
       );
-      setMemoryOpen(false);
-      setTimelineOpen(false);
-      setStoryBibleOpen(false);
+      closeTool("memory");
+      closeTool("timeline");
+      closeTool("story-bible");
     } catch (openError) {
       setError(errorMessage(openError));
     } finally {
@@ -460,7 +427,7 @@ export function App() {
     const next = await apiClient.saveProviderSettings(input);
     setProviderSettings(next);
     setWorkflowInput(null);
-    setProviderOpen(false);
+    closeTool("provider");
     setError(null);
   };
 
@@ -473,9 +440,9 @@ export function App() {
   const handleImported = async () => {
     setBookDetails(null);
     setRunId(null);
-    setMemoryOpen(false);
-    setTimelineOpen(false);
-    setStoryBibleOpen(false);
+    closeTool("memory");
+    closeTool("timeline");
+    closeTool("story-bible");
     setPage("home");
     await loadLibrary();
   };
@@ -544,95 +511,145 @@ export function App() {
   if (accessTokenPrompt) {
     return <Suspense fallback={authFallback}><AuthGate mode={authMode} status={authStatus} retryAfterSeconds={authRetryAfter} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); setError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} /></Suspense>;
   }
-  const workflowDialog = () => workflowOpen ? <Suspense fallback={lazyPanelFallback}><WorkflowDialog open platform={apiClient.platform} providers={providers} settings={providerSettings} value={workflowInput} onSave={async (next) => { const saved = await apiClient.saveWorkflowSettings(next); setWorkflowInput(saved); setWorkflowOpen(false); setError(null); }} onClose={() => setWorkflowOpen(false)} /></Suspense> : null;
-  const dataDialog = dataOpen ? <Suspense fallback={lazyPanelFallback}><DataManagementDialog open onClose={() => setDataOpen(false)} onBeforeOperation={async () => true} onImported={handleImported} /></Suspense> : null;
-  const commandActions: readonly CommandAction[] = [
-    { id: "workflow", label: "配置模型工作流", description: "选择单模型或多模型角色编排", icon: Workflow, shortcut: "W", onSelect: () => setWorkflowOpen(true) },
-    { id: "provider", label: "打开模型设置", description: "管理 Provider、模型与会话凭据", icon: Settings2, shortcut: "P", onSelect: () => setProviderOpen(true) },
-    { id: "motion", label: motionMode === "quiet" ? "开启完整动效" : "切换安静动效", description: "控制书页、光晕和状态转场的强度", icon: Sparkles, onSelect: () => setMotionMode((current) => current === "quiet" ? "full" : "quiet") },
-    ...(page === "home" ? [{ id: "new-story", label: "开始新故事", description: "把一个想法交给自动导演", icon: Sparkles, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() }] : []),
-    ...(page === "directions" ? [
-      { id: "auto-select", label: "自动选择方向", description: "采用排名第一的方向并开始生产", icon: GitBranch, shortcut: "A", onSelect: () => void autoSelectDirection() },
-      { id: "back-home", label: "返回故事想法", description: "回到首页重新编辑创作起点", icon: BookOpen, onSelect: () => setPage("home") },
-    ] : []),
-    ...(page === "production" ? [
-      { id: "author-delivery", label: "作者交付中心", description: "发布、质量、修订、成本与自动化", icon: PackageCheck, onSelect: () => setAuthorDeliveryOpen(true) },
-      { id: "hub", label: "打开创作中枢", description: "健康度、场景卡、上下文与生产配方", icon: Activity, onSelect: () => setAuthoringHubOpen(true) },
-      { id: "timeline", label: "打开故事时间线", description: "查看事件、伏笔与章节节奏", icon: GitBranch, onSelect: () => setTimelineOpen(true) },
-      { id: "search", label: "搜索全书", description: "在作品内容与记忆中查找", icon: Search, shortcut: "/", onSelect: () => setSearchOpen(true) },
-      { id: "manuscript", label: "查看正式正文", description: "阅读已采纳章节", icon: FileText, shortcut: "M", onSelect: () => setPage("manuscript") },
-      { id: "review", label: "打开候选审核", description: "审核、重写或采纳当前候选", icon: ListChecks, shortcut: "R", onSelect: () => document.getElementById("chapter-review-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }) },
-    ] : []),
-  ];
-  const commandPalette = commandOpen ? <Suspense fallback={lazyPanelFallback}><CommandPalette open actions={commandActions} onClose={() => setCommandOpen(false)} /></Suspense> : null;
-  const openProductionTool = (open: () => void) => {
-    setNavigationOpen(false);
-    setPage("production");
-    open();
-  };
-  const navigationDrawer = <WorkbenchNavigationDrawer
-    open={navigationOpen}
-    currentPage={page}
-    bookTitle={bookDetails?.book.title}
-    bookIdea={bookDetails?.book.idea}
-    runStatus={runState.details?.run.status ?? null}
-    hasBook={Boolean(bookDetails?.book.selectedDirectionId && bookDetails.chapterPlans.length > 0)}
-    hasDirections={Boolean(bookDetails && bookDetails.directions.length > 0)}
-    onClose={() => setNavigationOpen(false)}
-    onNavigate={(next) => { setNavigationOpen(false); setPage(next); }}
-    onOpenProvider={() => { setNavigationOpen(false); setProviderOpen(true); }}
-    onOpenWorkflow={() => { setNavigationOpen(false); setWorkflowOpen(true); }}
-    onOpenData={() => { setNavigationOpen(false); setDataOpen(true); }}
-    onOpenAssetLibrary={() => { setNavigationOpen(false); setAssetOpen(true); }}
-    onOpenCreatorDashboard={() => { setNavigationOpen(false); setCreatorDashboardOpen(true); }}
-    onOpenAuthorDelivery={() => openProductionTool(() => setAuthorDeliveryOpen(true))}
-    onOpenSystemHealth={() => openProductionTool(() => setSystemHealthOpen(true))}
-    onOpenAuthoringHub={() => openProductionTool(() => setAuthoringHubOpen(true))}
-    onOpenContinuityRadar={() => openProductionTool(() => setContinuityRadarOpen(true))}
-    onOpenTimeline={() => openProductionTool(() => setTimelineOpen(true))}
-    onOpenStoryBible={() => openProductionTool(() => setStoryBibleOpen(true))}
-    onOpenConsistency={() => openProductionTool(() => setConsistencyOpen(true))}
-    onOpenSearch={() => openProductionTool(() => setSearchOpen(true))}
-    onOpenMemory={() => openProductionTool(() => setMemoryOpen(true))}
-    onOpenCommandPalette={() => { setNavigationOpen(false); setCommandOpen(true); }}
-    motionMode={motionMode}
-    onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
-  />;
-  const creatorDashboardPanel = creatorDashboardOpen ? <Suspense fallback={lazyPanelFallback}><CreatorDashboardPanel books={books} currentBook={bookDetails} acceptedChapters={runState.details?.acceptedChapters ?? []} onClose={() => setCreatorDashboardOpen(false)} onOpenBook={(book) => { setCreatorDashboardOpen(false); void openBook(book); }} /></Suspense> : null;
-  const systemHealthPanel = systemHealthOpen && bookDetails ? <Suspense fallback={lazyPanelFallback}><SystemHealthPanel book={bookDetails} run={runState.details} api={autoApi} onClose={() => setSystemHealthOpen(false)} /></Suspense> : null;
-  const authorDeliveryPanel = authorDeliveryOpen && bookDetails ? <Suspense fallback={lazyPanelFallback}><AuthorDeliveryCenterPanel book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} run={runState.details} api={autoApi} onBookUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); void runState.refresh(); }} onClose={() => setAuthorDeliveryOpen(false)} onOpenManuscript={() => { setAuthorDeliveryOpen(false); setPage("manuscript"); }} onOpenTimeline={() => { setAuthorDeliveryOpen(false); setTimelineOpen(true); }} onOpenMemory={() => { setAuthorDeliveryOpen(false); setMemoryOpen(true); }} onOpenConsistency={() => { setAuthorDeliveryOpen(false); setConsistencyOpen(true); }} /></Suspense> : null;
-  const assetPanel = assetOpen ? <Suspense fallback={lazyPanelFallback}><AssetLibraryPanel sourceBook={page === "home" ? null : bookDetails} onClose={() => setAssetOpen(false)} onUseAsset={(asset: CreativeAsset) => {
-    if (page === "home") {
-      setAssetDraft({ id: asset.id, text: `${asset.name}\n\n${asset.content}` });
-    } else {
-      window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: `${asset.name}\n\n${asset.content}`, directionCount: 3, selectedPresetId: null, updatedAt: Date.now() }));
-    }
-    setAssetOpen(false);
-  }} /></Suspense> : null;
+  let pageContent: ReactNode;
   if (page === "home") {
-    return <><CreativeHome books={books} busy={busy} error={error} assetDraft={assetDraft} onCreateIdea={(input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); }} onOpenBook={(book) => void openBook(book)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenAssetLibrary={() => setAssetOpen(true)} onOpenData={() => setDataOpen(true)} onOpenCreatorDashboard={() => setCreatorDashboardOpen(true)} motionMode={motionMode} onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")} onOpenCommandPalette={() => setCommandOpen(true)} onOpenNavigation={() => setNavigationOpen(true)} onRetry={() => { setLoading(true); setError(null); void loadLibrary(); }} />{assetPanel}{creatorDashboardPanel}{navigationDrawer}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
+    pageContent = <CreativeHome
+      books={books}
+      busy={busy}
+      error={error}
+      assetDraft={assetDraft}
+      onCreateIdea={(input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); }}
+      onOpenBook={(book) => void openBook(book)}
+      onConfigureProvider={() => openTool("provider")}
+      onConfigureWorkflow={() => openTool("workflow")}
+      onOpenAssetLibrary={() => openTool("assets")}
+      onOpenData={() => openTool("data")}
+      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
+      motionMode={motionMode}
+      onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
+      onOpenCommandPalette={openCommand}
+      onOpenNavigation={openNavigation}
+      onRetry={() => { setLoading(true); setError(null); void loadLibrary(); }}
+    />;
+  } else if (!bookDetails) {
+    return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
+  } else if (page === "directions") {
+    pageContent = <Suspense fallback={lazyPanelFallback}><DirectionPicker
+      directions={bookDetails.directions}
+      busy={busy}
+      onSelect={(direction) => void selectDirection(direction)}
+      onAutoSelect={() => void autoSelectDirection()}
+      onBack={() => setPage("home")}
+      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
+      onOpenNavigation={openNavigation}
+      onOpenCommandPalette={openCommand}
+    /></Suspense>;
+  } else if (page === "manuscript") {
+    pageContent = <Suspense fallback={<div className="panel-loading" role="status">正在打开正文…</div>}><ManuscriptView
+      book={bookDetails}
+      chapters={runState.details?.acceptedChapters ?? []}
+      api={autoApi}
+      onImported={async () => {
+        const next = await autoApi.getBook(bookDetails.book.id);
+        setBookDetails(next);
+        setBooks((current) => current.map((item) => item.id === next.book.id ? next.book : item));
+        if (runId) await runState.refresh();
+      }}
+      onBack={() => setPage("production")}
+      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
+      onOpenNavigation={openNavigation}
+      onOpenCommandPalette={openCommand}
+    /></Suspense>;
+  } else {
+    pageContent = <Suspense fallback={lazyPanelFallback}><ProductionRoom
+      review={<div id="chapter-review-anchor"><Suspense fallback={lazyPanelFallback}><ChapterReview
+        details={runState.details}
+        api={autoApi}
+        provider={providerInput}
+        onResume={resumeRun}
+        onRewrite={async (instruction) => {
+          const config = requireProvider();
+          if (!config || !runId) return;
+          await autoApi.rewriteCurrentChapter(runId, config, instruction);
+          await runState.refresh();
+        }}
+        onAccept={async () => {
+          const candidate = runState.details?.candidate;
+          if (!candidate) return;
+          await autoApi.acceptCandidate(candidate.id, candidate.baseRevision);
+          await runState.refresh();
+        }}
+      /></Suspense></div>}
+      book={bookDetails}
+      run={runState.details}
+      api={autoApi}
+      busy={busy}
+      error={error ?? runState.error}
+      memoryContextConfig={memoryContextConfig}
+      connectionState={runState.connectionState}
+      onRetryConnection={() => runState.retryNow()}
+      onStart={() => void startProduction()}
+      onPause={() => void pauseRun()}
+      onResume={() => void resumeRun()}
+      onCancel={() => void cancelRun()}
+      onOpenManuscript={() => setPage("manuscript")}
+      onOpenMemory={() => openTool("memory")}
+      onOpenContinuityRadar={() => openTool("continuity-radar")}
+      onOpenTimeline={() => openTool("timeline")}
+      onOpenBranches={() => openTool("branches")}
+      onOpenAuthoringHub={() => openTool("authoring-hub")}
+      onOpenStoryBible={() => openTool("story-bible")}
+      onOpenConsistency={() => openTool("consistency")}
+      onOpenSearch={() => openTool("search")}
+      onConfigureProvider={() => openTool("provider")}
+      onConfigureWorkflow={() => openTool("workflow")}
+      onOpenAssetLibrary={() => openTool("assets")}
+      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
+      onOpenAuthorDelivery={() => openTool("author-delivery")}
+      onOpenSystemHealth={() => openTool("system-health")}
+      onOpenNavigation={openNavigation}
+      onOpenCommandPalette={openCommand}
+    /></Suspense>;
   }
-  if (!bookDetails) return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
-  if (page === "directions") {
-    return <><Suspense fallback={lazyPanelFallback}><DirectionPicker directions={bookDetails.directions} busy={busy} onSelect={(direction) => void selectDirection(direction)} onAutoSelect={() => void autoSelectDirection()} onBack={() => setPage("home")} onOpenCreatorDashboard={() => setCreatorDashboardOpen(true)} onOpenNavigation={() => setNavigationOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} /></Suspense>{assetPanel}{creatorDashboardPanel}{navigationDrawer}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
-  }
-  if (page === "manuscript") {
-    return <><Suspense fallback={<div className="panel-loading" role="status">正在打开正文…</div>}><ManuscriptView book={bookDetails} chapters={runState.details?.acceptedChapters ?? []} api={autoApi} onImported={async () => { const next = await autoApi.getBook(bookDetails.book.id); setBookDetails(next); setBooks((current) => current.map((item) => item.id === next.book.id ? next.book : item)); if (runId) await runState.refresh(); }} onBack={() => setPage("production")} onOpenCreatorDashboard={() => setCreatorDashboardOpen(true)} onOpenNavigation={() => setNavigationOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} /></Suspense>{assetPanel}{creatorDashboardPanel}{navigationDrawer}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
-  }
-  return <><Suspense fallback={lazyPanelFallback}><ProductionRoom review={<div id="chapter-review-anchor"><Suspense fallback={lazyPanelFallback}><ChapterReview details={runState.details} api={autoApi} provider={providerInput} onResume={resumeRun} onRewrite={async (instruction) => { const config = requireProvider(); if (!config || !runId) return; await autoApi.rewriteCurrentChapter(runId, config, instruction); await runState.refresh(); }} onAccept={async () => { const candidate = runState.details?.candidate; if (!candidate) return; await autoApi.acceptCandidate(candidate.id, candidate.baseRevision); await runState.refresh(); }} /></Suspense></div>} book={bookDetails} run={runState.details} busy={busy} error={error ?? runState.error} memoryContextConfig={memoryContextConfig} connectionState={runState.connectionState} onRetryConnection={() => runState.retryNow()} onStart={() => void startProduction()} onPause={() => void pauseRun()} onResume={() => void resumeRun()} onCancel={() => void cancelRun()} onOpenManuscript={() => setPage("manuscript")} onOpenMemory={() => setMemoryOpen(true)} onOpenContinuityRadar={() => setContinuityRadarOpen(true)} onOpenTimeline={() => setTimelineOpen(true)} onOpenBranches={() => setBranchesOpen(true)} onOpenAuthoringHub={() => setAuthoringHubOpen(true)} onOpenStoryBible={() => setStoryBibleOpen(true)} onOpenConsistency={() => setConsistencyOpen(true)} onOpenSearch={() => setSearchOpen(true)} onConfigureProvider={() => setProviderOpen(true)} onConfigureWorkflow={() => setWorkflowOpen(true)} onOpenAssetLibrary={() => setAssetOpen(true)} onOpenCreatorDashboard={() => setCreatorDashboardOpen(true)} onOpenAuthorDelivery={() => setAuthorDeliveryOpen(true)} onOpenSystemHealth={() => setSystemHealthOpen(true)} onOpenNavigation={() => setNavigationOpen(true)} onOpenCommandPalette={() => setCommandOpen(true)} /></Suspense>{assetPanel}{creatorDashboardPanel}{systemHealthPanel}{authorDeliveryPanel}{memoryOpen ? <Suspense fallback={lazyPanelFallback}><MemoryPanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setMemoryOpen(false)} /></Suspense> : null}{continuityRadarOpen ? <Suspense fallback={lazyPanelFallback}><ContinuityRadarPanel details={bookDetails} run={runState.details} api={autoApi} memoryContextConfig={memoryContextConfig} onOpenMemory={() => { setContinuityRadarOpen(false); setMemoryOpen(true); }} onOpenTimeline={() => { setContinuityRadarOpen(false); setTimelineOpen(true); }} onOpenSearch={() => { setContinuityRadarOpen(false); setSearchOpen(true); }} onClose={() => setContinuityRadarOpen(false)} /></Suspense> : null}{timelineOpen ? <Suspense fallback={lazyPanelFallback}><StoryTimelinePanel details={bookDetails} api={autoApi} provider={providerInput} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setTimelineOpen(false)} /></Suspense> : null}{branchesOpen ? <Suspense fallback={lazyPanelFallback}><StoryBranchPanel details={bookDetails} api={autoApi} onUpdated={(next) => { setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); }} onClose={() => setBranchesOpen(false)} /></Suspense> : null}{authoringHubOpen ? <Suspense fallback={<div className="panel-loading" role="status">正在打开创作中枢…</div>}><AuthoringHubPanel details={bookDetails} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onOpenBranches={() => { setAuthoringHubOpen(false); setBranchesOpen(true); }} onOpenTimeline={() => { setAuthoringHubOpen(false); setTimelineOpen(true); }} onOpenMemory={() => { setAuthoringHubOpen(false); setMemoryOpen(true); }} onOpenConsistency={() => { setAuthoringHubOpen(false); setConsistencyOpen(true); }} onOpenSearch={() => { setAuthoringHubOpen(false); setSearchOpen(true); }} onClose={() => setAuthoringHubOpen(false)} /></Suspense> : null}{storyBibleOpen ? <Suspense fallback={lazyPanelFallback}><StoryBiblePanel bookId={bookDetails.book.id} chapterNumber={runState.details?.run.currentChapterNumber ?? 1} api={autoApi} memoryContextConfig={memoryContextConfig} onMemoryContextConfigChange={setMemoryContextConfig} onClose={() => setStoryBibleOpen(false)} /></Suspense> : null}{consistencyOpen ? <Suspense fallback={lazyPanelFallback}><ConsistencyPanel bookId={bookDetails.book.id} api={autoApi} onClose={() => setConsistencyOpen(false)} onOpenMemory={() => { setConsistencyOpen(false); setMemoryOpen(true); }} onOpenTimeline={() => { setConsistencyOpen(false); setTimelineOpen(true); }} onOpenSearch={() => { setConsistencyOpen(false); setSearchOpen(true); }} /></Suspense> : null}{searchOpen ? <Suspense fallback={lazyPanelFallback}><SearchPanel bookId={bookDetails.book.id} expectedBookRevision={bookDetails.book.revision} api={autoApi} onReplaced={async () => { const next = await autoApi.getBook(bookDetails.book.id); setBookDetails(next); setBooks((current) => current.map((book) => book.id === next.book.id ? next.book : book)); if (runId) await runState.refresh(); }} onClose={() => setSearchOpen(false)} /></Suspense> : null}{navigationDrawer}{dataDialog}{providerDialog(providers, providerSettings, providerOpen, handleProviderSave, handleProviderClearKey, setProviderOpen)}{workflowDialog()}{commandPalette}</>;
-}
 
-function providerDialog(
-  providers: readonly ProviderCatalogEntry[],
-  settings: ClientProviderSettings | null,
-  open: boolean,
-  onSave: (input: SaveProviderSettingsInput) => Promise<void>,
-  onClearKey: (providerId: SaveProviderSettingsInput["providerId"]) => Promise<void>,
-  onClose: (open: boolean) => void,
-) {
-  return open ? <Suspense fallback={<div className="panel-loading" role="status">正在打开模型设置…</div>}><ProviderDialog open providers={providers} settings={settings} platform={apiClient.platform} onSave={onSave} onListModels={(input: ListProviderModelsInput, signal?: AbortSignal) => apiClient.listProviderModels(input, signal)} onTestConnection={(input, signal) => apiClient.testProviderConnection(input, signal)} onClearKey={onClearKey} onClose={() => onClose(false)} /></Suspense> : null;
+  return <AppShell
+    state={shellState}
+    page={page}
+    books={books}
+    bookDetails={bookDetails}
+    runId={runId}
+    run={runState.details}
+    api={autoApi}
+    providers={providers}
+    providerSettings={providerSettings}
+    providerInput={providerInput}
+    workflowInput={workflowInput}
+    memoryContextConfig={memoryContextConfig}
+    motionMode={motionMode}
+    onOpenTool={openTool}
+    onCloseTool={closeTool}
+    onCloseNavigation={closeNavigation}
+    onOpenCommand={openCommand}
+    onCloseCommand={closeCommand}
+    onPageChange={setPage}
+    onMotionModeChange={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
+    onSaveProvider={handleProviderSave}
+    onClearProviderKey={handleProviderClearKey}
+    onSaveWorkflow={async (next) => {
+      const saved = await apiClient.saveWorkflowSettings(next);
+      setWorkflowInput(saved);
+      setError(null);
+    }}
+    onImported={handleImported}
+    onOpenBook={(book) => void openBook(book)}
+    onAssetDraft={setAssetDraft}
+    onBookDetailsChange={setBookDetails}
+    onBooksChange={setBooks}
+    onRefreshRun={runState.refresh}
+    onAutoSelectDirection={() => void autoSelectDirection()}
+    onMemoryContextConfigChange={setMemoryContextConfig}
+  >{pageContent}</AppShell>;
 }
-
 function errorMessage(error: unknown, fallback = "操作失败，请稍后重试。"): string {
   if (error instanceof ApiRequestError) return error.message;
   if (!(error instanceof Error)) return fallback;

@@ -1,97 +1,102 @@
-.aceternity-ambient-layer {
-  --aceternity-beam-color: var(--action-primary);
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  overflow: hidden;
-  color: var(--aceternity-beam-color);
-  pointer-events: none;
-  opacity: .86;
-}
-
-.aceternity-ambient-layer.is-production {
-  --aceternity-beam-color: var(--state-success);
-}
-
-.aceternity-ambient-layer.is-direction {
-  --aceternity-beam-color: #c9bcff;
-}
-
-.aceternity-ambient-layer.is-manuscript {
-  --aceternity-beam-color: #9fc9ff;
-}
-
-.aceternity-ambient-spotlight {
-  position: absolute;
-  inset: -25%;
-  background: radial-gradient(circle at var(--aceternity-spotlight-x, 58%) var(--aceternity-spotlight-y, 16%), color-mix(in srgb, var(--aceternity-beam-color) 11%, transparent), transparent 26%);
-  filter: blur(14px);
-  opacity: .82;
-  transition: background-position 420ms var(--ease-studio);
-}
-
-.aceternity-ambient-beams {
-  position: absolute;
-  inset: -10%;
-  width: 120%;
-  height: 120%;
-  overflow: visible;
-  color: var(--aceternity-beam-color);
-  filter: url("#aceternity-beam-glow");
-  opacity: .42;
-}
-
-.aceternity-beam-path {
-  fill: none;
-  stroke: url("#aceternity-beam-gradient");
-  stroke-linecap: round;
-  stroke-width: 2;
-  stroke-dasharray: 280 1600;
-  animation: aceternity-beam-travel 12s linear infinite;
-}
-
-.aceternity-beam-path.beam-two {
-  stroke-width: 1.5;
-  stroke-dasharray: 180 1700;
-  animation-duration: 15s;
-  animation-delay: -5s;
-}
-
-.aceternity-beam-path.beam-three {
-  stroke-width: 1;
-  stroke-dasharray: 140 1800;
-  animation-duration: 18s;
-  animation-delay: -8s;
-}
-
-.aceternity-ambient-grain {
-  position: absolute;
-  inset: 0;
-  opacity: .06;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
-  mix-blend-mode: screen;
-}
-
-@keyframes aceternity-beam-travel {
-  from { stroke-dashoffset: 0; }
-  to { stroke-dashoffset: -1880px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
+@layer components {
   .aceternity-ambient-layer {
-    opacity: .52;
-  }
-
-  .aceternity-beam-path {
-    animation: none;
+    --aceternity-beam-color: var(--ambient-accent, var(--action-primary));
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    overflow: hidden;
+    color: var(--aceternity-beam-color);
+    pointer-events: none;
+    opacity: .56;
   }
 
   .aceternity-ambient-spotlight {
+    position: absolute;
+    inset: -25%;
+    background: radial-gradient(circle at var(--aceternity-spotlight-x, 58%) var(--aceternity-spotlight-y, 16%), color-mix(in srgb, var(--aceternity-beam-color) 9%, transparent), transparent 26%);
+    filter: blur(10px);
+    opacity: .62;
+    transition: background-position 180ms var(--ease-studio);
+  }
+
+  .aceternity-ambient-beams {
+    position: absolute;
+    inset: -10%;
+    width: 120%;
+    height: 120%;
+    overflow: visible;
+    color: var(--aceternity-beam-color);
+    filter: url("#aceternity-beam-glow");
+    opacity: .26;
+  }
+
+  .aceternity-beam-path {
+    fill: none;
+    stroke: url("#aceternity-beam-gradient");
+    stroke-linecap: round;
+    stroke-width: 2;
+    stroke-dasharray: 280 1600;
+    animation: aceternity-beam-travel 12s linear infinite;
+  }
+
+  .aceternity-beam-path.beam-two {
+    stroke-width: 1.5;
+    stroke-dasharray: 180 1700;
+    animation-duration: 15s;
+    animation-delay: -5s;
+  }
+
+  .aceternity-beam-path.beam-three {
+    stroke-width: 1;
+    stroke-dasharray: 140 1800;
+    animation-duration: 18s;
+    animation-delay: -8s;
+  }
+
+  .aceternity-ambient-grain {
+    position: absolute;
+    inset: 0;
+    opacity: .035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+    mix-blend-mode: screen;
+  }
+
+  @keyframes aceternity-beam-travel {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: -1880px; }
+  }
+
+  .aceternity-ambient-layer.is-motion-suppressed .aceternity-ambient-beams,
+  .aceternity-ambient-layer.is-motion-suppressed .aceternity-ambient-spotlight {
     filter: none;
     transition: none;
   }
-}
 
-html[data-motion-mode="quiet"] .aceternity-beam-path {
-  animation: none;
+  .aceternity-ambient-layer.is-motion-suppressed .aceternity-ambient-beams {
+    opacity: .12;
+  }
+
+  .aceternity-ambient-layer.is-motion-suppressed .aceternity-beam-path {
+    animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .aceternity-ambient-layer {
+      opacity: .42;
+    }
+
+    .aceternity-ambient-beams,
+    .aceternity-ambient-spotlight {
+      filter: none;
+      transition: none;
+    }
+
+    .aceternity-ambient-beams {
+      opacity: .12;
+    }
+
+    .aceternity-beam-path {
+      animation: none;
+    }
+  }
 }

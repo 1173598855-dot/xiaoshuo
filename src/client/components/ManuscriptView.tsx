@@ -23,6 +23,7 @@ interface ManuscriptViewProps {
 
 type ManuscriptAnnotation = { bookmarked: boolean; note: string; updatedAt: string };
 const MANUSCRIPT_ANNOTATIONS_KEY = "xiaoyi.manuscript-annotations.v1";
+const MANUSCRIPT_SCROLL_PREFIX = "xiaoyi.manuscript-scroll.v1:";
 
 export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpenNavigation, onOpenCommandPalette, onOpenCreatorDashboard }: ManuscriptViewProps) {
   const [query, setQuery] = useState("");
@@ -57,6 +58,21 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
   useEffect(() => {
     setAnnotations(loadAnnotations(book.book.id));
     setAnnotationChapterId(null);
+  }, [book.book.id]);
+  useEffect(() => {
+    const persist = () => saveManuscriptScroll(book.book.id, window.scrollY);
+    const restore = () => window.scrollTo(0, readManuscriptScroll(book.book.id));
+    let frame: number | null = null;
+    let timeout: number | null = null;
+    if (typeof window.requestAnimationFrame === "function") frame = window.requestAnimationFrame(restore);
+    else timeout = window.setTimeout(restore, 0);
+    window.addEventListener("scroll", persist, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", persist);
+      persist();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
   }, [book.book.id]);
   useEffect(() => {
     try {
@@ -155,14 +171,18 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
     setAnnotationChapterId(null);
     setAnnotationDraft("");
   };
+  const returnToProduction = () => {
+    saveManuscriptScroll(book.book.id, window.scrollY);
+    onBack();
+  };
   return (
     <main className="manuscript-page" ref={motionRef} data-print-template={printTemplate} aria-label="正式正文">
       <AceternityAmbientLayer variant="manuscript" />
       <header className="page-topbar">
-        <button className="text-button" type="button" onClick={onBack}><ArrowLeft size={15} /> 返回生产室</button>
+        <button className="text-button" type="button" onClick={returnToProduction}><ArrowLeft size={15} /> 返回生产室</button>
         <div className="page-topbar-actions">
-          <WorkbenchQuickActions actions={[{ id: "print", label: "打印 / PDF", icon: Printer, onSelect: () => window.print() }, { id: "export-docx", label: "导出 DOCX", icon: Download, onSelect: () => void exportBook("docx") }, { id: "preflight", label: "导出前预检", icon: ShieldCheck, onSelect: () => setPreflightOpen(true) }, ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: FileText, onSelect: onOpenCreatorDashboard }] : []), { id: "back-production", label: "返回生产室", icon: ArrowLeft, onSelect: onBack }]} onOpenNavigation={onOpenNavigation} onOpenCommandPalette={onOpenCommandPalette} />
-          <div className="manuscript-actions"><label className="secondary-button manuscript-import-button"><Upload size={15} /> {importing ? "导入中…" : "导入文本"}<input type="file" accept=".md,.markdown,.txt,.docx" disabled={importing || exporting !== null} onChange={(event) => void importManuscript(event)} /></label><label className="manuscript-template-select">排版<ThemeSelect aria-label="排版模板" value={printTemplate} options={[{ value: "paper", label: "典藏纸张" }, { value: "compact", label: "紧凑审校" }]} onChange={(value) => setPrintTemplate(value as "paper" | "compact")} /></label><button className="primary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("docx")}><Download size={15} /> {exporting === "docx" ? "导出中…" : "导出 DOCX"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("epub")}><Download size={15} /> {exporting === "epub" ? "导出中…" : "ePub"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("markdown")}><Download size={15} /> Markdown</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("txt")}><Download size={15} /> TXT</button><button className="ghost-button" type="button" onClick={() => window.print()}><Printer size={15} /> 打印 / PDF</button></div>
+          <WorkbenchQuickActions actions={[{ id: "preflight", label: "导出前预检", icon: ShieldCheck, onSelect: () => setPreflightOpen(true) }, ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: FileText, onSelect: onOpenCreatorDashboard }] : []), { id: "back-production", label: "返回生产室", icon: ArrowLeft, onSelect: returnToProduction }]} onOpenNavigation={onOpenNavigation} onOpenCommandPalette={onOpenCommandPalette} />
+          <div className="manuscript-actions"><label className="secondary-button manuscript-import-button"><Upload size={15} /> {importing ? "导入中…" : "导入文本"}<input type="file" accept=".md,.markdown,.txt,.docx" disabled={importing || exporting !== null} onChange={(event) => void importManuscript(event)} /></label><label className="manuscript-template-select">排版<ThemeSelect aria-label="排版模板" value={printTemplate} options={[{ value: "paper", label: "典藏纸张" }, { value: "compact", label: "紧凑审校" }]} onChange={(value) => setPrintTemplate(value as "paper" | "compact")} /></label><button className="primary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("docx")}><Download size={15} /> {exporting === "docx" ? "导出中…" : "导出 DOCX"}</button><details><summary>更多导出选项</summary><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("epub")}><Download size={15} /> {exporting === "epub" ? "导出中…" : "导出 ePub"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("markdown")}><Download size={15} /> {exporting === "markdown" ? "导出中…" : "导出 Markdown"}</button><button className="secondary-button" type="button" disabled={exporting !== null || importing} onClick={() => void exportBook("txt")}><Download size={15} /> {exporting === "txt" ? "导出中…" : "导出 TXT"}</button><button className="ghost-button" type="button" onClick={() => window.print()}><Printer size={15} /> 打印 / PDF</button></details></div>
         </div>
       </header>
       <div className="manuscript-reading-progress" role="progressbar" aria-label="正文阅读进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readingProgress}><span style={{ transform: `scaleX(${readingProgress / 100})` }} /></div>
@@ -186,6 +206,23 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
       {preflightOpen ? <ExportPreflightPanel book={book} chapters={currentChapters} api={api} onClose={() => setPreflightOpen(false)} onExport={(format) => { setPreflightOpen(false); void exportBook(format); }} /> : null}
     </main>
   );
+}
+
+function readManuscriptScroll(bookId: string): number {
+  try {
+    const value = Number(window.sessionStorage.getItem(`${MANUSCRIPT_SCROLL_PREFIX}${bookId}`));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveManuscriptScroll(bookId: string, scrollY: number): void {
+  try {
+    window.sessionStorage.setItem(`${MANUSCRIPT_SCROLL_PREFIX}${bookId}`, String(Math.max(0, scrollY)));
+  } catch {
+    // Reading and navigation continue when session storage is unavailable.
+  }
 }
 
 function ManuscriptChapter({ chapter, annotation, editing, draft, onToggleBookmark, onOpenAnnotation, onDraftChange, onSave, onCancel }: { chapter: Chapter; annotation?: ManuscriptAnnotation; editing: boolean; draft: string; onToggleBookmark: () => void; onOpenAnnotation: () => void; onDraftChange: (value: string) => void; onSave: () => void; onCancel: () => void }) {

@@ -8,6 +8,7 @@
  */
 import { useRef, type PointerEvent, type PropsWithChildren } from "react";
 
+import { useMotionEnabled } from "../motion/motion-policy";
 import "./SpotlightCard.css";
 
 interface SpotlightCardProps extends PropsWithChildren {
@@ -18,9 +19,10 @@ interface SpotlightCardProps extends PropsWithChildren {
 export function SpotlightCard({
   children,
   className = "",
-  spotlightColor = "rgba(99, 214, 198, 0.16)",
+  spotlightColor = "color-mix(in srgb, var(--action-primary) 16%, transparent)",
 }: SpotlightCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const motionEnabled = useMotionEnabled();
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const card = cardRef.current;
@@ -50,9 +52,9 @@ export function SpotlightCard({
   return (
     <div
       ref={cardRef}
-      className={`spotlight-card${className ? ` ${className}` : ""}`}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
+      className={`spotlight-card${className ? ` ${className}` : ""}${motionEnabled ? "" : " is-motion-suppressed"}`}
+      onPointerMove={motionEnabled ? handlePointerMove : undefined}
+      onPointerLeave={motionEnabled ? handlePointerLeave : undefined}
     >
       <div className="spotlight-card-content">{children}</div>
     </div>

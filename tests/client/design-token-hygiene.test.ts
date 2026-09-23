@@ -27,6 +27,36 @@ describe("frontend design-token hygiene", () => {
     expect(tokens).toContain("--text-primary: #f4f2fb");
     expect(tokens).toContain("--border-default: #332f43");
     expect(tokens).toContain("--action-primary: #a99dff");
+    expect(tokens).toContain("--ambient-accent: var(--action-primary)");
     expect(tokens).not.toMatch(/--(?:ink|paper|line|accent|atlas)-/);
+  });
+
+  it("declares an explicit layer for the motion component styles", () => {
+    const tokens = readFileSync(resolve(process.cwd(), "src/client/styles/tokens.css"), "utf8");
+    expect(tokens).toContain("@layer base, components, legacy, studio, polish;");
+
+    for (const relativePath of [
+      "src/client/components/SpotlightCard.css",
+      "src/client/components/CursorGrid.css",
+      "src/client/components/AceternityAmbientLayer.css",
+      "src/client/components/BlackHoleBackdrop.css",
+    ]) {
+      const content = readFileSync(resolve(process.cwd(), relativePath), "utf8");
+      expect(content, relativePath).toMatch(/^@layer components\s*\{/);
+    }
+  });
+
+  it("keeps decorative focus light on the action token and reserves status colors for state", () => {
+    const grid = readFileSync(resolve(process.cwd(), "src/client/components/CursorGrid.tsx"), "utf8");
+    const ambient = readFileSync(resolve(process.cwd(), "src/client/components/AceternityAmbientLayer.css"), "utf8");
+    const spotlights = readFileSync(resolve(process.cwd(), "src/client/components/SpotlightCard.css"), "utf8");
+
+    expect(grid).toContain('getPropertyValue("--action-primary")');
+    expect(grid).not.toContain("#63d6c6");
+    expect(ambient).toContain("var(--ambient-accent, var(--action-primary))");
+    expect(ambient).not.toContain("var(--state-success)");
+    expect(ambient).not.toContain("#c9bcff");
+    expect(ambient).not.toContain("#9fc9ff");
+    expect(spotlights).toContain("var(--ambient-accent, var(--action-primary))");
   });
 });

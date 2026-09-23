@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowUpRight, BookOpen, CheckCircle2, Clock, FileText, Pause, Play, RotateCcw, Sparkles, Timer, X, type LucideIcon } from "lucide-react";
 
 import type { Book, BookDetails } from "../../shared/auto-novel";
 import type { Chapter } from "../../shared/contracts";
 import { SpotlightCard } from "./SpotlightCard";
+import { useMotionEnabled } from "../motion/motion-policy";
 
 import "./CreatorDashboardPanel.css";
 
@@ -158,11 +159,13 @@ function DashboardStat({ label, value, icon: Icon, tone }: { label: string; valu
 
 function CountUpNumber({ value }: { value: number }) {
   const [displayValue, setDisplayValue] = useState(0);
+  const hasAnimated = useRef(false);
+  const motionEnabled = useMotionEnabled();
 
   useEffect(() => {
-    const reduceMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion || typeof window.requestAnimationFrame !== "function") {
+    if (!motionEnabled || hasAnimated.current || typeof window.requestAnimationFrame !== "function") {
       setDisplayValue(value);
+      hasAnimated.current = true;
       return;
     }
     const startedAt = performance.now();
@@ -171,10 +174,11 @@ function CountUpNumber({ value }: { value: number }) {
       const progress = Math.min(1, (now - startedAt) / 420);
       setDisplayValue(Math.round(value * (1 - Math.pow(1 - progress, 3))));
       if (progress < 1) frame = window.requestAnimationFrame(tick);
+      else hasAnimated.current = true;
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [value]);
+  }, [motionEnabled, value]);
 
   return <span aria-label={value.toLocaleString("zh-CN")} data-countup-target={value}>{displayValue.toLocaleString("zh-CN")}</span>;
 }

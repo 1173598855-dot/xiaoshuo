@@ -28,6 +28,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
 
   await page.getByRole("button", { name: /选择这条路/ }).first().click();
   await expect(page.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+  await page.getByText("生产进度与章节记录").click();
   await expect(page.getByRole("region", { name: "故事生产路径" })).toBeVisible();
   await expect(page.getByRole("region", { name: "创作工作区" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "作品章节" })).toBeVisible();
@@ -48,6 +49,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await deliveryCenter.getByRole("button", { name: "自动化规则" }).click();
   await expect(deliveryCenter.getByText("本地规则引擎")).toBeVisible();
   await deliveryCenter.getByRole("button", { name: "关闭作者交付中心" }).click();
+  await page.getByText("作者工具").click();
   await page.getByRole("button", { name: "连续性雷达" }).click();
   await expect(page.getByRole("complementary", { name: "故事连续性雷达" })).toBeVisible();
   for (const view of ["时间线", "关系流", "状态板", "AI 上下文", "总览"]) {
@@ -113,8 +115,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await page.getByRole("button", { name: "打开正式正文" }).click();
   await expect(page.getByRole("main", { name: "正式正文" })).toBeVisible();
   await expect(page.getByText("异常物件").first()).toBeVisible();
-  await page.getByRole("button", { name: "更多" }).click();
-  await page.getByRole("menuitem", { name: "导出前预检" }).click();
+  await page.getByRole("button", { name: "导出前预检" }).click();
   await expect(page.getByRole("complementary", { name: "导出前预检" })).toBeVisible();
   await page.getByRole("button", { name: "关闭导出前预检" }).click();
   const firstChapter = page.locator(".manuscript-chapter").first();
@@ -125,6 +126,7 @@ test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await firstChapter.getByRole("button", { name: "保存批注" }).click();
   await expect(firstChapter).toContainText("回看这一章的场景节奏。");
   await page.getByRole("button", { name: "返回生产室" }).click();
+  await page.getByText("作者工具").click();
   await page.getByRole("complementary", { name: "章节上下文" }).getByRole("button", { name: "记忆中心" }).click();
   const persistedWorldRule = page.locator(".memory-entry").filter({ has: page.getByText("世界规则", { exact: true }) }).first();
   await expect(persistedWorldRule).toContainText("手动修正");
@@ -143,6 +145,7 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await page.getByRole("button", { name: /用当前模型填充全部角色/ }).click();
   await page.getByRole("button", { name: "应用工作流" }).click();
   await page.getByRole("textbox", { name: "故事想法" }).fill("一个会在凌晨移动的城市");
+  await page.getByText("更多构思工具").click();
   await page.getByLabel("方向数量").fill("5");
   await page.getByRole("button", { name: "开始开书" }).click();
   await expect(page.getByText("自动方向 5")).toBeVisible();
@@ -287,6 +290,7 @@ test("refines a selected candidate passage and reviews outline fulfillment witho
 
   await page.getByRole("button", { name: "开始整本生产" }).click();
   await expect(page.getByRole("region", { name: "章节审核" })).toBeVisible();
+  await page.locator(".candidate-plan-fulfillment > summary").click();
   await page.getByRole("button", { name: "检查章纲兑现" }).click();
   await expect(page.getByText("部分兑现")).toBeVisible();
   await expect(page.getByText("异常出现了，主角的选择尚不明确。")).toBeVisible();
@@ -351,7 +355,11 @@ test("keeps quick actions and reduced motion usable on mobile", async ({ page })
   await page.goto("/");
   const navigationTrigger = page.getByRole("button", { name: "打开工作区导航" });
   await expect(navigationTrigger).toBeVisible();
-  await expect(page.getByRole("button", { name: "打开快速操作" })).toBeVisible();
+  const commandTrigger = page.getByRole("button", { name: "打开快速操作" });
+  await expect(commandTrigger).toBeVisible();
+  const commandBounds = await commandTrigger.boundingBox();
+  expect(commandBounds).not.toBeNull();
+  expect(commandBounds!.x + commandBounds!.width).toBeLessThanOrEqual(390);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await navigationTrigger.click();
   const drawer = page.getByRole("dialog", { name: "工作区导航" });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DirectionPicker } from "../../src/client/components/DirectionPicker";
@@ -41,5 +41,25 @@ describe("DirectionPicker", () => {
     fireEvent.keyDown(screen.getByRole("article", { name: "预览方向：午夜迁徙" }), { key: "Enter" });
 
     expect(screen.getByRole("dialog", { name: "预览方向：午夜迁徙" })).toBeVisible();
+  });
+
+  it("lets pointer users preview the full direction before choosing it", async () => {
+    const onSelect = vi.fn();
+    render(<DirectionPicker directions={[direction]} busy={false} onSelect={onSelect} onBack={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "查看方向详情：午夜迁徙" }));
+
+    const preview = screen.getByRole("dialog", { name: "预览方向：午夜迁徙" });
+    expect(preview).toHaveTextContent("主角找到城市移动的原因。");
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "关闭方向预览" })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "预览方向：午夜迁徙" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "查看方向详情：午夜迁徙" })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看方向详情：午夜迁徙" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "预览方向：午夜迁徙" })).getByRole("button", { name: "选择这条路" }));
+    expect(onSelect).toHaveBeenCalledWith(direction);
   });
 });

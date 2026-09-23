@@ -4,10 +4,9 @@ import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
-import { CursorGrid } from "./CursorGrid";
 import { SpotlightCard } from "./SpotlightCard";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
-import { runAnime, runAnimeStagger } from "../motion/anime-motion";
+import { isMotionSuppressed, useMotionEnabled } from "../motion/motion-policy";
 import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
 
 const ThreeBookModel = lazy(() => import("./ThreeBookModel").then(({ ThreeBookModel: component }) => ({ default: component })));
@@ -50,25 +49,9 @@ export function CreativeHome({
   assetDraft,
 }: CreativeHomeProps) {
   const processRef = useRef<HTMLOListElement>(null);
-  const motionRef = useRef<HTMLElement>(null);
+  const ideaToolsRef = useRef<HTMLDetailsElement>(null);
   const [activeProcess, setActiveProcess] = useState(0);
   const processLabels = ["写下想法", "选择方向", "逐章生产", "审核成书"];
-
-  useEffect(() => {
-    const root = motionRef.current;
-    if (!root) return;
-    const header = root.querySelector<HTMLElement>(".creative-header");
-    const statusItems = root.querySelectorAll<HTMLElement>(".workbench-status-item");
-    const stageItems = root.querySelectorAll<HTMLElement>(".stage-copy > *");
-    const hero = root.querySelector<HTMLElement>(".idea-column");
-    const cleanups = [
-      header ? runAnime([{ targets: header, params: { opacity: [0, 1], translateY: ["-14px", "0px"], duration: 520, ease: "out(4)" } }]) : () => undefined,
-      statusItems.length > 0 ? runAnimeStagger(statusItems, { opacity: [0, 1], translateY: ["-8px", "0px"], duration: 360, ease: "out(4)" }, 65) : () => undefined,
-      stageItems.length > 0 ? runAnimeStagger(stageItems, { opacity: [0, 1], translateX: ["-14px", "0px"], duration: 460, ease: "out(4)" }, 55) : () => undefined,
-      hero ? runAnime([{ targets: hero, params: { opacity: [0, 1], translateY: ["18px", "0px"], scale: [.985, 1], duration: 620, delay: 160, ease: "out(4)" } }]) : () => undefined,
-    ];
-    return () => cleanups.forEach((cleanup) => cleanup());
-  }, []);
 
   useEffect(() => {
     if (typeof window.IntersectionObserver !== "function" || !processRef.current) return;
@@ -84,9 +67,8 @@ export function CreativeHome({
   }, []);
 
   return (
-    <main className="creative-home" ref={motionRef} style={{ "--process-progress": activeProcess / Math.max(processLabels.length - 1, 1) } as CSSProperties}>
+    <main className="creative-home" style={{ "--process-progress": activeProcess / Math.max(processLabels.length - 1, 1) } as CSSProperties}>
       <AceternityAmbientLayer variant="home" />
-      <CursorGrid className="creative-cursor-grid" />
       <BlackHoleBackdrop />
       <header className="creative-header">
         <div className="brand-lockup">
@@ -105,7 +87,12 @@ export function CreativeHome({
               ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []),
               ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
               ...(onOpenData ? [{ id: "data", label: "数据管理", icon: Database, onSelect: onOpenData }] : []),
-              { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => document.querySelector<HTMLButtonElement>(".preset-book-cover")?.click() },
+              { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => {
+                const tools = ideaToolsRef.current;
+                if (!tools) return;
+                tools.open = true;
+                tools.querySelector<HTMLButtonElement>(".preset-book-cover")?.click();
+              } },
               { id: "new-idea", label: "新故事", icon: Plus, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() },
               ...(onToggleMotionMode ? [{ id: "motion", label: motionMode === "quiet" ? "完整动效" : "安静动效", icon: Sparkles, onSelect: onToggleMotionMode }] : []),
             ]}
@@ -114,6 +101,38 @@ export function CreativeHome({
           />
         </div>
       </header>
+      <section className="idea-stage home-entry-layout" aria-label="继续创作或新建故事">
+        <section className="home-continue-panel" aria-labelledby="home-continue-title">
+          <div className="home-entry-heading">
+            <h2 id="home-continue-title">继续作品</h2>
+            <p>{books.length > 0 ? "从最近的故事接着写。" : "已有作品会保留在这里，随时接着写。"}</p>
+          </div>
+          {books.length > 0 ? <div className="home-recent-books" aria-label="最近作品">
+            {books.slice(0, 3).map((book) => <button
+              className="home-recent-book"
+              type="button"
+              key={book.id}
+              aria-label={`继续作品：${book.title}`}
+              disabled={busy}
+              onClick={() => onOpenBook(book)}
+            >
+              <span className="home-recent-book-main"><strong>{book.title}</strong><small>{book.genre || "未分类"} · {book.targetChapters} 章</small></span>
+              <span className="home-recent-book-status">{bookStatusLabel(book)}</span>
+            </button>)}
+          </div> : <p className="home-continue-empty">还没有作品。写下一个想法，就能开始第一本。</p>}
+        </section>
+        <section className="idea-column home-create-panel" aria-labelledby="home-create-title">
+          <div className="home-create-heading">
+            <h2 id="home-create-title">新建故事</h2>
+            <p>写下一句话；先挑故事方向，或明确选择一键开写。</p>
+          </div>
+          <SpotlightCard className="idea-spotlight-shell aceternity-moving-border">
+            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onRetry={onRetry} onSubmit={onCreateIdea} ideaToolsRef={ideaToolsRef} />
+          </SpotlightCard>
+          <div className="idea-caption"><span>先看方向，再决定怎么开写</span><span>输入 → 选择 → 写作</span></div>
+        </section>
+      </section>
+
       <WorkbenchStatusStrip
         items={[
           { id: "local", label: "本地优先", detail: "草稿只保存在当前浏览器", tone: "success", icon: CheckCircle2 },
@@ -121,22 +140,6 @@ export function CreativeHome({
           { id: "shortcut", label: "随时可查", detail: "Ctrl/Cmd + K 打开快速操作", tone: "neutral" },
         ]}
       />
-
-      <section className="idea-stage" aria-labelledby="idea-title">
-        <div className="stage-copy">
-          <div className="stage-topline"><span>01</span><i /><span>从想法到正文</span></div>
-          <span className="stage-label"><Sparkles size={14} /> 自动导演</span>
-          <h2 id="idea-title">你只需要<br /><span>一个想法。</span></h2>
-          <p>AI 会替你完成开书、规划、分章、写作和审核。先给你几条完全不同的路，再让你挑一条走下去。</p>
-          <div className="stage-notes"><span>不用填卡</span><span>少做杂务</span><span>直接开始</span></div>
-        </div>
-        <div className="idea-column">
-          <SpotlightCard className="idea-spotlight-shell aceternity-moving-border">
-            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onRetry={onRetry} onSubmit={onCreateIdea} />
-          </SpotlightCard>
-          <div className="idea-caption"><span>方向数 1–12</span><span>输入 → 方向 → 正文</span></div>
-        </div>
-      </section>
 
       <section className="home-process" aria-labelledby="home-process-title">
         <div className="home-process-heading">
@@ -168,6 +171,21 @@ type StoryPreset = {
   style: string;
 };
 
+type StorySpark = {
+  id: string;
+  label: string;
+  text: string;
+};
+
+const STORY_SPARKS: readonly StorySpark[] = [
+  { id: "costly-wish", label: "有代价的愿望", text: "主角终于得到最想要的东西，代价却是最亲近的人忘了他。" },
+  { id: "borrowed-name", label: "被借走的名字", text: "陌生人开始用主角的名字做出选择，而每个后果都由主角承担。" },
+  { id: "late-witness", label: "迟到的证人", text: "关键证人终于出现，却只肯证明一件对主角不利的事。" },
+  { id: "broken-rule", label: "失效的规则", text: "人人遵守的禁令突然对主角失效，代价却落在最亲近的人身上。" },
+  { id: "two-sided-hunt", label: "双向追查", text: "主角追查的那个人也在寻找主角，两边拿到的线索完全相同。" },
+  { id: "missing-letter", label: "缺席的来信", text: "一封从未寄出的信被当众念出，收信人却是故事里不存在的人。" },
+];
+
 const BUILT_IN_PRESETS: readonly StoryPreset[] = [
   { id: "mystery", label: "悬疑短篇", idea: "一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……", genre: "悬疑", targetChapters: 8, targetChapterCharacters: 2_000, style: "冷峻、紧凑，每章结尾留下一个可追查的新线索。" },
   { id: "urban", label: "都市连载", idea: "一座会在凌晨移动的城市，只有一个快递员记得它原来的位置。", genre: "都市异闻", targetChapters: 24, targetChapterCharacters: 2_500, style: "节奏明快，场景具体，章末保留强钩子。" },
@@ -183,12 +201,14 @@ function IdeaForm({
   assetDraft,
   onRetry,
   onSubmit,
+  ideaToolsRef,
 }: {
   busy: boolean;
   error: string | null;
   assetDraft?: { id: string; text: string } | null;
   onRetry?: () => void;
   onSubmit: (input: CreateBookInput, autoStart?: boolean) => void;
+  ideaToolsRef: React.RefObject<HTMLDetailsElement | null>;
 }) {
   const [idea, setIdea] = useState("");
   const [directionCount, setDirectionCount] = useState(3);
@@ -199,6 +219,7 @@ function IdeaForm({
   const [presetEditorOpen, setPresetEditorOpen] = useState(false);
   const [draftState, setDraftState] = useState<"empty" | "restored" | "saved">("empty");
   const [draftReady, setDraftReady] = useState(false);
+  const [storySpark, setStorySpark] = useState<StorySpark | null>(null);
   const presets = [...BUILT_IN_PRESETS, ...customPresets];
   const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null;
 
@@ -297,29 +318,61 @@ function IdeaForm({
     applyPreset(presets[(currentIndex + 1 + presets.length) % presets.length]);
   };
 
+  const drawStorySpark = () => {
+    const available = STORY_SPARKS.filter(({ id }) => id !== storySpark?.id);
+    setStorySpark(available[Math.floor(Math.random() * available.length)] ?? STORY_SPARKS[0]!);
+  };
+
+  const addStorySpark = () => {
+    if (!storySpark) return;
+    const fragment = `情节火花（${storySpark.label}）：${storySpark.text}`;
+    setIdea((current) => current.trim() ? `${current.trim()}\n\n${fragment}` : fragment);
+    setDraftState("saved");
+    setPresetFeedback(`已加入情节火花「${storySpark.label}」，可以继续修改。`);
+    setStorySpark(null);
+  };
+
   const serviceUnavailable = Boolean(error && /(本地服务|无法打开|连接失败|请求失败)/.test(error));
 
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
-      <div className="idea-form-heading"><div><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div><button className="idea-surprise-button" type="button" disabled={busy || presets.length === 0} onClick={surpriseMe}><Dices size={14} /> 换个灵感</button></div>
+      <div className="idea-form-heading"><div><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div></div>
       <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); setPresetFeedback(null); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……" disabled={busy} />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
         <small className="idea-length">{idea.length.toLocaleString()} 字</small>
         {idea ? <button className="text-button" type="button" disabled={busy} onClick={clearDraft}>清除草稿</button> : null}
       </div>
-      <PresetFlipbook
-        presets={presets}
-        selectedPresetId={selectedPresetId}
-        disabled={busy}
-        onSelect={applyPreset}
-        onOpenSavePreset={() => setPresetEditorOpen(true)}
-        canSavePreset={Boolean(idea.trim())}
-      />
-      {presetEditorOpen ? <div className="preset-editor"><input aria-label="预设名称" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="给这套写作方式起个名字" maxLength={32} autoFocus /><button className="secondary-button" type="button" disabled={busy || !presetName.trim()} onClick={savePreset}>保存预设</button><button className="text-button" type="button" onClick={() => setPresetEditorOpen(false)}>取消</button></div> : null}
-      <label className="direction-count-control" htmlFor="direction-count">方向数量
-        <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
-      </label>
+      <details className="idea-tools-disclosure" ref={ideaToolsRef}>
+        <summary>更多构思工具{selectedPreset ? ` · ${selectedPreset.label}` : ""}</summary>
+        <div className="idea-tools-content">
+          <button className="idea-surprise-button" type="button" disabled={busy || presets.length === 0} onClick={surpriseMe}><Dices size={14} /> 换个灵感</button>
+          <section className={`story-spark${storySpark ? " is-lit" : ""}`} aria-label="情节火花">
+            <div className="story-spark-heading">
+              <span className="story-spark-label"><Sparkles size={13} aria-hidden="true" /> 灵感火花</span>
+              <button className="idea-surprise-button" type="button" aria-label={storySpark ? "再抽一条情节火花" : "抽一条情节火花"} disabled={busy} onClick={drawStorySpark}>{storySpark ? "再抽一条" : "抽一条"}</button>
+            </div>
+            {storySpark ? (
+              <div className="story-spark-result" key={storySpark.id} role="group" aria-label="情节火花建议" aria-live="polite">
+                <div><small>{storySpark.label}</small><p>{storySpark.text}</p></div>
+                <button className="secondary-button" type="button" disabled={busy} onClick={addStorySpark}>加入构思</button>
+              </div>
+            ) : <p className="story-spark-hint">抽取不会改动草稿，合适时再加入构思。</p>}
+          </section>
+          <PresetFlipbook
+            presets={presets}
+            selectedPresetId={selectedPresetId}
+            disabled={busy}
+            onSelect={applyPreset}
+            onOpenSavePreset={() => setPresetEditorOpen(true)}
+            canSavePreset={Boolean(idea.trim())}
+          />
+          {presetEditorOpen ? <div className="preset-editor"><input aria-label="预设名称" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="给这套写作方式起个名字" maxLength={32} autoFocus /><button className="secondary-button" type="button" disabled={busy || !presetName.trim()} onClick={savePreset}>保存预设</button><button className="text-button" type="button" onClick={() => setPresetEditorOpen(false)}>取消</button></div> : null}
+          <label className="direction-count-control" htmlFor="direction-count">方向数量
+            <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
+          </label>
+        </div>
+      </details>
       {serviceUnavailable ? (
         <div className="idea-service-error" role="alert">
           <TriangleAlert size={17} aria-hidden="true" />
@@ -357,7 +410,24 @@ function PresetFlipbook({
   const [open, setOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(() => Math.max(0, presets.findIndex((preset) => preset.id === selectedPresetId)));
   const [turning, setTurning] = useState<{ direction: "next" | "prev"; from: StoryPreset; to: StoryPreset } | null>(null);
+  const motionEnabled = useMotionEnabled();
+  const turnTimerRef = useRef<number | null>(null);
+  const pendingPageIndexRef = useRef<number | null>(null);
   const current = presets[pageIndex] ?? presets[0];
+
+  useEffect(() => () => {
+    if (turnTimerRef.current !== null) window.clearTimeout(turnTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const pendingPageIndex = pendingPageIndexRef.current;
+    if (motionEnabled || pendingPageIndex === null) return;
+    if (turnTimerRef.current !== null) window.clearTimeout(turnTimerRef.current);
+    turnTimerRef.current = null;
+    pendingPageIndexRef.current = null;
+    setPageIndex(pendingPageIndex);
+    setTurning(null);
+  }, [motionEnabled]);
 
   useEffect(() => {
     if (!selectedPresetId) return;
@@ -373,15 +443,17 @@ function PresetFlipbook({
     const target = presets[targetIndex];
     if (!target) return;
     const nextTurn = { direction: direction === 1 ? "next" : "prev", from: current, to: target } as const;
-    const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) {
+    if (!motionEnabled || isMotionSuppressed()) {
       setPageIndex(targetIndex);
       return;
     }
     setTurning(nextTurn);
-    window.setTimeout(() => {
+    pendingPageIndexRef.current = targetIndex;
+    turnTimerRef.current = window.setTimeout(() => {
       setPageIndex(targetIndex);
       setTurning(null);
+      pendingPageIndexRef.current = null;
+      turnTimerRef.current = null;
     }, 340);
   };
   const applySelection = (preset: StoryPreset) => {
@@ -470,4 +542,11 @@ function isStoryPreset(value: unknown): value is StoryPreset {
   if (!value || typeof value !== "object") return false;
   const preset = value as Partial<StoryPreset>;
   return typeof preset.id === "string" && typeof preset.label === "string" && typeof preset.idea === "string" && typeof preset.genre === "string" && typeof preset.targetChapters === "number" && typeof preset.targetChapterCharacters === "number" && typeof preset.style === "string";
+}
+
+function bookStatusLabel(book: Book): string {
+  if (book.status === "completed") return "已完成";
+  if (book.status === "failed") return "需要处理";
+  if (book.status === "paused") return "已暂停";
+  return book.selectedDirectionId ? "创作中" : "等待选方向";
 }

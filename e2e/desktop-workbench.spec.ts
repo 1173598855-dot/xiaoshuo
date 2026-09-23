@@ -43,6 +43,7 @@ test("runs the full idea director and production room in Electron", async () => 
     await expect(window.getByText("自动方向 1")).toBeVisible();
     await window.getByRole("button", { name: /选择这条路/ }).first().click();
     await expect(window.getByRole("button", { name: "开始整本生产" })).toBeVisible();
+    await window.getByText("作者工具").click();
     await window.getByRole("button", { name: "故事时间线" }).click();
     await expect(window.getByRole("complementary", { name: "故事时间线" })).toBeVisible();
     await window.getByRole("button", { name: "AI 重新规划" }).click();
@@ -67,6 +68,7 @@ test("runs the full idea director and production room in Electron", async () => 
     await window.getByRole("button", { name: "打开正式正文" }).click();
     await expect(window.getByRole("main", { name: "正式正文" })).toBeVisible();
     await window.getByRole("button", { name: "返回生产室" }).click();
+    await window.getByText("作者工具").click();
     await window.getByRole("complementary", { name: "章节上下文" }).getByRole("button", { name: "记忆中心" }).click();
     const persistedWorldRule = window.locator(".memory-entry").filter({ has: window.getByText("世界规则", { exact: true }) }).first();
     await expect(persistedWorldRule).toContainText("手动修正");

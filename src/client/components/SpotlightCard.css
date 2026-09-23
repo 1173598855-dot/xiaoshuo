@@ -1,45 +1,62 @@
-.spotlight-card {
-  --spotlight-x: 50%;
-  --spotlight-y: 50%;
-  --spotlight-color: rgba(99, 214, 198, 0.16);
-  --spotlight-rotate-x: 0deg;
-  --spotlight-rotate-y: 0deg;
-  position: relative;
-  overflow: hidden;
-}
+@layer components {
+  .spotlight-card {
+    --spotlight-x: 50%;
+    --spotlight-y: 50%;
+    --spotlight-color: color-mix(in srgb, var(--ambient-accent, var(--action-primary)) 16%, transparent);
+    --spotlight-rotate-x: 0deg;
+    --spotlight-rotate-y: 0deg;
+    position: relative;
+    overflow: hidden;
+  }
 
-.spotlight-card::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: radial-gradient(circle at var(--spotlight-x) var(--spotlight-y), var(--spotlight-color), transparent 48%);
-  content: "";
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 280ms ease;
-}
-
-.spotlight-card:hover::before,
-.spotlight-card:focus-within::before {
-  opacity: 1;
-}
-
-.spotlight-card-content {
-  position: relative;
-  z-index: 1;
-  transform: perspective(1200px) rotateX(var(--spotlight-rotate-x)) rotateY(var(--spotlight-rotate-y));
-  transform-origin: center bottom;
-  transition: transform 260ms cubic-bezier(.22, 1, .36, 1);
-  will-change: transform;
-}
-
-@media (max-width: 620px), (prefers-reduced-motion: reduce) {
   .spotlight-card::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    background: radial-gradient(circle at var(--spotlight-x) var(--spotlight-y), var(--spotlight-color), transparent 48%);
+    content: "";
     opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+  }
+
+  .spotlight-card:hover::before,
+  .spotlight-card:focus-within::before {
+    opacity: 1;
   }
 
   .spotlight-card-content {
+    position: relative;
+    z-index: 1;
+    transform: perspective(1200px) rotateX(var(--spotlight-rotate-x)) rotateY(var(--spotlight-rotate-y));
+    transform-origin: center bottom;
+    transition: transform 200ms cubic-bezier(.22, 1, .36, 1);
+  }
+
+  .spotlight-card:hover .spotlight-card-content,
+  .spotlight-card:focus-within .spotlight-card-content {
+    will-change: transform;
+  }
+
+  .spotlight-card.is-motion-suppressed::before {
+    display: none;
+  }
+
+  .spotlight-card.is-motion-suppressed .spotlight-card-content {
     transform: none;
     transition: none;
+  }
+
+  @media (max-width: 620px), (prefers-reduced-motion: reduce) {
+    .spotlight-card::before,
+    .spotlight-card:hover::before,
+    .spotlight-card:focus-within::before {
+      display: none;
+    }
+
+    .spotlight-card-content {
+      transform: none;
+      transition: none;
+    }
   }
 }

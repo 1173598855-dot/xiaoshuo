@@ -1,4 +1,4 @@
-@layer base, legacy, studio;
+@layer base, components, legacy, studio, polish;
 
 @layer base {
   :root {
@@ -22,6 +22,7 @@
   --border-strong: #49425d;
   --action-primary: #a99dff;
   --action-primary-hover: #8e80ee;
+  --ambient-accent: var(--action-primary);
   --state-success: #7bd8b5;
   --state-danger: #ee8c9e;
   --state-warning: #d9bd7d;
@@ -36,6 +37,9 @@
   --radius-lg: 8px;
   --radius-md: 6px;
   --ease-studio: cubic-bezier(.22, 1, .36, 1);
+  --motion-duration-fast: 160ms;
+  --motion-duration-state: 220ms;
+  --motion-duration-panel: 250ms;
   }
 
   * {

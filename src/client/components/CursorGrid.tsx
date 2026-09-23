@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, type CSSProperties } from "react";
 
+import { isMotionSuppressed, useMotionEnabled } from "../motion/motion-policy";
 import "./CursorGrid.css";
 
 type Falloff = "linear" | "smooth" | "sharp";
@@ -64,16 +65,21 @@ const FALL_OFF: Record<Falloff, (value: number) => number> = {
   sharp: (value) => value * value * value,
 };
 
-function hexToRgb(hex: string): [number, number, number] {
+function colorToRgb(color: string): [number, number, number] {
+  const rgbMatch = color.trim().match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (rgbMatch) return [Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3])];
+
+  const hex = color.trim();
   const value = hex.replace("#", "");
   const normalized = value.length === 3 ? value.split("").map((char) => `${char}${char}`).join("") : value;
   const parsed = Number.parseInt(normalized.slice(0, 6), 16);
+  if (!Number.isFinite(parsed)) return [169, 157, 255];
   return [(parsed >> 16) & 255, (parsed >> 8) & 255, parsed & 255];
 }
 
 export function CursorGrid({
   cellSize = 64,
-  color = "#63d6c6",
+  color = "",
   radius = 180,
   falloff = "smooth",
   holdTime = 220,
@@ -124,7 +130,10 @@ export function CursorGrid({
     pulseSpeed,
   };
 
+  const motionEnabled = useMotionEnabled();
+
   useEffect(() => {
+    if (!motionEnabled) return undefined;
     const container = containerRef.current;
     const canvas = canvasRef.current;
     const spotlight = spotlightRef.current;
@@ -135,8 +144,6 @@ export function CursorGrid({
     const context = canvas.getContext("2d");
     if (!context) return undefined;
 
-    const reducedMotion = typeof window.matchMedia === "function"
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     let columns = 0;
     let rows = 0;
@@ -198,10 +205,15 @@ export function CursorGrid({
     };
 
     const draw = (now: number) => {
+      if (document.documentElement.dataset.motionMode === "quiet") {
+        running = false;
+        return;
+      }
       const config = configRef.current;
       const delta = Math.min(now - previousFrame, 50);
       previousFrame = now;
-      const [red, green, blue] = hexToRgb(config.color);
+      const tokenColor = config.color || getComputedStyle(container).getPropertyValue("--action-primary").trim() || "#a99dff";
+      const [red, green, blue] = colorToRgb(tokenColor);
       context.clearRect(0, 0, width, height);
 
       if (config.gridOpacity > 0) {
@@ -291,13 +303,11 @@ export function CursorGrid({
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      if (!reducedMotion) {
-        spotlight.style.setProperty("--cursor-x", `${event.clientX}px`);
-        spotlight.style.setProperty("--cursor-y", `${event.clientY}px`);
-        spotlight.classList.add("is-visible");
-      }
+      if (isMotionSuppressed()) return;
+      spotlight.style.setProperty("--cursor-x", `${event.clientX}px`);
+      spotlight.style.setProperty("--cursor-y", `${event.clientY}px`);
+      spotlight.classList.add("is-visible");
       const [x, y] = toLocal(event);
-      if (reducedMotion) return;
       energize(x, y);
       wake();
     };
@@ -307,8 +317,9 @@ export function CursorGrid({
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      if (isMotionSuppressed()) return;
       const config = configRef.current;
-      if (reducedMotion || !config.clickPulse) return;
+      if (!config.clickPulse) return;
       const [x, y] = toLocal(event);
       pulses = [...pulses, { x, y, t0: performance.now() }].slice(-3);
       spotlight.classList.remove("is-pulsing");
@@ -336,14 +347,14 @@ export function CursorGrid({
       window.removeEventListener("pointerout", onPointerOut);
       wakeRef.current = null;
     };
-  }, [cellSize]);
+  }, [cellSize, motionEnabled]);
 
   useEffect(() => {
     wakeRef.current?.();
   }, [color, fillOpacity, gridOpacity, lineWidth, maxOpacity, cellRadius]);
 
   return (
-    <div ref={containerRef} className={`cursor-grid${className ? ` ${className}` : ""}`} style={style} aria-hidden="true">
+    <div ref={containerRef} className={`cursor-grid${className ? ` ${className}` : ""}${motionEnabled ? "" : " is-motion-suppressed"}`} style={style} aria-hidden="true">
       <span ref={spotlightRef} className="cursor-grid__spotlight" />
       <canvas ref={canvasRef} className="cursor-grid__canvas" />
     </div>

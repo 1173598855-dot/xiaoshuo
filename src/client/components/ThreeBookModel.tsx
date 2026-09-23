@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type * as THREE from "three";
 
+import { useMotionEnabled } from "../motion/motion-policy";
+
 export type ThreeBookTurnDirection = "next" | "prev" | null;
 
 interface ThreeBookModelProps {
@@ -27,6 +29,7 @@ export function ThreeBookModel({ open, turnDirection, coverTitle = "灵感册" }
   const loadingRef = useRef(false);
   const mountedRef = useRef(true);
   const [modelVersion, setModelVersion] = useState(0);
+  const motionEnabled = useMotionEnabled();
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -196,10 +199,9 @@ export function ThreeBookModel({ open, turnDirection, coverTitle = "灵感册" }
   useEffect(() => {
     const model = modelRef.current;
     if (!model) return;
-    const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const coverTarget = open ? -Math.PI * 0.92 : 0;
     const turnTarget = turnDirection === "next" ? -Math.PI : turnDirection === "prev" ? Math.PI : 0;
-    if (reducedMotion) {
+    if (!motionEnabled) {
       model.coverRotation = coverTarget;
       model.turnRotation = turnTarget;
       model.coverGroup.rotation.y = coverTarget;
@@ -224,7 +226,7 @@ export function ThreeBookModel({ open, turnDirection, coverTitle = "灵感册" }
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [modelVersion, open, turnDirection]);
+  }, [modelVersion, motionEnabled, open, turnDirection]);
 
   return <div className="preset-book-3d-model" ref={rootRef} aria-hidden="true"><canvas ref={canvasRef} /></div>;
 }

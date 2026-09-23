@@ -1,9 +1,8 @@
 import type { AnimationParams, JSAnimation, TargetsParam } from "animejs";
+import { isMotionSuppressed, subscribeMotionPolicy } from "./motion-policy";
 
 export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return true;
-  return typeof window.matchMedia === "function"
-    && (window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motionMode === "quiet");
+  return isMotionSuppressed();
 }
 
 /**
@@ -16,13 +15,20 @@ export function runAnime(
 ): () => void {
   if (prefersReducedMotion() || steps.length === 0) return () => undefined;
   let disposed = false;
+  let motionSuppressed = false;
   let animations: JSAnimation[] = [];
+  const stopWhenSuppressed = subscribeMotionPolicy(() => {
+    if (!isMotionSuppressed()) return;
+    motionSuppressed = true;
+    animations.forEach((animation) => animation.complete(true));
+  });
   void import("animejs").then(({ animate }) => {
-    if (disposed) return;
+    if (disposed || motionSuppressed || prefersReducedMotion()) return;
     animations = steps.map(({ targets, params }) => animate(targets, params));
   });
   return () => {
     disposed = true;
+    stopWhenSuppressed();
     animations.forEach((animation) => animation.pause());
   };
 }
@@ -34,9 +40,15 @@ export function runAnimeStagger(
 ): () => void {
   if (prefersReducedMotion()) return () => undefined;
   let disposed = false;
+  let motionSuppressed = false;
   let animation: JSAnimation | null = null;
+  const stopWhenSuppressed = subscribeMotionPolicy(() => {
+    if (!isMotionSuppressed()) return;
+    motionSuppressed = true;
+    animation?.complete(true);
+  });
   void import("animejs").then(({ animate, stagger }) => {
-    if (disposed) return;
+    if (disposed || motionSuppressed || prefersReducedMotion()) return;
     animation = animate(targets, {
       ...params,
       delay: stagger(interval, { from: "first" }),
@@ -44,6 +56,7 @@ export function runAnimeStagger(
   });
   return () => {
     disposed = true;
+    stopWhenSuppressed();
     animation?.pause();
   };
 }
