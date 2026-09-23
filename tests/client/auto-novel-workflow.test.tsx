@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../src/client/App";
@@ -28,6 +28,19 @@ describe("auto-novel client", () => {
     expect(await screen.findByRole("textbox", { name: "故事想法" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument();
     expect(screen.queryByText("生成候选")).not.toBeInTheDocument();
+  });
+
+  it("opens a deferred author tool from the home navigation", async () => {
+    render(<App />);
+
+    expect(await screen.findByRole("textbox", { name: "故事想法" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "模型配置" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开工作区导航" }));
+    const navigation = screen.getByRole("dialog", { name: "工作区导航" });
+    fireEvent.click(within(navigation).getByRole("button", { name: /模型设置/ }));
+
+    expect(await screen.findByRole("heading", { name: "模型配置" })).toBeInTheDocument();
   });
 });
 

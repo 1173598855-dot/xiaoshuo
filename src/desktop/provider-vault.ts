@@ -90,6 +90,11 @@ interface PersistedVaultV2 {
 
 type PersistedVault = PersistedVaultV1 | PersistedVaultV2;
 
+interface WorkflowResolutionSnapshot {
+  readonly settings: PersistedSettings | null;
+  readonly vault: PersistedVault | null;
+}
+
 interface PersistedVaultSnapshot {
   readonly payload: Buffer | null;
 }
@@ -463,19 +468,19 @@ export class ProviderVault {
   ): Promise<ModelWorkflowConfig> {
     const parsed = DesktopModelWorkflowSelectionSchema.safeParse(input);
     if (!parsed.success) throw new ProviderConfigMismatchError();
+    const snapshot = this.readWorkflowResolutionSnapshot();
     if (parsed.data.mode === "single") {
-      const settings = this.readSettings();
       const config = await this.resolvePrimaryConfig(
         parsed.data.providerId,
-        parsed.data.model ?? settings?.workflowModel,
+        parsed.data.model ?? snapshot.settings?.workflowModel,
+        snapshot,
       );
       return ModelWorkflowConfigSchema.parse({
         mode: "single",
         provider: config,
       });
     }
-    const settings = this.readSettings();
-    const savedAssignments = settings?.workflowAssignments ?? [];
+    const savedAssignments = snapshot.settings?.workflowAssignments ?? [];
     const byRole = new Map(
       savedAssignments.map((assignment) => [assignment.role, assignment]),
     );
@@ -484,12 +489,15 @@ export class ProviderVault {
         const saved = byRole.get(selection.role);
         const model = selection.model?.trim() || saved?.model;
         if (!model) throw new ProviderConfigMismatchError();
-        const provider = await this.resolveAssignmentConfig({
-          providerId: selection.providerId,
-          model,
-          ...(saved?.baseUrl ? { baseUrl: saved.baseUrl } : {}),
-          ...(saved?.credentialId ? { credentialId: saved.credentialId } : {}),
-        });
+        const provider = await this.resolveAssignmentConfig(
+          {
+            providerId: selection.providerId,
+            model,
+            ...(saved?.baseUrl ? { baseUrl: saved.baseUrl } : {}),
+            ...(saved?.credentialId ? { credentialId: saved.credentialId } : {}),
+          },
+          snapshot,
+        );
         return { role: selection.role, provider };
       }),
     );
@@ -502,8 +510,9 @@ export class ProviderVault {
   private async resolvePrimaryConfig(
     providerId: ProviderId,
     modelOverride?: string,
+    snapshot?: WorkflowResolutionSnapshot,
   ): Promise<ProviderConfig> {
-    const settings = this.readSettings();
+    const settings = snapshot ? snapshot.settings : this.readSettings();
     const profile = settings
       ? this.getProviderProfiles(settings)[providerId]
       : undefined;
@@ -512,7 +521,7 @@ export class ProviderVault {
     }
     const entry = getProviderCatalog().find(({ id }) => id === providerId);
     if (!entry) throw new ProviderConfigMismatchError();
-    const apiKey = this.getProfileKey(settings, profile) ?? "";
+    const apiKey = this.getProfileKey(settings, profile, snapshot?.vault) ?? "";
     if (entry.requiresApiKey && !apiKey) {
       throw new ProviderConfigMismatchError();
     }
@@ -540,12 +549,13 @@ export class ProviderVault {
       baseUrl?: string;
       credentialId?: string;
     },
+    snapshot?: WorkflowResolutionSnapshot,
   ): Promise<ProviderConfig> {
     const entry = getProviderCatalog().find(
       ({ id }) => id === assignment.providerId,
     );
     if (!entry) throw new ProviderConfigMismatchError();
-    const settings = this.readSettings();
+    const settings = snapshot ? snapshot.settings : this.readSettings();
     if (!settings) {
       throw new ProviderConfigMismatchError();
     }
@@ -565,7 +575,9 @@ export class ProviderVault {
     ) {
       throw new ProviderConfigMismatchError();
     }
-    const apiKey = profile ? this.getProfileKey(settings, profile) ?? "" : "";
+    const apiKey = profile
+      ? this.getProfileKey(settings, profile, snapshot?.vault) ?? ""
+      : "";
     if (entry.requiresApiKey && !apiKey) {
       throw new ProviderConfigMismatchError();
     }
@@ -756,6 +768,17 @@ export class ProviderVault {
     return profiles;
   }
 
+  private readWorkflowResolutionSnapshot(): WorkflowResolutionSnapshot {
+    const settings = this.readSettings();
+    return {
+      settings,
+      vault:
+        settings && this.safeStorage.isEncryptionAvailable()
+          ? this.readEncryptedVault()
+          : null,
+    };
+  }
+
   private profileEndpointMatches(
     settings: PersistedSettings,
     profile: PersistedProviderProfile,
@@ -771,6 +794,7 @@ export class ProviderVault {
   private getProfileKey(
     settings: PersistedSettings,
     profile: PersistedProviderProfile,
+    vaultSnapshot?: PersistedVault | null,
   ): string | undefined {
     if (profile.credentialId) {
       if (settings.revokedCredentialIds?.includes(profile.credentialId)) {
@@ -779,7 +803,10 @@ export class ProviderVault {
       if (!this.safeStorage.isEncryptionAvailable()) {
         return this.sessionKeys.get(profile.credentialId);
       }
-      const vault = this.readEncryptedVault();
+      const vault = vaultSnapshot === undefined
+        ? this.readEncryptedVault()
+        : vaultSnapshot;
+      if (!vault) return undefined;
       return vault.version === 2
         ? vault.credentials[profile.credentialId]
         : undefined;
@@ -789,7 +816,10 @@ export class ProviderVault {
     if (profile.providerId !== settings.providerId || settings.revokedProviderIds?.includes(profile.providerId)) {
       return undefined;
     }
-    const vault = this.readEncryptedVault();
+    const vault = vaultSnapshot === undefined
+      ? this.readEncryptedVault()
+      : vaultSnapshot;
+    if (!vault) return undefined;
     return vault.version === 1 ? vault.keys[profile.providerId] : undefined;
   }
 

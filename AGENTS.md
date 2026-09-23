@@ -14,12 +14,12 @@
 
 ## 架构地图
 
-- `src/shared/contracts.ts`：跨客户端/服务端的唯一 Zod 契约来源。
+- `src/shared`：跨客户端/服务端的 Zod 契约来源，`contracts.ts` 存放核心契约，`auto-novel.ts` 等领域模块存放对应业务契约。
 - `src/server/db`：SQLite 连接和迁移。
 - `src/server/repositories`：事务、revision 与持久化规则。
 - `src/server/providers`：原生和 OpenAI-compatible 模型适配器。
 - `src/server/services`：提示构建与 generation 状态流。
-- `src/server/app.ts`：Hono API 和归一化错误响应。
+- `src/server/auto-novel-app.ts`：Hono API 和归一化错误响应。
 - `src/client`：React 工作台、会话配置、自动保存和候选审阅。
 - `src/desktop/main.ts`：Electron Main 进程、窗口生命周期、原生菜单和维护操作编排。
 - `src/desktop/preload.ts` 与 `src/desktop/ipc`：窄类型 IPC 契约、Zod 校验和错误归一化。

@@ -1030,7 +1030,8 @@ export class BookRepository {
     return this.getBookSummary(bookId);
   }
 
-  private getBookSummary(bookId: string): Book {
+  /** Read the book record without loading directions, foundations, or the full outline. */
+  getBookSummary(bookId: string): Book {
     return BookSchema.parse(toBook(this.requireBookRow(bookId)));
   }
 

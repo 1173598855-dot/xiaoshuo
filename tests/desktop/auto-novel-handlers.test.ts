@@ -43,6 +43,31 @@ function createFixture(isTrustedSender = true) {
     productionRepository: {
       getCandidate: vi.fn(() => ({ id: "candidate" })),
       getChapters: vi.fn(() => []),
+      getRunSummary: vi.fn((runId: string) => ({
+        run: {
+          id: runId,
+          bookId: book.id,
+          kind: "production",
+          status: "running",
+          stage: "draft",
+          currentChapterNumber: 1,
+          version: 2,
+          idempotencyKey: "summary-test",
+          errorCode: null,
+          createdAt: "2026-09-11T00:00:00.000Z",
+          updatedAt: "2026-09-11T00:00:00.000Z",
+        },
+        queue: {
+          runId,
+          providerDescriptor: null,
+          retryCount: 0,
+          maxRetries: 3,
+          nextAttemptAt: null,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          heartbeatAt: null,
+        },
+      })),
       updateCandidateMemoryReview: vi.fn(() => ({ id: "candidate" })),
       editCandidateText: vi.fn(() => ({ id: "candidate" })),
     },
@@ -125,6 +150,16 @@ describe("auto novel desktop IPC", () => {
     const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksRecoverableDetails)?.({}, undefined);
     expect(result).toMatchObject({ ok: true, data: [{ book: { id: "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c" } }] });
     expect(services.bookRepository.listRecoverableBookDetails).toHaveBeenCalledOnce();
+  });
+
+  it("exposes a single-run summary through a fixed channel without lease secrets", async () => {
+    const { handlers, services } = createFixture();
+    const runId = "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c";
+    const result = await handlers.get("auto-novel:production-get-summary")?.({}, { runId });
+
+    expect(result).toMatchObject({ ok: true, data: { run: { id: runId, version: 2 }, queue: { runId } } });
+    expect(JSON.stringify(result)).not.toContain("leaseToken");
+    expect(services.productionRepository.getRunSummary).toHaveBeenCalledWith(runId);
   });
 
   it("exposes memory only through fixed validated channels", async () => {

@@ -109,6 +109,7 @@ export interface AutoNovelDesktopApiV2 {
       memoryContextConfig?: MemoryContextConfig;
     }): Promise<DesktopResult<ProductionRun>>;
     get(runId: string): Promise<DesktopResult<AutoNovelRunDetails>>;
+    getSummary(runId: string): Promise<DesktopResult<ProductionRunSummary>>;
     pause(runId: string): Promise<DesktopResult<ProductionRun>>;
     resume(input: { runId: string; providerId?: ProviderId; workflow?: DesktopModelWorkflowSelection }): Promise<DesktopResult<ProductionRun>>;
     rewrite(input: { runId: string; providerId?: ProviderId; workflow?: DesktopModelWorkflowSelection } & RewriteChapterInput): Promise<DesktopResult<ChapterCandidate>>;
@@ -178,6 +179,7 @@ export function createAutoNovelPreloadApiV2(
     production: {
       start: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionStart, input),
       get: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionGet, { runId }),
+      getSummary: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionGetSummary, { runId }),
       pause: (runId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionPause, { runId }),
       resume: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionResume, input),
       rewrite: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.productionRewrite, input),

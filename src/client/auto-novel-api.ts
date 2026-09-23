@@ -175,6 +175,7 @@ export interface AutoNovelApi {
     memoryContextConfig?: MemoryContextConfig,
   ): Promise<ProductionRun>;
   getRun(runId: string, signal?: AbortSignal): Promise<AutoNovelRunDetails>;
+  getRunSummary?(runId: string, signal?: AbortSignal): Promise<ProductionRunSummary>;
   listRunSummaries(bookId: string, options?: { status?: string; limit?: number; before?: string }): Promise<readonly ProductionRunSummary[]>;
   listStorySnapshots(bookId: string): Promise<readonly StorySnapshot[]>;
   createStorySnapshot(bookId: string, name: string): Promise<StorySnapshot>;
@@ -328,6 +329,9 @@ export function createAutoNovelApi(
     },
     async getRun(runId, signal) {
       return RunDetailsSchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}`, { signal }));
+    },
+    async getRunSummary(runId, signal) {
+      return ProductionRunSummarySchema.parse(await requestJson(fetchImpl, `/api/production-runs/${runId}/summary`, { signal }));
     },
     async listRunSummaries(bookId, options = {}) {
       const params = new URLSearchParams();

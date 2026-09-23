@@ -1107,6 +1107,12 @@ export function createAutoNovelApp(dependencies: AutoNovelAppDependencies) {
     return context.json(dependencies.productionService.getDetails(context.req.param("runId")));
   });
 
+  app.get("/api/production-runs/:runId/summary", (context) => {
+    const runId = context.req.param("runId");
+    assertRunAccess(dependencies, runId);
+    return context.json(dependencies.productionRepository.getRunSummary(runId));
+  });
+
   app.post("/api/production-runs/:runId/pause", async (context) => {
     const parsed = await parseCommand(context.req.raw, "pause");
     if (!parsed.success) return context.json(parsed.error, 400);

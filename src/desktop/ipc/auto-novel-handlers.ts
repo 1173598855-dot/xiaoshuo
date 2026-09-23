@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CreateBookInputSchema,
   DesktopModelWorkflowSelectionSchema,
+  ProductionRunSummarySchema,
   SelectDirectionInputSchema,
   ExportBookInputSchema,
   UpdateCandidateTextInputSchema,
@@ -316,6 +317,10 @@ export function registerAutoNovelIpcHandlers(
   register(dependencies, AUTO_NOVEL_CHANNELS.productionGet, RunRequestSchema, ({ runId }) => {
     dependencies.authService?.assertRunAccess(runId);
     return dependencies.getServices().productionService.getDetails(runId);
+  });
+  register(dependencies, AUTO_NOVEL_CHANNELS.productionGetSummary, RunRequestSchema, ({ runId }) => {
+    dependencies.authService?.assertRunAccess(runId);
+    return ProductionRunSummarySchema.parse(dependencies.getServices().productionRepository.getRunSummary(runId));
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.productionPause, RunRequestSchema, ({ runId }) => {
     dependencies.authService?.assertRunAccess(runId);

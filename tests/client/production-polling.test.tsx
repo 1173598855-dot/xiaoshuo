@@ -16,10 +16,20 @@ function StateHarness({ api, runId }: { api: AutoNovelApi; runId: string | null 
   return <>
     <output data-testid="connection-state">{state.connectionState}</output>
     <output data-testid="run-id">{state.details?.run?.id ?? "none"}</output>
+    <output data-testid="heartbeat">{state.details?.queue?.heartbeatAt ?? "none"}</output>
   </>;
 }
 
 const runDetails = {} as AutoNovelRunDetails;
+const pollingRunId = "00000000-0000-4000-8000-000000000001";
+
+function detailsAtVersion(version: number, heartbeatAt = "2026-09-24T00:00:00.000Z") {
+  return {
+    ...runDetails,
+    run: { id: pollingRunId, version, status: "running", stage: "draft", currentChapterNumber: 1 },
+    queue: { runId: pollingRunId, retryCount: 0, maxRetries: 3, heartbeatAt },
+  } as AutoNovelRunDetails;
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -50,6 +60,75 @@ describe("useProductionRun polling", () => {
     void runDetails;
   });
 
+  it("polls a same-version summary without reloading details and merges heartbeat updates", async () => {
+    vi.useFakeTimers();
+    const initial = detailsAtVersion(4, "2026-09-24T00:00:00.000Z");
+    const getRun = vi.fn().mockResolvedValue(initial);
+    const getRunSummary = vi.fn().mockResolvedValue({
+      run: initial.run,
+      queue: { ...initial.queue, heartbeatAt: "2026-09-24T00:00:01.000Z" },
+    });
+    const api = { getRun, getRunSummary } as unknown as AutoNovelApi;
+
+    render(<StateHarness api={api} runId={pollingRunId} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getRun).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getRunSummary).toHaveBeenCalledTimes(1);
+    expect(getRun).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("heartbeat")).toHaveTextContent("2026-09-24T00:00:01.000Z");
+  });
+
+  it("falls back to full detail polling when a mock has no summary method", async () => {
+    vi.useFakeTimers();
+    const getRun = vi.fn().mockResolvedValue(detailsAtVersion(4));
+    const api = { getRun } as unknown as AutoNovelApi;
+
+    render(<StateHarness api={api} runId={pollingRunId} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getRun).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads full details once when a polled summary has a newer run version", async () => {
+    vi.useFakeTimers();
+    const initial = detailsAtVersion(4);
+    const updated = detailsAtVersion(5);
+    const getRun = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(updated);
+    const getRunSummary = vi.fn().mockResolvedValue({
+      run: updated.run,
+      queue: updated.queue,
+    });
+    const api = { getRun, getRunSummary } as unknown as AutoNovelApi;
+
+    render(<StateHarness api={api} runId={pollingRunId} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getRun).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getRunSummary).toHaveBeenCalledTimes(1);
+    expect(getRun).toHaveBeenCalledTimes(2);
+  });
+
   it("backs off after a disconnect and retries immediately when the browser comes online", async () => {
     vi.useFakeTimers();
     const getRun = vi
@@ -59,7 +138,8 @@ describe("useProductionRun polling", () => {
         ...runDetails,
         run: { id: "00000000-0000-4000-8000-000000000001", status: "running" },
       } as AutoNovelRunDetails);
-    const api = { getRun } as unknown as AutoNovelApi;
+    const getRunSummary = vi.fn();
+    const api = { getRun, getRunSummary } as unknown as AutoNovelApi;
 
     render(<StateHarness api={api} runId="00000000-0000-4000-8000-000000000001" />);
     await act(async () => {
@@ -75,6 +155,7 @@ describe("useProductionRun polling", () => {
       await Promise.resolve();
     });
     expect(getRun).toHaveBeenCalledTimes(2);
+    expect(getRunSummary).not.toHaveBeenCalled();
     expect(screen.getByTestId("connection-state")).toHaveTextContent("connected");
   });
 

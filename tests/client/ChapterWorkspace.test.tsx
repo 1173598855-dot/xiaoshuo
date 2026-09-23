@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ChapterWorkspace } from "../../src/client/components/ChapterWorkspace";
+import type { Chapter } from "../../src/shared/contracts";
 import type { ChapterPlan } from "../../src/shared/auto-novel";
 
 const plans = [
@@ -12,6 +13,17 @@ const plans = [
 ] as unknown as readonly ChapterPlan[];
 
 describe("ChapterWorkspace", () => {
+  it("keeps the zero-based chapter-position mapping without scanning chapters for every plan", () => {
+    const acceptedChapters = [{ id: "chapter-two", position: 1 }] as unknown as Chapter[];
+    const someSpy = vi.spyOn(acceptedChapters, "some");
+
+    render(<ChapterWorkspace plans={plans} chapters={acceptedChapters} review={<div>审核区</div>} tools={<button type="button">工具</button>} />);
+
+    expect(screen.getByRole("button", { name: /第 1 章.*雨夜车站.*待创作/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /第 2 章.*没有出口.*已采纳/ })).toBeVisible();
+    expect(someSpy).not.toHaveBeenCalled();
+  });
+
   it("filters the outline and navigates between adjacent chapters", () => {
     render(<ChapterWorkspace plans={plans} chapters={[]} review={<div>审核区</div>} tools={<button type="button">工具</button>} />);
 

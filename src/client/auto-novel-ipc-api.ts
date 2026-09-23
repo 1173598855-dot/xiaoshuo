@@ -189,6 +189,9 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     async getRun(runId) {
       return parseResult(await api.production.get(runId), RunDetailsSchema) as AutoNovelRunDetails;
     },
+    async getRunSummary(runId) {
+      return parseResult(await api.production.getSummary(runId), ProductionRunSummarySchema);
+    },
     async pauseRun(runId) {
       return parseResult(await api.production.pause(runId), ProductionRunSchema);
     },

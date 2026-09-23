@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
@@ -47,6 +47,17 @@ async function waitFor(
 }
 
 describe("ProductionWorker", () => {
+  it("skips SQLite write transactions when no runs are runnable or expired", () => {
+    const { database, production, run } = fixture();
+    production.updateRun(run.id, { status: "completed" });
+    const exec = vi.spyOn(database, "exec");
+    const now = "2026-09-24T00:00:00.000Z";
+
+    expect(production.recoverExpiredLeases(now)).toEqual([]);
+    expect(production.claimNextRun("idle-worker", 10_000, now)).toBeNull();
+    expect(exec).not.toHaveBeenCalledWith("BEGIN IMMEDIATE");
+  });
+
   it("binds a collaborative workflow before waking the worker", async () => {
     const { production, book, run: initialRun } = fixture();
     production.updateRun(initialRun.id, { status: "completed", stage: "accept" });

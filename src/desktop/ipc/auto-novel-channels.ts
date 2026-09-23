@@ -34,6 +34,7 @@ export const AUTO_NOVEL_CHANNELS = {
   directionsSelect: "auto-novel:directions-select",
   productionStart: "auto-novel:production-start",
   productionGet: "auto-novel:production-get",
+  productionGetSummary: "auto-novel:production-get-summary",
   productionPause: "auto-novel:production-pause",
   productionResume: "auto-novel:production-resume",
   productionRewrite: "auto-novel:production-rewrite",

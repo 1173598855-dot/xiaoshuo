@@ -641,6 +641,29 @@ describe("auto-novel HTTP app", () => {
     expect(body[0]?.queue).not.toHaveProperty("leaseToken");
   });
 
+  it("returns a single-run summary without the worker lease token", async () => {
+    const { app, bookRepository, productionRepository } = fixture();
+    const book = bookRepository.createBook({ idea: "轻量轮询摘要" });
+    const run = productionRepository.createProductionRun(book.id, "summary-poll");
+    productionRepository.setProviderDescriptor(run.id, {
+      kind: "openai-compatible",
+      model: "summary-model",
+      apiKey: "sk-summary-only-secret",
+      baseUrl: "https://models.example.test/v1",
+    });
+    const claim = productionRepository.claimNextRun("summary-worker", 30_000);
+    expect(claim?.run.id).toBe(run.id);
+
+    const response = await app.request(`/api/production-runs/${run.id}/summary`);
+    expect(response.status).toBe(200);
+    const summary = await response.json() as { run: { id: string; version: number }; queue: Record<string, unknown> };
+    expect(summary).toMatchObject({ run: { id: run.id }, queue: { runId: run.id } });
+    expect(summary.run.version).toBeGreaterThan(run.version);
+    expect(summary.queue).not.toHaveProperty("leaseToken");
+    expect(JSON.stringify(summary)).not.toContain(claim?.lease.token);
+    expect(JSON.stringify(summary)).not.toContain("sk-summary-only-secret");
+  });
+
   it("accepts a collaborative model workflow when creating a book", async () => {
     const { app, provider } = fixture();
     const directorProvider = {

@@ -54,6 +54,7 @@
 - 桌面发布包启用 ASAR、去除生产 source map、关闭打包版 DevTools 并拒绝常见调试启动参数；Windows Authenticode 签名取决于发布环境是否配置证书。v0.4.0 安装包未签名，首次运行时 Windows SmartScreen 可能显示警告；这些措施不能替代服务端授权，也不能保证离线程序绝对不可破解。
 - 本轮主动安全审查记录在 [`security_best_practices_report.md`](security_best_practices_report.md)，结论是没有新增 Critical/High 问题；浏览器 sessionStorage 会话和离线程序可被本机分析属于已记录的设计残余风险。
 - 全栈优化与发布门禁审查记录在 [`2026-09-22-full-stack-optimization-audit.md`](docs/superpowers/plans/2026-09-22-full-stack-optimization-audit.md)，覆盖 Server、SQLite、Worker、ProviderVault、Electron 和安装包验收。
+- 2026-09-24 全栈优化记录在 [`2026-09-24-full-stack-optimization.md`](docs/superpowers/plans/2026-09-24-full-stack-optimization.md)：首页入口 gzip 减少约 22%，并优化长篇 run 轮询、空闲 Worker 写锁、逐章作品读取、修订批注查找和工作流凭据读取。
 
 ## 界面方向
 

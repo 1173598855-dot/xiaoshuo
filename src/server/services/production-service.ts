@@ -571,10 +571,10 @@ export class ProductionService {
         if (stopped) return stopped;
 
         run = this.dependencies.productionRepository.getRun(runId);
-        const bookDetails = this.dependencies.bookRepository.getBook(run.bookId);
+        const book = this.dependencies.bookRepository.getBookSummary(run.bookId);
         const plan = this.dependencies.bookRepository.getNextChapterPlan(run.bookId);
         if (!plan) {
-          if (bookDetails.chapterPlans.length === 0) {
+          if (this.dependencies.bookRepository.getBook(run.bookId).chapterPlans.length === 0) {
             throw new NormalizedProviderError(
               "REQUEST_INVALID",
               "章节规划尚未完成，不能开始正文生产。",
@@ -627,15 +627,15 @@ export class ProductionService {
           const candidateText = await generateDraft(
             providerForRole("writer"),
             writerConfig.model,
-            bookDetails.book.idea,
+            book.idea,
             plan,
             chapter.content,
             memoryContext,
             authoringContext,
             signal,
             "",
-            bookDetails.book.style,
-            bookDetails.book.targetChapterCharacters,
+            book.style,
+            book.targetChapterCharacters,
             writerConfig.reasoningLevel,
             { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "draft" },
           );
@@ -690,8 +690,8 @@ export class ProductionService {
               memoryContext,
               authoringContext,
               signal,
-              bookDetails.book.style,
-              bookDetails.book.targetChapterCharacters,
+              book.style,
+              book.targetChapterCharacters,
               repairerConfig.reasoningLevel,
               { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "repair" },
             );
@@ -721,14 +721,14 @@ export class ProductionService {
           const review = await reviewDraft(
             providerForRole("reviewer"),
             reviewerConfig.model,
-            bookDetails.book.idea,
+            book.idea,
             plan,
             candidate.candidateText,
             memoryContext,
             authoringContext,
             signal,
-            bookDetails.book.style,
-            bookDetails.book.targetChapterCharacters,
+            book.style,
+            book.targetChapterCharacters,
             reviewerConfig.reasoningLevel,
             { bookId: run.bookId, chapterNumber: plan.chapterNumber, stage: "review" },
           );

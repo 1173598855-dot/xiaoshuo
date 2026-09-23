@@ -49,8 +49,26 @@ export class RevisionRepository {
     const notes = this.database.prepare(
       "SELECT scope, entity_id, revision, note FROM revision_notes WHERE book_id = ? ORDER BY created_at DESC, id DESC",
     ).all(bookId) as unknown as RevisionNoteRow[];
+    const notesByKey = new Map<
+      RevisionTimelineItem["scope"],
+      Map<string, Map<number, string>>
+    >();
+    for (const note of notes) {
+      let byEntity = notesByKey.get(note.scope);
+      if (!byEntity) {
+        byEntity = new Map();
+        notesByKey.set(note.scope, byEntity);
+      }
+      let byRevision = byEntity.get(note.entity_id);
+      if (!byRevision) {
+        byRevision = new Map();
+        byEntity.set(note.entity_id, byRevision);
+      }
+      // The query is newest-first, so retain the first note for each complete key.
+      if (!byRevision.has(note.revision)) byRevision.set(note.revision, note.note);
+    }
     const noteFor = (scope: RevisionTimelineItem["scope"], entityId: string, revision: number) =>
-      notes.find((note) => note.scope === scope && note.entity_id === entityId && note.revision === revision)?.note ?? "";
+      notesByKey.get(scope)?.get(entityId)?.get(revision) ?? "";
     const rows: TimelineRow[] = [{
       id: `live:${bookId}:${book.revision}`,
       scope: "story",

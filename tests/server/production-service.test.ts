@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
@@ -438,8 +438,10 @@ describe("ProductionService", () => {
   it("drafts, reviews, and accepts every planned chapter without overwriting directly", async () => {
     const fixture = createFixture();
     const service = new ProductionService(fixture);
+    const fullBookRead = vi.spyOn(fixture.bookRepository, "getBook");
 
     const completed = await service.start(fixture.run.id, fixture.providerConfig);
+    expect(fullBookRead).toHaveBeenCalledTimes(1);
     const details = fixture.productionRepository.getRunDetails(fixture.run.id);
 
     expect(completed.status).toBe("completed");

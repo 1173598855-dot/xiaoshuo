@@ -15,6 +15,7 @@ import {
   ChapterCandidateSchema,
   ModelRoleSchema,
   ProductionCheckpointSchema,
+  ProductionRunSummarySchema,
   ProductionRunSchema,
   type Book,
   type ChapterCandidate,
@@ -378,6 +379,14 @@ export class ProductionRepository {
     return ProductionRunSchema.parse(toRun(row));
   }
 
+  getRunSummary(runId: string): ProductionRunSummary {
+    const row = this.getQueueRunRow(runId);
+    return ProductionRunSummarySchema.parse({
+      run: toRun(row),
+      queue: withoutLeaseToken(toQueueState(row)),
+    }) as ProductionRunSummary;
+  }
+
   listRunSummaries(options: {
     readonly status?: ProductionRun["status"];
     readonly bookId?: string;
@@ -531,6 +540,18 @@ export class ProductionRepository {
     leaseDurationMs: number,
     now = this.now(),
   ): { readonly run: ProductionRun; readonly lease: ProductionRunLease } | null {
+    const runnableRun = this.database
+      .prepare(
+        `SELECT 1 AS runnable FROM production_runs
+         WHERE kind = 'production'
+           AND status IN ('queued', 'running')
+           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+         LIMIT 1`,
+      )
+      .get(now, now);
+    if (!runnableRun) return null;
+
     return this.withTransaction(() => {
       const row = this.database
         .prepare(
@@ -694,6 +715,16 @@ export class ProductionRepository {
     retryBaseDelayMs = 1_000,
     retryMaxDelayMs = 60_000,
   ): ProductionRun[] {
+    const expiredLease = this.database
+      .prepare(
+        `SELECT 1 AS expired FROM production_runs
+         WHERE kind = 'production' AND status = 'running'
+           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+         LIMIT 1`,
+      )
+      .get(now);
+    if (!expiredLease) return [];
+
     return this.withTransaction(() => {
       const rows = this.database
         .prepare(

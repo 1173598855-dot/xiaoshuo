@@ -8,7 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getDesktopPaths } from "../../src/desktop/paths";
 import {
@@ -854,6 +854,78 @@ describe("desktop provider vault", () => {
       "sk-deepseek-role",
       "sk-openai-role",
     ]);
+  });
+
+  it("reads one settings snapshot and decrypts one vault snapshot per workflow resolution", async () => {
+    const temporaryDirectory = createTemporaryDirectory();
+    const paths = getDesktopPaths(temporaryDirectory);
+    const decryptString = vi.fn(fakeSafeStorage.decryptString);
+    const storage = { ...fakeSafeStorage, decryptString };
+    const vault = new ProviderVault(paths, storage);
+    const selection = {
+      mode: "collaborative" as const,
+      assignments: [
+        { role: "director" as const, providerId: "openai" as const, model: "gpt-director" },
+        { role: "writer" as const, providerId: "deepseek" as const, model: "deepseek-writer" },
+        { role: "reviewer" as const, providerId: "anthropic" as const, model: "claude-reviewer" },
+        { role: "repairer" as const, providerId: "google" as const, model: "gemini-repairer" },
+      ],
+    };
+    const settingsRead = vi.spyOn(
+      vault as unknown as { readSettings: () => unknown },
+      "readSettings",
+    );
+
+    for (const [providerId, model, apiKey] of [
+      ["openai", "gpt-director", "sk-openai-initial"],
+      ["deepseek", "deepseek-writer", "sk-deepseek-initial"],
+      ["anthropic", "claude-reviewer", "sk-anthropic-initial"],
+      ["google", "gemini-repairer", "sk-google-initial"],
+    ] as const) {
+      await vault.saveSettings({ providerId, model, apiKey });
+    }
+    await vault.saveWorkflowSettings(selection);
+
+    settingsRead.mockClear();
+    decryptString.mockClear();
+    const workflow = await vault.resolveWorkflow(selection);
+
+    expect(workflow.mode).toBe("collaborative");
+    expect(settingsRead).toHaveBeenCalledTimes(1);
+    expect(decryptString).toHaveBeenCalledTimes(1);
+    if (workflow.mode === "collaborative") {
+      expect(workflow.assignments.map(({ provider }) => provider.apiKey)).toEqual([
+        "sk-openai-initial",
+        "sk-deepseek-initial",
+        "sk-anthropic-initial",
+        "sk-google-initial",
+      ]);
+    }
+
+    settingsRead.mockClear();
+    decryptString.mockClear();
+    await vault.resolveWorkflow({ mode: "single", providerId: "openai" });
+    expect(settingsRead).toHaveBeenCalledTimes(1);
+    expect(decryptString).toHaveBeenCalledTimes(1);
+
+    await vault.saveSettings({
+      providerId: "openai",
+      model: "gpt-director",
+      apiKey: "sk-openai-updated",
+    });
+    settingsRead.mockClear();
+    decryptString.mockClear();
+    const updatedWorkflow = await vault.resolveWorkflow(selection);
+    expect(updatedWorkflow.mode === "collaborative"
+      ? updatedWorkflow.assignments.find(({ role }) => role === "director")?.provider.apiKey
+      : undefined).toBe("sk-openai-updated");
+    expect(settingsRead).toHaveBeenCalledTimes(1);
+    expect(decryptString).toHaveBeenCalledTimes(1);
+
+    await vault.clearKey("openai");
+    await expect(vault.resolveWorkflow(selection)).rejects.toBeInstanceOf(
+      ProviderConfigMismatchError,
+    );
   });
 
   it("allows a fixed no-key provider beside a configured keyed provider", async () => {
