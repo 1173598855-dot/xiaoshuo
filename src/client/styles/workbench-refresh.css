@@ -1872,8 +1872,8 @@
   .author-delivery-note-field textarea { min-height: 54px; padding: 7px 8px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); background: var(--surface-control); resize: vertical; }
   .author-delivery-diff pre { max-height: 320px; overflow: auto; margin: 0; padding: 9px; border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-secondary); background: var(--surface-rail); font: 10px/1.55 var(--font-mono); white-space: pre-wrap; }
   .author-delivery-diff .diff-line { display: block; }
-  .author-delivery-diff .diff-line.is-added { color: var(--state-success); background: rgb(123 216 181 / 8%); }
-  .author-delivery-diff .diff-line.is-removed { color: var(--state-danger); background: rgb(238 140 158 / 8%); }
+  .author-delivery-diff .diff-line.is-added { color: color-mix(in srgb, var(--action-primary) 42%, var(--text-secondary)); background: color-mix(in srgb, var(--action-primary) 6%, transparent); }
+  .author-delivery-diff .diff-line.is-removed { color: color-mix(in srgb, var(--state-danger) 42%, var(--text-secondary)); background: color-mix(in srgb, var(--state-danger) 4%, transparent); }
   .revision-scope { flex: 0 0 auto; min-width: 50px; padding: 4px 6px; border-radius: 5px; color: var(--action-primary); background: rgb(169 157 255 / 9%); font-size: 9px; text-align: center; }
   .scope-candidate { color: var(--state-warning); background: rgb(217 189 125 / 10%); }
 
@@ -3326,21 +3326,21 @@
   }
 
   .review-panel .candidate-diff-line.removed {
-    background: rgb(238 140 158 / 10%);
+    background: color-mix(in srgb, var(--state-danger) 4%, transparent);
   }
 
   .review-panel .candidate-diff-line.added {
-    background: rgb(123 216 181 / 10%);
+    background: color-mix(in srgb, var(--action-primary) 6%, transparent);
   }
 
   .review-panel .candidate-diff-line.removed code,
   .review-panel .candidate-diff-line.removed .candidate-diff-marker {
-    color: #f0b5c2;
+    color: color-mix(in srgb, var(--state-danger) 42%, var(--text-secondary));
   }
 
   .review-panel .candidate-diff-line.added code,
   .review-panel .candidate-diff-line.added .candidate-diff-marker {
-    color: #9be6c7;
+    color: color-mix(in srgb, var(--action-primary) 42%, var(--text-secondary));
   }
 
   .story-drawer-subtitle,

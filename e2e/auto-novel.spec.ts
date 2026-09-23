@@ -306,6 +306,21 @@ test("refines a selected candidate passage and reviews outline fulfillment witho
   await page.getByRole("button", { name: "生成局部建议" }).click();
   await expect(page.locator(".candidate-refinement-option")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "选区逐行对比" }).first()).toBeVisible();
+  const diffPalette = await page.locator(".candidate-refinement-diff").first().evaluate((element) => {
+    const removed = element.querySelector(".candidate-diff-line.removed")!;
+    const added = element.querySelector(".candidate-diff-line.added")!;
+    return {
+      removedText: getComputedStyle(removed.querySelector("code")!).color,
+      addedText: getComputedStyle(added.querySelector("code")!).color,
+      removedBackground: getComputedStyle(removed).backgroundColor,
+      addedBackground: getComputedStyle(added).backgroundColor,
+    };
+  });
+  expect(diffPalette.removedText).not.toBe("rgb(177, 91, 87)");
+  expect(diffPalette.addedText).not.toBe("rgb(57, 115, 72)");
+  expect(diffPalette.addedText).not.toBe(diffPalette.removedText);
+  expect(diffPalette.removedBackground).toContain("0.04");
+  expect(diffPalette.addedBackground).toContain("0.06");
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator(".candidate-refinement").scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("selection-refinement-desktop.png") });

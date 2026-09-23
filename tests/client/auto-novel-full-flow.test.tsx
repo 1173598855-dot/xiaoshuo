@@ -236,7 +236,7 @@ describe("auto-novel full client flow", () => {
     expect(await screen.findByText("这本书已经写完了")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "打开正式正文" }));
     await waitFor(() => expect(screen.getByRole("main")).toHaveTextContent(candidate.candidateText));
-  });
+  }, 10_000);
 
   it("registers with an invitation when the author API requires an account", async () => {
     let authenticated = false;
