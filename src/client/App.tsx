@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type {
   DesktopCommand,
@@ -17,21 +17,17 @@ import type { ClientProviderSettings } from "./api/transport";
 import { createAutoNovelApi, type AutoNovelProviderInput } from "./auto-novel-api";
 import { createAutoNovelIpcApi } from "./auto-novel-ipc-api";
 import type { AutoNovelDesktopApiV2 } from "../desktop/auto-novel-preload-api-v2";
-import { CreativeHome } from "./components/CreativeHome";
 import { resolveProviderSettings } from "./provider-session";
 import { useProductionRun } from "./hooks/use-production-run";
 import type { AuthMode, AuthStatus } from "./components/AuthGate";
 import { storeAccessToken } from "./access-token";
 import type { MotionMode, WorkbenchPage } from "./components/WorkbenchChrome";
-import { AppShell } from "./app/AppShell";
 import { useAppShellState } from "./app/app-shell-state";
 
 const ActivationGate = lazy(() => import("./components/ActivationGate").then(({ ActivationGate: component }) => ({ default: component })));
 const AuthGate = lazy(() => import("./components/AuthGate").then(({ AuthGate: component }) => ({ default: component })));
-const DirectionPicker = lazy(() => import("./components/DirectionPicker").then(({ DirectionPicker: component }) => ({ default: component })));
-const ProductionRoom = lazy(() => import("./components/ProductionRoom").then(({ ProductionRoom: component }) => ({ default: component })));
-const ChapterReview = lazy(() => import("./components/ChapterReview").then(({ ChapterReview: component }) => ({ default: component })));
-const ManuscriptView = lazy(() => import("./components/ManuscriptView").then(({ ManuscriptView: component }) => ({ default: component })));
+const loadWorkbenchView = () => import("./app/WorkbenchView");
+const WorkbenchView = lazy(() => loadWorkbenchView().then(({ WorkbenchView: component }) => ({ default: component })));
 
 type Page = WorkbenchPage;
 const MOTION_MODE_KEY = "xiaoyi.motion-mode.v1";
@@ -95,7 +91,6 @@ export function App() {
     return providerConfig;
   }, [providerConfig, providerSettings, workflowInput]);
   const runState = useProductionRun(autoApi, runId);
-  const lazyPanelFallback = <div className="panel-loading" role="status">正在打开工作区工具…</div>;
   const activationFallback = <div className="app-loading" role="status"><span>正在打开桌面激活…</span></div>;
   const authFallback = <div className="app-loading" role="status"><span>正在打开登录界面…</span></div>;
 
@@ -190,6 +185,7 @@ export function App() {
 
   useEffect(() => {
     void loadLibrary();
+    void loadWorkbenchView();
   }, [loadLibrary]);
 
   useEffect(() => {
@@ -511,145 +507,126 @@ export function App() {
   if (accessTokenPrompt) {
     return <Suspense fallback={authFallback}><AuthGate mode={authMode} status={authStatus} retryAfterSeconds={authRetryAfter} username={authUsername} password={authPassword} invitationCode={invitationCodeInput} error={invitationError ?? error} onModeChange={(mode) => { setAuthMode(mode); setAuthStatus("idle"); setInvitationError(null); setError(null); }} onUsernameChange={setAuthUsername} onPasswordChange={setAuthPassword} onInvitationCodeChange={setInvitationCodeInput} onSubmit={(event) => void submitAuth(event)} /></Suspense>;
   }
-  let pageContent: ReactNode;
-  if (page === "home") {
-    pageContent = <CreativeHome
-      books={books}
-      busy={busy}
-      error={error}
-      assetDraft={assetDraft}
-      onCreateIdea={(input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); }}
-      onOpenBook={(book) => void openBook(book)}
-      onConfigureProvider={() => openTool("provider")}
-      onConfigureWorkflow={() => openTool("workflow")}
-      onOpenAssetLibrary={() => openTool("assets")}
-      onOpenData={() => openTool("data")}
-      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
-      motionMode={motionMode}
-      onToggleMotionMode={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
-      onOpenCommandPalette={openCommand}
-      onOpenNavigation={openNavigation}
-      onRetry={() => { setLoading(true); setError(null); void loadLibrary(); }}
-    />;
-  } else if (!bookDetails) {
-    return <div className="app-error" role="alert">{error ?? "作品不存在。"}<button type="button" onClick={() => setPage("home")}>返回</button></div>;
-  } else if (page === "directions") {
-    pageContent = <Suspense fallback={lazyPanelFallback}><DirectionPicker
-      directions={bookDetails.directions}
-      busy={busy}
-      onSelect={(direction) => void selectDirection(direction)}
-      onAutoSelect={() => void autoSelectDirection()}
-      onBack={() => setPage("home")}
-      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
-      onOpenNavigation={openNavigation}
-      onOpenCommandPalette={openCommand}
-    /></Suspense>;
-  } else if (page === "manuscript") {
-    pageContent = <Suspense fallback={<div className="panel-loading" role="status">正在打开正文…</div>}><ManuscriptView
-      book={bookDetails}
-      chapters={runState.details?.acceptedChapters ?? []}
-      api={autoApi}
-      onImported={async () => {
-        const next = await autoApi.getBook(bookDetails.book.id);
-        setBookDetails(next);
-        setBooks((current) => current.map((item) => item.id === next.book.id ? next.book : item));
-        if (runId) await runState.refresh();
-      }}
-      onBack={() => setPage("production")}
-      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
-      onOpenNavigation={openNavigation}
-      onOpenCommandPalette={openCommand}
-    /></Suspense>;
-  } else {
-    pageContent = <Suspense fallback={lazyPanelFallback}><ProductionRoom
-      review={<div id="chapter-review-anchor"><Suspense fallback={lazyPanelFallback}><ChapterReview
-        details={runState.details}
-        api={autoApi}
-        provider={providerInput}
-        onResume={resumeRun}
-        onRewrite={async (instruction) => {
+  const currentBookId = bookDetails?.book.id;
+  return <Suspense fallback={<div className="app-loading" role="status"><span>正在打开故事工作台</span></div>}><WorkbenchView
+    state={{
+      page,
+      books,
+      bookDetails,
+      runId,
+      run: runState.details,
+      runError: runState.error,
+      api: autoApi,
+      providers,
+      providerSettings,
+      providerInput,
+      workflowInput,
+      memoryContextConfig,
+      motionMode,
+      assetDraft,
+      busy,
+      error,
+      shellState,
+      connectionState: runState.connectionState,
+    }}
+    actions={{
+      home: {
+        createIdea: (input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); },
+        openBook: (book) => void openBook(book),
+        configureProvider: () => openTool("provider"),
+        configureWorkflow: () => openTool("workflow"),
+        openAssetLibrary: () => openTool("assets"),
+        openData: () => openTool("data"),
+        openCreatorDashboard: () => openTool("creator-dashboard"),
+        toggleMotionMode: () => setMotionMode((current) => current === "quiet" ? "full" : "quiet"),
+        openCommand,
+        openNavigation,
+        retry: () => { setLoading(true); setError(null); void loadLibrary(); },
+      },
+      directions: {
+        select: (direction) => void selectDirection(direction),
+        autoSelect: () => void autoSelectDirection(),
+        back: () => setPage("home"),
+        openCreatorDashboard: () => openTool("creator-dashboard"),
+        openCommand,
+        openNavigation,
+      },
+      production: {
+        start: () => void startProduction(),
+        pause: () => void pauseRun(),
+        resume: () => resumeRun(),
+        cancel: () => void cancelRun(),
+        retryConnection: () => runState.retryNow(),
+        rewrite: async (instruction) => {
           const config = requireProvider();
           if (!config || !runId) return;
           await autoApi.rewriteCurrentChapter(runId, config, instruction);
           await runState.refresh();
-        }}
-        onAccept={async () => {
+        },
+        accept: async () => {
           const candidate = runState.details?.candidate;
           if (!candidate) return;
           await autoApi.acceptCandidate(candidate.id, candidate.baseRevision);
           await runState.refresh();
-        }}
-      /></Suspense></div>}
-      book={bookDetails}
-      run={runState.details}
-      api={autoApi}
-      busy={busy}
-      error={error ?? runState.error}
-      memoryContextConfig={memoryContextConfig}
-      connectionState={runState.connectionState}
-      onRetryConnection={() => runState.retryNow()}
-      onStart={() => void startProduction()}
-      onPause={() => void pauseRun()}
-      onResume={() => void resumeRun()}
-      onCancel={() => void cancelRun()}
-      onOpenManuscript={() => setPage("manuscript")}
-      onOpenMemory={() => openTool("memory")}
-      onOpenContinuityRadar={() => openTool("continuity-radar")}
-      onOpenTimeline={() => openTool("timeline")}
-      onOpenBranches={() => openTool("branches")}
-      onOpenAuthoringHub={() => openTool("authoring-hub")}
-      onOpenStoryBible={() => openTool("story-bible")}
-      onOpenConsistency={() => openTool("consistency")}
-      onOpenSearch={() => openTool("search")}
-      onConfigureProvider={() => openTool("provider")}
-      onConfigureWorkflow={() => openTool("workflow")}
-      onOpenAssetLibrary={() => openTool("assets")}
-      onOpenCreatorDashboard={() => openTool("creator-dashboard")}
-      onOpenAuthorDelivery={() => openTool("author-delivery")}
-      onOpenSystemHealth={() => openTool("system-health")}
-      onOpenNavigation={openNavigation}
-      onOpenCommandPalette={openCommand}
-    /></Suspense>;
-  }
-
-  return <AppShell
-    state={shellState}
-    page={page}
-    books={books}
-    bookDetails={bookDetails}
-    runId={runId}
-    run={runState.details}
-    api={autoApi}
-    providers={providers}
-    providerSettings={providerSettings}
-    providerInput={providerInput}
-    workflowInput={workflowInput}
-    memoryContextConfig={memoryContextConfig}
-    motionMode={motionMode}
-    onOpenTool={openTool}
-    onCloseTool={closeTool}
-    onCloseNavigation={closeNavigation}
-    onOpenCommand={openCommand}
-    onCloseCommand={closeCommand}
-    onPageChange={setPage}
-    onMotionModeChange={() => setMotionMode((current) => current === "quiet" ? "full" : "quiet")}
-    onSaveProvider={handleProviderSave}
-    onClearProviderKey={handleProviderClearKey}
-    onSaveWorkflow={async (next) => {
-      const saved = await apiClient.saveWorkflowSettings(next);
-      setWorkflowInput(saved);
-      setError(null);
+        },
+        openManuscript: () => setPage("manuscript"),
+        openMemory: () => openTool("memory"),
+        openContinuityRadar: () => openTool("continuity-radar"),
+        openTimeline: () => openTool("timeline"),
+        openBranches: () => openTool("branches"),
+        openAuthoringHub: () => openTool("authoring-hub"),
+        openStoryBible: () => openTool("story-bible"),
+        openConsistency: () => openTool("consistency"),
+        openSearch: () => openTool("search"),
+        configureProvider: () => openTool("provider"),
+        configureWorkflow: () => openTool("workflow"),
+        openAssetLibrary: () => openTool("assets"),
+        openCreatorDashboard: () => openTool("creator-dashboard"),
+        openAuthorDelivery: () => openTool("author-delivery"),
+        openSystemHealth: () => openTool("system-health"),
+        openCommand,
+        openNavigation,
+      },
+      manuscript: {
+        imported: async () => {
+          if (!currentBookId) return;
+          const next = await autoApi.getBook(currentBookId);
+          setBookDetails(next);
+          setBooks((current) => current.map((item) => item.id === next.book.id ? next.book : item));
+          if (runId) await runState.refresh();
+        },
+        back: () => setPage("production"),
+        openCreatorDashboard: () => openTool("creator-dashboard"),
+        openCommand,
+        openNavigation,
+      },
+      shell: {
+        openTool,
+        closeTool,
+        closeNavigation,
+        openCommand,
+        closeCommand,
+        changePage: setPage,
+        toggleMotionMode: () => setMotionMode((current) => current === "quiet" ? "full" : "quiet"),
+        saveProvider: handleProviderSave,
+        clearProviderKey: handleProviderClearKey,
+        saveWorkflow: async (next) => {
+          const saved = await apiClient.saveWorkflowSettings(next);
+          setWorkflowInput(saved);
+          setError(null);
+        },
+        imported: handleImported,
+        assetDraft: setAssetDraft,
+        bookDetails: setBookDetails,
+        books: setBooks,
+        refreshRun: runState.refresh,
+        autoSelectDirection: () => void autoSelectDirection(),
+        memoryContextConfig: setMemoryContextConfig,
+      },
     }}
-    onImported={handleImported}
-    onOpenBook={(book) => void openBook(book)}
-    onAssetDraft={setAssetDraft}
-    onBookDetailsChange={setBookDetails}
-    onBooksChange={setBooks}
-    onRefreshRun={runState.refresh}
-    onAutoSelectDirection={() => void autoSelectDirection()}
-    onMemoryContextConfigChange={setMemoryContextConfig}
-  >{pageContent}</AppShell>;
+  /></Suspense>;
 }
+
 function errorMessage(error: unknown, fallback = "操作失败，请稍后重试。"): string {
   if (error instanceof ApiRequestError) return error.message;
   if (!(error instanceof Error)) return fallback;
