@@ -201,11 +201,12 @@ test("opens a dedicated story creation page and keeps its draft on return", asyn
   await page.getByRole("button", { name: "进入创作页" }).click();
   await expect(page.getByRole("heading", { name: "写下你想讲的故事" })).toBeVisible();
   await page.getByRole("textbox", { name: "故事想法" }).fill("一间只在下雨时出现的书店");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("xiaoyi.idea-draft.v1"))).toContain("一间只在下雨时出现的书店");
   await page.getByRole("button", { name: "返回故事起点" }).click();
 
   await expect(page.getByRole("heading", { name: "继续作品" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "故事想法" })).toHaveCount(0);
-  await page.getByRole("button", { name: "进入创作页" }).click();
+  await page.getByRole("button", { name: "继续上次构思" }).click();
   await expect(page.getByRole("textbox", { name: "故事想法" })).toHaveValue("一间只在下雨时出现的书店");
 });
 

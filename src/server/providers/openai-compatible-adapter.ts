@@ -25,7 +25,8 @@ export class OpenAICompatibleAdapter implements TextGenerationProvider {
         apiKey: config.apiKey || "local-no-key",
         baseURL: config.baseUrl,
         timeout: 120_000,
-        maxRetries: 2,
+        // Provider failover and ProductionService own the bounded retry budget.
+        maxRetries: 0,
       });
   }
 

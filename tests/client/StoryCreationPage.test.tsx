@@ -54,6 +54,7 @@ describe("StoryCreationPage", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "故事想法" }), {
       target: { value: "一间只在下雨时出现的书店" },
     });
+    expect(window.localStorage.getItem("xiaoyi.idea-draft.v1")).toContain("一间只在下雨时出现的书店");
 
     unmount();
 

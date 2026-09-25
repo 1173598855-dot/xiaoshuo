@@ -27,15 +27,18 @@ export class SlidingWindowRateLimiter {
   check(key: string): RateLimitDecision {
     const now = this.now();
     const cutoff = now - this.windowMs;
-    this.pruneExpired(cutoff);
-    if (!this.entries.has(key) && this.entries.size >= this.maxKeys) {
-      const oldestKey = [...this.entries.entries()]
-        .sort((left, right) => (left[1][0] ?? now) - (right[1][0] ?? now))[0]?.[0];
-      if (oldestKey !== undefined) this.entries.delete(oldestKey);
-    }
-    const recent = (this.entries.get(key) ?? []).filter((timestamp) => timestamp > cutoff);
+    const previous = this.entries.get(key);
+    const recent = (previous ?? []).filter((timestamp) => timestamp > cutoff);
     const allowed = recent.length < this.limit;
     if (allowed) recent.push(now);
+
+    // Map insertion order is the LRU queue; avoid scanning every client on every request.
+    if (previous) {
+      this.entries.delete(key);
+    } else if (this.entries.size >= this.maxKeys) {
+      const leastRecentlyUsedKey = this.entries.keys().next().value;
+      if (leastRecentlyUsedKey !== undefined) this.entries.delete(leastRecentlyUsedKey);
+    }
     this.entries.set(key, recent);
     const oldest = recent[0] ?? now;
     return {
@@ -48,14 +51,6 @@ export class SlidingWindowRateLimiter {
 
   clear(): void {
     this.entries.clear();
-  }
-
-  private pruneExpired(cutoff: number): void {
-    for (const [key, timestamps] of this.entries) {
-      const recent = timestamps.filter((timestamp) => timestamp > cutoff);
-      if (recent.length === 0) this.entries.delete(key);
-      else if (recent.length !== timestamps.length) this.entries.set(key, recent);
-    }
   }
 }
 

@@ -31,6 +31,7 @@ export class GoogleAdapter implements TextGenerationProvider {
           systemInstruction: input.systemPrompt,
           maxOutputTokens: input.maxOutputTokens,
           abortSignal: signal,
+          httpOptions: { retryOptions: { attempts: 1 } },
           ...(input.reasoningLevel && input.reasoningLevel !== "off" ? { thinkingConfig: { thinkingBudget: input.reasoningLevel === "high" ? 4096 : input.reasoningLevel === "medium" ? 2048 : 1024 } } : {}),
         },
       });

@@ -573,6 +573,36 @@ describe("ProductionService", () => {
     expect(calls).toBe(1);
   });
 
+  it("reports a provider stage timeout as an upstream failure, not a caller cancellation", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const provider = {
+      kind: "openai-compatible" as const,
+      async generate(_input: { systemPrompt: string }, signal?: AbortSignal) {
+        calls += 1;
+        return new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(
+            new NormalizedProviderError("REQUEST_ABORTED", "模型请求已取消。"),
+          ), { once: true });
+        });
+      },
+    };
+    const fixture = createFixture(provider);
+    const pending = new ProductionService(fixture).rewriteCurrentChapter(
+      fixture.run.id,
+      fixture.providerConfig,
+    );
+
+    try {
+      const rejected = expect(pending).rejects.toMatchObject({ code: "UPSTREAM_UNAVAILABLE" });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejected;
+      expect(calls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("routes draft, review, and repair to their collaborative role providers", async () => {
     const fixture = createFixture();
     const calls: Array<{ role: string; kind: string; userPrompt?: string }> = [];

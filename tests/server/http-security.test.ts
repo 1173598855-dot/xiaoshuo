@@ -17,6 +17,21 @@ describe("HTTP security helpers", () => {
     expect(limiter.check("fresh").remaining).toBe(1);
   });
 
+  it("evicts the least recently used identity when the key budget is full", () => {
+    let now = 1_000;
+    const limiter = new SlidingWindowRateLimiter(10, 60_000, () => now, 2);
+    limiter.check("a");
+    now += 1;
+    limiter.check("b");
+    now += 1;
+    limiter.check("a");
+    now += 1;
+    limiter.check("c");
+
+    expect(limiter.check("a").remaining).toBe(7);
+    expect(limiter.check("b").remaining).toBe(9);
+  });
+
   it("ignores oversized bearer headers before hashing them", () => {
     const request = new Request("http://localhost", {
       headers: { authorization: `Bearer ${"x".repeat(4_097)}` },

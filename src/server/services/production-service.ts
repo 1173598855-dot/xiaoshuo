@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { ProviderConfigSchema, type ProviderConfig, type ReasoningLevel } from "../../shared/contracts";
+import { ProviderConfigSchema, publicProviderErrorMessage, type ProviderConfig, type ReasoningLevel } from "../../shared/contracts";
 import {
   type ChapterCandidate,
   type ChapterPlan,
@@ -1188,12 +1188,22 @@ async function generateWithRetry(
   for (let attempt = 0; ; attempt += 1) {
     throwIfAborted(signal);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), stageTimeoutMs);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, stageTimeoutMs);
     const abortHandler = () => controller.abort();
     signal?.addEventListener("abort", abortHandler);
     try {
       return await provider.generate(input, controller.signal);
     } catch (error) {
+      if (timedOut && !signal?.aborted) {
+        throw new NormalizedProviderError(
+          "UPSTREAM_UNAVAILABLE",
+          publicProviderErrorMessage("UPSTREAM_UNAVAILABLE"),
+        );
+      }
       if (
         !isTransientProviderError(error) ||
         attempt >= MAX_TRANSIENT_RETRIES

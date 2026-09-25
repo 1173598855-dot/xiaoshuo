@@ -60,6 +60,34 @@ describe("CreativeHome author entry", () => {
     expect(onStartCreateStory).toHaveBeenCalledOnce();
   });
 
+  it("offers a direct resume action for a locally saved story idea", () => {
+    const idea = "一场未完成的故事";
+    const onStartCreateStory = vi.fn();
+    window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea, directionCount: 3 }));
+
+    render(
+      <CreativeHome
+        books={[]}
+        busy={false}
+        error={null}
+        onStartCreateStory={onStartCreateStory}
+        onOpenBook={vi.fn()}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(`已保存 ${idea.length} 字的本地构思，可继续编辑。`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "继续上次构思" }));
+    expect(onStartCreateStory).toHaveBeenCalledOnce();
+  });
+
+  it("waits to mount the large book canvas until the idea notebook is opened", () => {
+    renderCreationPage();
+
+    expect(document.querySelector(".preset-book-3d-model")).toBeNull();
+  });
+
   it("puts continuing a saved story beside creating a new one", () => {
     const book = {
       id: "71d98eb2-ec4f-4f18-8fd5-5666de8a9b17",

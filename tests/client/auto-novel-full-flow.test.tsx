@@ -83,6 +83,7 @@ beforeEach(() => {
 
 afterEach(() => {
   sessionStorage.clear();
+  window.localStorage.clear();
   vi.unstubAllGlobals();
 });
 

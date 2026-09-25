@@ -93,6 +93,7 @@ describe("provider adapters", () => {
         systemInstruction: input.systemPrompt,
         maxOutputTokens: input.maxOutputTokens,
         abortSignal: signal,
+        httpOptions: { retryOptions: { attempts: 1 } },
       },
     });
   });

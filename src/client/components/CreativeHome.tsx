@@ -46,6 +46,7 @@ export function CreativeHome({
   onRetry,
 }: CreativeHomeProps) {
   const processRef = useRef<HTMLOListElement>(null);
+  const [savedIdeaDraft] = useState(readSavedIdeaDraftSummary);
   const [activeProcess, setActiveProcess] = useState(0);
   const processLabels = ["写下想法", "选择方向", "逐章生产", "审核成书"];
 
@@ -122,12 +123,14 @@ export function CreativeHome({
             <div className="home-create-launch-copy">
               <span className="home-create-launch-mark" aria-hidden="true"><Plus size={19} /></span>
               <div>
-                <strong>从一句灵感开始</strong>
-                <span>草稿会自动保存在当前浏览器，随时可以回来继续。</span>
+                <strong>{savedIdeaDraft ? "继续上次构思" : "从一句灵感开始"}</strong>
+                <span>{savedIdeaDraft
+                  ? `已保存 ${savedIdeaDraft.characterCount.toLocaleString()} 字的本地构思，可继续编辑。`
+                  : "草稿会自动保存在当前浏览器，随时可以回来继续。"}</span>
               </div>
             </div>
             <button className="primary-button home-create-launch-action" type="button" disabled={busy} onClick={() => onStartCreateStory()}>
-              进入创作页 <ChevronRight size={17} aria-hidden="true" />
+              {savedIdeaDraft ? "继续上次构思" : "进入创作页"} <ChevronRight size={17} aria-hidden="true" />
             </button>
           </div>
           <div className="idea-caption"><span>独立写作空间 · 先构思，再选方向</span><span>输入 → 选择 → 写作</span></div>
@@ -196,6 +199,31 @@ const BUILT_IN_PRESETS: readonly StoryPreset[] = [
 const IDEA_DRAFT_KEY = "xiaoyi.idea-draft.v1";
 const CUSTOM_PRESETS_KEY = "xiaoyi.idea-presets.v1";
 
+function persistIdeaDraft(idea: string, directionCount: number, selectedPresetId: string | null): void {
+  try {
+    if (!idea.trim()) {
+      window.localStorage.removeItem(IDEA_DRAFT_KEY);
+      return;
+    }
+    window.localStorage.setItem(IDEA_DRAFT_KEY, JSON.stringify({ idea, directionCount, selectedPresetId, updatedAt: Date.now() }));
+  } catch {
+    // Local persistence is best-effort and must not block the current writing session.
+  }
+}
+
+function readSavedIdeaDraftSummary(): { characterCount: number } | null {
+  try {
+    const raw = window.localStorage.getItem(IDEA_DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as { idea?: unknown };
+    return typeof draft.idea === "string" && draft.idea.trim()
+      ? { characterCount: draft.idea.length }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function StoryIdeaComposer({
   busy,
   error,
@@ -253,31 +281,18 @@ export function StoryIdeaComposer({
     setIdea(assetDraft.text);
     setSelectedPresetId(null);
     setDraftState("restored");
+    persistIdeaDraft(assetDraft.text, directionCount, null);
     onAssetDraftApplied?.();
-  }, [assetDraft?.id, assetDraft?.text, onAssetDraftApplied]);
+  }, [assetDraft?.id, assetDraft?.text, directionCount, onAssetDraftApplied]);
 
   useEffect(() => {
     if (!draftReady) return;
-    const persistDraft = () => {
-      try {
-        if (!idea.trim()) {
-          window.localStorage.removeItem(IDEA_DRAFT_KEY);
-          return;
-        }
-        window.localStorage.setItem(IDEA_DRAFT_KEY, JSON.stringify({ idea, directionCount, selectedPresetId, updatedAt: Date.now() }));
-      } catch {
-        // Draft storage is best-effort and must never block writing.
-      }
-    };
     const timer = window.setTimeout(() => {
-      persistDraft();
+      persistIdeaDraft(idea, directionCount, selectedPresetId);
       if (!idea.trim()) setDraftState("empty");
       else if (draftState !== "restored") setDraftState("saved");
     }, 350);
-    return () => {
-      window.clearTimeout(timer);
-      persistDraft();
-    };
+    return () => window.clearTimeout(timer);
   }, [directionCount, draftReady, draftState, idea, selectedPresetId]);
 
   const clearDraft = () => {
@@ -286,7 +301,7 @@ export function StoryIdeaComposer({
     setSelectedPresetId(null);
     setDraftState("empty");
     setPresetFeedback(null);
-    window.localStorage.removeItem(IDEA_DRAFT_KEY);
+    persistIdeaDraft("", 3, null);
   };
 
   const savePreset = () => {
@@ -307,7 +322,13 @@ export function StoryIdeaComposer({
     setSelectedPresetId(next.id);
     setPresetName("");
     setPresetEditorOpen(false);
-    window.localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(updated));
+    persistIdeaDraft(idea, directionCount, next.id);
+    try {
+      window.localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(updated));
+    } catch {
+      setPresetFeedback("预设已在当前创作页载入，但浏览器暂时无法保存它。");
+      return;
+    }
   };
 
   const submit = (autoStart: boolean) => {
@@ -319,6 +340,7 @@ export function StoryIdeaComposer({
     setIdea(preset.idea);
     setSelectedPresetId(preset.id);
     setDraftState("saved");
+    persistIdeaDraft(preset.idea, directionCount, preset.id);
     setPresetFeedback(`已载入「${preset.label}」写法，可以在上方继续修改。`);
   };
 
@@ -336,7 +358,9 @@ export function StoryIdeaComposer({
   const addStorySpark = () => {
     if (!storySpark) return;
     const fragment = `情节火花（${storySpark.label}）：${storySpark.text}`;
-    setIdea((current) => current.trim() ? `${current.trim()}\n\n${fragment}` : fragment);
+    const nextIdea = idea.trim() ? `${idea.trim()}\n\n${fragment}` : fragment;
+    setIdea(nextIdea);
+    persistIdeaDraft(nextIdea, directionCount, selectedPresetId);
     setDraftState("saved");
     setPresetFeedback(`已加入情节火花「${storySpark.label}」，可以继续修改。`);
     setStorySpark(null);
@@ -347,7 +371,20 @@ export function StoryIdeaComposer({
   return (
     <form className="idea-form" onSubmit={(event) => { event.preventDefault(); submit(false); }}>
       <div className="idea-form-heading"><div><label htmlFor="story-idea">故事想法</label><span>从一句话开始</span></div></div>
-      <textarea id="story-idea" aria-label="故事想法" value={idea} onChange={(event) => { setIdea(event.target.value); setPresetFeedback(null); if (draftState === "restored") setDraftState("saved"); }} placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……" disabled={busy} />
+      <textarea
+        id="story-idea"
+        aria-label="故事想法"
+        value={idea}
+        onChange={(event) => {
+          const nextIdea = event.target.value;
+          setIdea(nextIdea);
+          persistIdeaDraft(nextIdea, directionCount, selectedPresetId);
+          setPresetFeedback(null);
+          if (draftState === "restored") setDraftState("saved");
+        }}
+        placeholder="例如：一个能看见别人死亡日期的外卖员，发现自己的死期正一天比一天提前……"
+        disabled={busy}
+      />
       <div className="idea-draft-status" role="status">
         <span>{draftState === "restored" ? "已恢复上次未完成的草稿" : draftState === "saved" ? "草稿已自动保存" : "输入会自动保存到当前浏览器"}</span>
         <small className="idea-length">{idea.length.toLocaleString()} 字</small>
@@ -379,7 +416,12 @@ export function StoryIdeaComposer({
           />
           {presetEditorOpen ? <div className="preset-editor"><input aria-label="预设名称" value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="给这套写作方式起个名字" maxLength={32} autoFocus /><button className="secondary-button" type="button" disabled={busy || !presetName.trim()} onClick={savePreset}>保存预设</button><button className="text-button" type="button" onClick={() => setPresetEditorOpen(false)}>取消</button></div> : null}
           <label className="direction-count-control" htmlFor="direction-count">方向数量
-            <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => { setDirectionCount(Math.min(12, Math.max(1, Number(event.target.value) || 1))); if (draftState === "restored") setDraftState("saved"); }} />
+            <input id="direction-count" aria-label="方向数量" type="number" min={1} max={12} value={directionCount} disabled={busy} onChange={(event) => {
+              const nextDirectionCount = Math.min(12, Math.max(1, Number(event.target.value) || 1));
+              setDirectionCount(nextDirectionCount);
+              persistIdeaDraft(idea, nextDirectionCount, selectedPresetId);
+              if (draftState === "restored") setDraftState("saved");
+            }} />
           </label>
         </div>
       </details>
@@ -494,7 +536,7 @@ function PresetFlipbook({
       </header>
       <div className="preset-book-stage">
         <div className="preset-book-reader" aria-hidden={!open}>
-          <Suspense fallback={<div className="preset-book-3d-model" aria-hidden="true" />}><ThreeBookModel open={open} turnDirection={turning?.direction ?? null} coverTitle="灵感册" /></Suspense>
+          {open ? <Suspense fallback={<div className="preset-book-3d-model" aria-hidden="true" />}><ThreeBookModel open={open} turnDirection={turning?.direction ?? null} coverTitle="灵感册" /></Suspense> : null}
           <div className="preset-book-page-layer preset-book-under-page">
             <PresetBookPage preset={turning?.to ?? current} pageNumber={(turning ? pageIndex + (turning.direction === "next" ? 2 : 0) : pageIndex + 1)} pageCount={presets.length} interactive={open && !turning} disabled={disabled} onSelect={applySelection} />
           </div>

@@ -21,7 +21,8 @@ export class AnthropicAdapter implements TextGenerationProvider {
       new Anthropic({
         apiKey: config.apiKey,
         timeout: 120_000,
-        maxRetries: 2,
+        // Provider failover and ProductionService own the bounded retry budget.
+        maxRetries: 0,
       });
   }
 
