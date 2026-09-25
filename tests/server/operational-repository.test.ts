@@ -187,4 +187,36 @@ describe("operational repositories", () => {
     });
     expect(repository.getQuotaSnapshot({ monthlyTokenLimit: 35 }).tokensReserved).toBe(0);
   });
+
+  it("rolls back a usage event when its reservation cannot be settled", () => {
+    const database = createDatabase(":memory:");
+    databases.push(database);
+    migrate(database);
+    const repository = new UsageRepository(database);
+    const reservation = repository.reserveQuota({
+      estimatedTokens: 20,
+      estimatedCostMicros: 0,
+      monthlyTokenLimit: 35,
+    });
+    database.exec(`
+      CREATE TRIGGER fail_reservation_settlement
+      BEFORE UPDATE ON usage_reservations
+      WHEN NEW.status = 'settled'
+      BEGIN
+        SELECT RAISE(ABORT, 'injected settlement failure');
+      END;
+    `);
+
+    expect(() => repository.record({
+      provider: "openai",
+      model: "model-a",
+      inputTokens: 10,
+      outputTokens: 5,
+      estimatedCostMicros: 0,
+      status: "success",
+      reservationId: reservation.id,
+    })).toThrow("injected settlement failure");
+    expect(database.prepare("SELECT COUNT(*) AS count FROM usage_events").get()).toMatchObject({ count: 0 });
+    expect(database.prepare("SELECT status FROM usage_reservations WHERE id = ?").get(reservation.id)).toMatchObject({ status: "active" });
+  });
 });

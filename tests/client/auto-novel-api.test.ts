@@ -24,6 +24,22 @@ const provider = {
 };
 
 describe("auto-novel HTTP API client", () => {
+  it("validates lightweight recovery summaries without fetching book details", async () => {
+    const summary = {
+      bookId: book.id,
+      runId: "a2fcea89-9d4e-4f45-84d2-a0e40d86f706",
+      status: "paused",
+      updatedAt: "2026-09-14T00:00:00.000Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe("/api/books/recoverable/runs");
+      return new Response(JSON.stringify([summary]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await expect(createAutoNovelApi(fetchMock).listRecoverableRunSummaries!()).resolves.toEqual([summary]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("validates directions at the HTTP response boundary", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ book, directions: [{ id: "invalid" }] }), {

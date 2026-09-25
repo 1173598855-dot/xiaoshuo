@@ -30,6 +30,12 @@ export function registerBookRoutes(app: Hono, { dependencies }: AutoNovelRouteCo
     ),
   );
 
+  app.get("/api/books/recoverable/runs", (context) =>
+    context.json(
+      dependencies.bookRepository.listRecoverableRunSummaries(currentRequestContext()?.userId),
+    ),
+  );
+
   app.get("/api/books/recoverable/details", (context) =>
     context.json(
       dependencies.bookRepository.listRecoverableBookDetails(currentRequestContext()?.userId),

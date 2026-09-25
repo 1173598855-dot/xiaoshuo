@@ -8,12 +8,14 @@ import {
   BookSchema,
   ChapterPlanSchema,
   DEFAULT_DIRECTION_COUNT,
+  RecoverableRunSummarySchema,
   StoryDirectionSchema,
   type Book,
   type BookDetails,
   type BookFoundation,
   type ChapterPlan,
   type CreateBookInput,
+  type RecoverableRunSummary,
   type StoryDirection,
   type UpdateChapterPlanInput,
 } from "../../shared/auto-novel";
@@ -299,6 +301,34 @@ export class BookRepository {
       )
       .all(...(ownerUserId ? [ownerUserId] : [])) as Array<{ id: string }>;
     return rows.map(({ id }) => id);
+  }
+
+  listRecoverableRunSummaries(ownerUserId?: string): readonly RecoverableRunSummary[] {
+    const ownerClause = ownerUserId ? " AND b.owner_user_id = ?" : "";
+    const rows = this.database.prepare(
+      `SELECT b.id AS book_id, r.id AS run_id, r.status, r.updated_at
+         FROM books b
+         JOIN production_runs r ON r.book_id = b.id AND r.kind = 'production'
+        WHERE r.status IN ('queued', 'running', 'paused', 'failed')
+          AND NOT EXISTS (
+            SELECT 1 FROM production_runs newer
+             WHERE newer.book_id = r.book_id AND newer.kind = r.kind
+               AND (newer.updated_at > r.updated_at
+                 OR (newer.updated_at = r.updated_at AND newer.id > r.id))
+          )${ownerClause}
+        ORDER BY r.updated_at DESC, b.updated_at DESC, b.id`,
+    ).all(...(ownerUserId ? [ownerUserId] : [])) as Array<{
+      book_id: string;
+      run_id: string;
+      status: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => RecoverableRunSummarySchema.parse({
+      bookId: row.book_id,
+      runId: row.run_id,
+      status: row.status,
+      updatedAt: row.updated_at,
+    }));
   }
 
   listRecoverableBookDetails(ownerUserId?: string): readonly BookDetails[] {

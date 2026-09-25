@@ -252,39 +252,47 @@ export class UsageRepository {
   }
 
   record(input: UsageEventInput): void {
-    this.database
-      .prepare(
-        `INSERT INTO usage_events
-         (id, request_id, provider, model, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, estimated_cost_micros, status, error_code,
-          book_id, chapter_number, stage, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      )
-      .run(
-        this.createId(),
-        input.requestId ?? null,
-        clamp(input.provider, 80),
-        clamp(input.model, 200),
-        nullableNonNegativeInteger(input.inputTokens),
-        nullableNonNegativeInteger(input.outputTokens),
-        nullableNonNegativeInteger(input.cacheReadTokens),
-        nullableNonNegativeInteger(input.cacheWriteTokens),
-        nonNegativeInteger(input.estimatedCostMicros),
-        input.status,
-        input.errorCode ? clamp(input.errorCode, 120) : null,
-        input.bookId ?? null,
-        input.chapterNumber === undefined ? null : positiveInteger(input.chapterNumber),
-        input.stage ?? null,
-        this.now().toISOString(),
-      );
-    if (input.reservationId) {
-      this.database
-        .prepare(
-          `UPDATE usage_reservations
-              SET status = ?, updated_at = ?
-            WHERE id = ? AND status = 'active'`,
-        )
-        .run(input.status === "success" ? "settled" : "released", this.now().toISOString(), input.reservationId);
+    const createdAt = this.now().toISOString();
+    const insertEvent = () => this.database.prepare(
+      `INSERT INTO usage_events
+       (id, request_id, provider, model, input_tokens, output_tokens,
+        cache_read_tokens, cache_write_tokens, estimated_cost_micros, status, error_code,
+        book_id, chapter_number, stage, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      this.createId(),
+      input.requestId ?? null,
+      clamp(input.provider, 80),
+      clamp(input.model, 200),
+      nullableNonNegativeInteger(input.inputTokens),
+      nullableNonNegativeInteger(input.outputTokens),
+      nullableNonNegativeInteger(input.cacheReadTokens),
+      nullableNonNegativeInteger(input.cacheWriteTokens),
+      nonNegativeInteger(input.estimatedCostMicros),
+      input.status,
+      input.errorCode ? clamp(input.errorCode, 120) : null,
+      input.bookId ?? null,
+      input.chapterNumber === undefined ? null : positiveInteger(input.chapterNumber),
+      input.stage ?? null,
+      createdAt,
+    );
+    if (!input.reservationId) {
+      insertEvent();
+      return;
+    }
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      insertEvent();
+      this.database.prepare(
+        `UPDATE usage_reservations
+            SET status = ?, updated_at = ?
+          WHERE id = ? AND status = 'active'`,
+      ).run(input.status === "success" ? "settled" : "released", createdAt, input.reservationId);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
     }
   }
 

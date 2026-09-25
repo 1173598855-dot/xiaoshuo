@@ -35,6 +35,7 @@ import {
 } from "./runtime-policy";
 import { handleDesktopStartupFailure } from "./startup-failure";
 import {
+  acceptCloseBeforeCancellingGenerations,
   createBeforeQuitHandler,
   createCloseDecisionCoordinator,
 } from "./lifecycle-handshake";
@@ -403,10 +404,10 @@ async function runDesktopSmoke(): Promise<void> {
 async function requestRendererClose(): Promise<void> {
   const window = mainWindow;
   if (closeRequestInFlight || !window || !databaseManager) return;
+  const manager = databaseManager;
   closeRequestInFlight = true;
   let closeAccepted = false;
   try {
-    await databaseManager.cancelAllGenerations();
     const requestId = randomUUID();
     const decision = closeDecisionCoordinator.wait(
       requestId,
@@ -419,33 +420,26 @@ async function requestRendererClose(): Promise<void> {
       } satisfies DesktopCommand);
     }
     const canClose = await decision;
-    if (canClose) {
-      if (mainWindow === window && !window.isDestroyed()) {
-        closeAccepted = true;
-        windowLifecycle.authorizeClose(window);
-        window.close();
-      }
-      return;
-    }
-
-    if (mainWindow !== window || window.isDestroyed()) return;
-    const result = await dialog.showMessageBox(window, {
-      type: "warning",
-      buttons: ["返回编辑器", "退出且不保存"],
-      defaultId: 0,
-      cancelId: 0,
-      title: "未保存的修改",
-      message: "当前章节还有未保存的修改。",
-    });
-    if (
-      result.response === 1 &&
-      mainWindow === window &&
-      !window.isDestroyed()
-    ) {
-      closeAccepted = true;
-      windowLifecycle.authorizeClose(window);
-      window.close();
-    }
+    const accepted = await acceptCloseBeforeCancellingGenerations(
+      canClose,
+      async () => {
+        if (mainWindow !== window || window.isDestroyed()) return false;
+        const result = await dialog.showMessageBox(window, {
+          type: "warning",
+          buttons: ["返回编辑器", "退出且不保存"],
+          defaultId: 0,
+          cancelId: 0,
+          title: "未保存的修改",
+          message: "当前工作区还有未保存的修改，退出会丢失这些内容。",
+        });
+        return result.response === 1;
+      },
+      () => manager.cancelAllGenerations(),
+    );
+    if (!accepted || mainWindow !== window || window.isDestroyed()) return;
+    closeAccepted = true;
+    windowLifecycle.authorizeClose(window);
+    window.close();
   } finally {
     if (!closeAccepted) applicationQuitRequested = false;
     closeRequestInFlight = false;
@@ -455,6 +449,5 @@ async function requestRendererClose(): Promise<void> {
 function beginFinalShutdown(exitCode = 0): void {
   void finalShutdown.request(exitCode);
 }
-
 
 

@@ -241,3 +241,18 @@ describe("CreativeHome author entry", () => {
     await waitFor(() => expect(screen.getByText("2 / 3")).toBeInTheDocument());
     expect(document.querySelector(".preset-book-turn-page")).not.toBeInTheDocument();
   });
+
+  it("keeps the current page when the story idea changes", () => {
+    window.localStorage.setItem("xiaoyi.motion-mode.v1", "quiet");
+    renderHome();
+    fireEvent.click(screen.getByText("更多构思工具"));
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
+    fireEvent.click(screen.getByRole("button", { name: "采用这套写法" }));
+    fireEvent.click(screen.getByRole("button", { name: "悬疑短篇" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "故事想法" }), { target: { value: "改写后的故事起点" } });
+
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+  });

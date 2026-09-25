@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ManuscriptView } from "../../src/client/components/ManuscriptView";
 import type { AutoNovelApi } from "../../src/client/auto-novel-api";
 import type { BookDetails } from "../../src/shared/auto-novel";
 import type { Chapter } from "../../src/shared/contracts";
+import { hasUnsavedWork } from "../../src/client/app/unsaved-work";
 
 const bookId = "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c";
 const chapter = {
@@ -24,7 +25,10 @@ const book = {
   chapterPlans: [],
 } as unknown as BookDetails;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 function renderManuscript(onBack = vi.fn()) {
   const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
@@ -67,5 +71,49 @@ describe("ManuscriptView", () => {
     const { scrollTo } = renderManuscript();
 
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 360));
+  });
+
+  it("reports an unsaved annotation draft until it is cancelled", () => {
+    const api = { getChapters: vi.fn(async () => ({ bookId, plans: [], chapters: [chapter] })), exportBook: vi.fn() } as unknown as AutoNovelApi;
+    render(<ManuscriptView book={book} chapters={[chapter]} api={api} onBack={vi.fn()} />);
+
+    expect(hasUnsavedWork()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /添加批注/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "第 1 章批注" }), { target: { value: "未保存的审阅笔记" } });
+    expect(hasUnsavedWork()).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
+  it("keeps the table of contents in sync with filtered chapters", () => {
+    const secondChapter = { ...chapter, id: "chapter-two", title: "没有出口", content: "门牌号在地图上消失了。", position: 1 };
+    const api = { getChapters: vi.fn(async () => ({ bookId, plans: [], chapters: [chapter, secondChapter] })), exportBook: vi.fn() } as unknown as AutoNovelApi;
+    render(<ManuscriptView book={book} chapters={[chapter, secondChapter]} api={api} onBack={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索正文" }), { target: { value: "地图" } });
+
+    const tableOfContents = within(screen.getByRole("complementary", { name: "正文目录" }));
+    expect(tableOfContents.getByRole("link", { name: "没有出口" })).toHaveAttribute("href", "#chapter-chapter-two");
+    expect(tableOfContents.queryByRole("link", { name: "雨夜车站" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the export object URL alive until the browser can start the download", async () => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:manuscript-export");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { api } = renderManuscript();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText("更多导出选项"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出 TXT" }));
+      await Promise.resolve();
+    });
+
+    expect(api.exportBook).toHaveBeenCalledWith(bookId, "txt");
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(1_000); });
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:manuscript-export");
   });
 });

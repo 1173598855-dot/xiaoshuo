@@ -2,6 +2,7 @@ export const AUTO_NOVEL_CHANNELS = {
   booksList: "auto-novel:books-list",
   booksRecoverableList: "auto-novel:books-recoverable-list",
   booksRecoverableDetails: "auto-novel:books-recoverable-details",
+  booksRecoverableRunSummaries: "auto-novel:books-recoverable-run-summaries",
   booksRuns: "auto-novel:books-runs",
   booksSnapshotsList: "auto-novel:books-snapshots-list",
   booksSnapshotCreate: "auto-novel:books-snapshot-create",

@@ -527,10 +527,16 @@ getAutoNovelServices(): AutoNovelServices {
       if (this.isReservedDatabaseTarget(destinationPath)) throw new Error("The export target is reserved by the active database manager");
       this.assertActiveRuntimeCanonical();
       mkdirSync(dirname(destinationPath), { recursive: true });
+      if (hasDatabaseSidecars(destinationPath)) {
+        throw new Error("The export target has SQLite sidecars and cannot be replaced safely");
+      }
       const temporaryPath = this.temporaryPathFor(destinationPath, "encrypted-export");
       const encryptedPath = `${temporaryPath}.xb`;
       try {
         await this.snapshotDatabase(this.getMutableRuntime().database, temporaryPath);
+        if (hasDatabaseSidecars(destinationPath)) {
+          throw new Error("The export target has SQLite sidecars and cannot be replaced safely");
+        }
         writeFileSync(encryptedPath, encryptBackup(readFileSync(temporaryPath), password));
         this.renameFile(encryptedPath, destinationPath);
       } finally {

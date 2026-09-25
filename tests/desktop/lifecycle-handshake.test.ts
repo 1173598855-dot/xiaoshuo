@@ -1,12 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  acceptCloseBeforeCancellingGenerations,
   createBeforeQuitHandler,
   createCloseDecisionCoordinator,
   waitForCloseDecision,
 } from "../../src/desktop/lifecycle-handshake";
 
 describe("desktop close handshake", () => {
+  it("keeps active generation running when the author returns to edit", async () => {
+    const confirmDiscard = vi.fn(async () => false);
+    const cancelGenerations = vi.fn(async () => undefined);
+
+    await expect(acceptCloseBeforeCancellingGenerations(false, confirmDiscard, cancelGenerations)).resolves.toBe(false);
+
+    expect(confirmDiscard).toHaveBeenCalledOnce();
+    expect(cancelGenerations).not.toHaveBeenCalled();
+  });
+
+  it("cancels active generation only after the author accepts closing", async () => {
+    const order: string[] = [];
+    const confirmDiscard = vi.fn(async () => { order.push("confirm"); return true; });
+    const cancelGenerations = vi.fn(async () => { order.push("cancel"); });
+
+    await expect(acceptCloseBeforeCancellingGenerations(false, confirmDiscard, cancelGenerations)).resolves.toBe(true);
+
+    expect(order).toEqual(["confirm", "cancel"]);
+  });
+
   it("resolves with the renderer decision before the timeout", async () => {
     let decide!: (canClose: boolean) => void;
     const pending = waitForCloseDecision((resolve) => {

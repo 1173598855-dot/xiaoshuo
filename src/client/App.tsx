@@ -23,6 +23,7 @@ import type { AuthMode, AuthStatus } from "./components/AuthGate";
 import { storeAccessToken } from "./access-token";
 import type { MotionMode, WorkbenchPage } from "./components/WorkbenchChrome";
 import { useAppShellState } from "./app/app-shell-state";
+import { hasUnsavedWork } from "./app/unsaved-work";
 
 const ActivationGate = lazy(() => import("./components/ActivationGate").then(({ ActivationGate: component }) => ({ default: component })));
 const AuthGate = lazy(() => import("./components/AuthGate").then(({ AuthGate: component }) => ({ default: component })));
@@ -119,29 +120,48 @@ export function App() {
       // Rehydrate the most recently touched production run before showing the
       // home screen. The run is persisted, so a renderer refresh or app restart
       // must not make an in-progress book look lost.
-      let candidates: Array<BookDetails | null>;
-      if (autoApi.listRecoverableBookDetails) {
-        candidates = [...await autoApi.listRecoverableBookDetails()];
-      } else {
-        const recoverableIds = autoApi.listRecoverableBookIds
-          ? await autoApi.listRecoverableBookIds()
-          : nextBooks
-              .filter((book) => book.selectedDirectionId !== null)
-              .map((book) => book.id);
-        candidates = await Promise.all(
-          recoverableIds.map(async (bookId) => {
-            try {
-              return await autoApi.getBook(bookId);
-            } catch {
-              return null;
+      let recovered: BookDetails | null = null;
+      let recoverableRuns: Array<{ runId: string; status: string }> = [];
+      if (autoApi.listRecoverableRunSummaries) {
+        const summaries = await autoApi.listRecoverableRunSummaries();
+        recoverableRuns = summaries.map(({ runId, status }) => ({ runId, status }));
+        for (const summary of summaries) {
+          try {
+            const details = await autoApi.getBook(summary.bookId);
+            if (details.run?.id === summary.runId && ["queued", "running", "paused", "failed"].includes(details.run.status)) {
+              recovered = details;
+              break;
             }
-          }),
-        );
+          } catch {
+            // Continue to the next resumable book if a recent one is unavailable.
+          }
+        }
+      } else {
+        let candidates: Array<BookDetails | null>;
+        if (autoApi.listRecoverableBookDetails) {
+          candidates = [...await autoApi.listRecoverableBookDetails()];
+        } else {
+          const recoverableIds = autoApi.listRecoverableBookIds
+            ? await autoApi.listRecoverableBookIds()
+            : nextBooks
+                .filter((book) => book.selectedDirectionId !== null)
+                .map((book) => book.id);
+          candidates = await Promise.all(
+            recoverableIds.map(async (bookId) => {
+              try {
+                return await autoApi.getBook(bookId);
+              } catch {
+                return null;
+              }
+            }),
+          );
+        }
+        const recoverable = candidates
+          .filter((details): details is BookDetails => details !== null && details.run !== null)
+          .filter(({ run }) => run !== null && ["queued", "running", "paused", "failed"].includes(run.status));
+        recovered = recoverable[0] ?? null;
+        recoverableRuns = recoverable.flatMap(({ run }) => run ? [{ runId: run.id, status: run.status }] : []);
       }
-      const recoverable = candidates
-        .filter((details): details is BookDetails => details !== null && details.run !== null)
-        .filter(({ run }) => run !== null && ["queued", "running", "paused", "failed"].includes(run.status));
-      const recovered = recoverable[0];
       if (recovered?.run) {
         setBookDetails(recovered);
         setRunId(recovered.run.id);
@@ -160,10 +180,10 @@ export function App() {
         // visible so the author can choose when and with which provider to retry.
         if (recoveredProvider) {
           await Promise.all(
-            recoverable
-              .filter(({ run }) => run !== null && ["queued", "running"].includes(run.status))
-              .map(({ run }) =>
-                autoApi.resumeRun(run!.id, recoveredProvider).catch(() => undefined),
+            recoverableRuns
+              .filter(({ status }) => ["queued", "running"].includes(status))
+              .map(({ runId: recoverableRunId }) =>
+                autoApi.resumeRun(recoverableRunId, recoveredProvider).catch(() => undefined),
               ),
           );
         }
@@ -206,7 +226,7 @@ export function App() {
       if (command.type === "import" || command.type === "export") openTool("data");
       if (command.type === "update-downloaded") setError("新版本已下载，重启桌面端即可完成更新。");
       if (command.type === "shutdown-requested") {
-        void apiClient.resolveClose({ requestId: command.requestId, canClose: true });
+        void apiClient.resolveClose({ requestId: command.requestId, canClose: !hasUnsavedWork() });
       }
     });
   }, [openTool]);

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Database, Dices, Library, Plus, Settings2, Sparkles, TriangleAlert, Workflow } from "lucide-react";
 import { BookShelf } from "./BookShelf";
 
@@ -220,7 +220,7 @@ function IdeaForm({
   const [draftState, setDraftState] = useState<"empty" | "restored" | "saved">("empty");
   const [draftReady, setDraftReady] = useState(false);
   const [storySpark, setStorySpark] = useState<StorySpark | null>(null);
-  const presets = [...BUILT_IN_PRESETS, ...customPresets];
+  const presets = useMemo(() => [...BUILT_IN_PRESETS, ...customPresets], [customPresets]);
   const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null;
 
   useEffect(() => {

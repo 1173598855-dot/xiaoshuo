@@ -14,6 +14,7 @@ import {
   ProductionRunQueueStateSchema,
   ProductionRunSummarySchema,
   ProductionRunSchema,
+  RecoverableRunSummarySchema,
   SelectDirectionInputSchema,
   StartProductionInputSchema,
   UpdateCandidateTextInputSchema,
@@ -38,6 +39,7 @@ import {
   type CheckCandidatePlanFulfillmentInput,
   type CandidatePlanFulfillmentReport,
   type ProductionRunSummary,
+  type RecoverableRunSummary,
 } from "../shared/auto-novel";
 import {
   BatchReplaceInputSchema,
@@ -141,6 +143,7 @@ export interface AutoNovelApi {
   listBooks(): Promise<readonly Book[]>;
   listRecoverableBookIds?(): Promise<readonly string[]>;
   listRecoverableBookDetails?(): Promise<readonly BookDetails[]>;
+  listRecoverableRunSummaries?(): Promise<readonly RecoverableRunSummary[]>;
   createBook(
     input: CreateBookInput,
     provider: AutoNovelProviderInput,
@@ -234,6 +237,11 @@ export function createAutoNovelApi(
     async listRecoverableBookDetails() {
       return z.array(BookDetailsSchema).parse(
         await requestJson(fetchImpl, "/api/books/recoverable/details"),
+      );
+    },
+    async listRecoverableRunSummaries() {
+      return z.array(RecoverableRunSummarySchema).parse(
+        await requestJson(fetchImpl, "/api/books/recoverable/runs"),
       );
     },
     async createBook(input, provider, idempotencyKey) {

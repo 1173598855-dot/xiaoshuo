@@ -23,6 +23,9 @@ export function registerAutoNovelBookIpcHandlers(dependencies: AutoNovelDesktopI
   register(dependencies, AUTO_NOVEL_CHANNELS.booksRecoverableDetails, z.undefined(), () =>
     dependencies.getServices().bookRepository.listRecoverableBookDetails(dependencies.authService?.currentUserId()),
   );
+  register(dependencies, AUTO_NOVEL_CHANNELS.booksRecoverableRunSummaries, z.undefined(), () =>
+    dependencies.getServices().bookRepository.listRecoverableRunSummaries(dependencies.authService?.currentUserId()),
+  );
   register(dependencies, AUTO_NOVEL_CHANNELS.booksRuns, z.object({ bookId: z.string().uuid() }).strict(), ({ bookId }) => {
     dependencies.authService?.assertBookAccess(bookId);
     return dependencies.getServices().productionRepository.listRunSummaries({ bookId });
@@ -78,8 +81,8 @@ export function registerAutoNovelBookIpcHandlers(dependencies: AutoNovelDesktopI
   });
   register(dependencies, AUTO_NOVEL_CHANNELS.booksCreate, BookCreateRequestSchema, async ({ input, idempotencyKey, ...rest }) => {
     const services = dependencies.getServices();
-    const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());
     const workflow = await resolveWorkflow(dependencies.providerVault, toWorkflowSelection(rest));
+    const book = services.bookRepository.createBook(input, idempotencyKey, dependencies.authService?.currentUserId());
     const directions = await services.directorService.generateDirectionsWithWorkflow(book.id, workflow, idempotencyKey);
     return { book: services.bookRepository.getBook(book.id).book, directions };
   });

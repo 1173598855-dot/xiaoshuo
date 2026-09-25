@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { StoryTimelinePanel } from "../../src/client/components/StoryTimelinePanel";
 import type { AutoNovelApi } from "../../src/client/auto-novel-api";
+import { hasUnsavedWork } from "../../src/client/app/unsaved-work";
 
 const bookId = "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c";
 const planId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
@@ -85,5 +86,17 @@ describe("StoryTimelinePanel", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("作品或正文已发生变化");
     expect(screen.getByDisplayValue("冲突后仍保留的草稿")).toBeInTheDocument();
+  });
+
+  it("reports unsaved timeline fields until the editor closes", () => {
+    const { api } = createApi();
+    const view = render(<StoryTimelinePanel details={details} api={api} onUpdated={vi.fn()} onClose={vi.fn()} />);
+
+    expect(hasUnsavedWork()).toBe(false);
+    fireEvent.change(screen.getByDisplayValue("第一章·旧站台"), { target: { value: "未提交的新标题" } });
+    expect(hasUnsavedWork()).toBe(true);
+
+    view.unmount();
+    expect(hasUnsavedWork()).toBe(false);
   });
 });

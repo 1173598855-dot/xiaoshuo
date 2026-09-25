@@ -199,18 +199,19 @@ export class ProductionService {
     const normalizedWorkflow = normalizeWorkflow(workflow);
     const writerConfig = resolveModelWorkflowProvider(normalizedWorkflow, "writer");
     const reviewerConfig = resolveModelWorkflowProvider(normalizedWorkflow, "reviewer");
-    const details = this.dependencies.productionRepository.getRunDetails(runId);
-    const sourceCandidate = details.candidate;
-    const sourceChapter = sourceCandidate
-      ? this.dependencies.productionRepository.getChapter(sourceCandidate.chapterId)
+    const rewriteContext = this.dependencies.productionRepository.getRewriteContext(
+      runId,
+      run.bookId,
+    );
+    const sourceChapter = rewriteContext.latestCandidateChapterId
+      ? this.dependencies.productionRepository.getChapter(rewriteContext.latestCandidateChapterId)
       : null;
-    const lastAcceptedChapter = details.acceptedChapters.at(-1);
     const chapterNumber =
       run.currentChapterNumber ??
-      (sourceCandidate
-        ? sourceChapter!.position + 1
-        : lastAcceptedChapter
-          ? lastAcceptedChapter.position + 1
+      (sourceChapter
+        ? sourceChapter.position + 1
+        : rewriteContext.lastAcceptedChapterPosition !== null
+          ? rewriteContext.lastAcceptedChapterPosition + 1
           : this.dependencies.bookRepository.getNextChapterPlan(run.bookId)?.chapterNumber);
     if (!chapterNumber) {
       throw new NormalizedProviderError("REQUEST_INVALID", "当前没有可重写的章节。" );
@@ -1191,22 +1192,23 @@ async function generateWithRetry(
     const abortHandler = () => controller.abort();
     signal?.addEventListener("abort", abortHandler);
     try {
-      const result = await provider.generate(input, controller.signal);
-      return result;
+      return await provider.generate(input, controller.signal);
     } catch (error) {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abortHandler);
       if (
         !isTransientProviderError(error) ||
         attempt >= MAX_TRANSIENT_RETRIES
       ) {
         throw error;
       }
-      await delayWithAbort(
-        TRANSIENT_RETRY_DELAYS_MS[attempt] ?? TRANSIENT_RETRY_DELAYS_MS.at(-1)!,
-        signal,
-      );
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortHandler);
     }
+    if (signal?.aborted) throw new DOMException("Production was aborted", "AbortError");
+    await delayWithAbort(
+      TRANSIENT_RETRY_DELAYS_MS[attempt] ?? TRANSIENT_RETRY_DELAYS_MS.at(-1)!,
+      signal,
+    );
   }
 }
 

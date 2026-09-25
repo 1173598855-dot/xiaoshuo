@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ChapterReview } from "../../src/client/components/ChapterReview";
 import type { AutoNovelApi, AutoNovelRunDetails } from "../../src/client/auto-novel-api";
+import { hasUnsavedWork } from "../../src/client/app/unsaved-work";
 
 const candidateId = "a2fcea89-9d4e-4f45-84d2-a0e40d86f706";
 const bookId = "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c";
@@ -61,6 +62,19 @@ function createDetails(): AutoNovelRunDetails {
 }
 
 describe("ChapterReview memory review", () => {
+  it("tracks an edited candidate as unsaved until the author cancels it", () => {
+    const details = createDetails();
+    render(<ChapterReview details={details} api={{} as AutoNovelApi} onResume={vi.fn(async () => undefined)} />);
+
+    expect(hasUnsavedWork()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /编辑候选/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "编辑候选正文" }), { target: { value: "尚未保存的候选草稿。" } });
+    expect(hasUnsavedWork()).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(hasUnsavedWork()).toBe(false);
+  });
+
   it("keeps optional outline checks and historical candidates collapsed by default", () => {
     const details = createDetails();
     details.candidate = { ...details.candidate!, memoryDelta: null };

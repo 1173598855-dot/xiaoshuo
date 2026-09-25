@@ -141,6 +141,7 @@ describe("ProductionService", () => {
       hook: currentPlan.hook,
       foreshadowing: ["新的伏笔"],
     });
+    const getRunDetails = vi.spyOn(fixture.productionRepository, "getRunDetails");
     const service = new ProductionService(fixture);
 
     const candidate = await service.rewriteCurrentChapter(
@@ -153,6 +154,7 @@ describe("ProductionService", () => {
     expect(candidate.review.status).toBe("passed");
     expect(candidate.candidateText).toBe("重写后的第一章正文。");
     expect(candidate.originalText).toBe("");
+    expect(getRunDetails).not.toHaveBeenCalled();
     expect(prompts.some((prompt) => prompt.includes("重写要求：加强开场冲突"))).toBe(true);
     expect(prompts.some((prompt) => prompt.includes("作者改过的时间线标题") && prompt.includes("使用作者改过的章节目标"))).toBe(true);
     expect(fixture.productionRepository.getRunDetails(fixture.run.id).acceptedChapters).toHaveLength(0);
@@ -525,6 +527,28 @@ describe("ProductionService", () => {
     expect(completed.status).toBe("completed");
     expect(calls).toBe(5);
     expect(fixture.productionRepository.getRunDetails(fixture.run.id).candidates).toHaveLength(2);
+  });
+
+  it("removes the caller abort listener after successful provider generations", async () => {
+    const fixture = createFixture();
+    const controller = new AbortController();
+    const addListener = vi.spyOn(controller.signal, "addEventListener");
+    const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+
+    await new ProductionService(fixture).rewriteCurrentChapter(
+      fixture.run.id,
+      fixture.providerConfig,
+      "",
+      controller.signal,
+    );
+
+    const addedAbortListeners = addListener.mock.calls
+      .filter(([type]) => type === "abort")
+      .map(([, listener]) => listener);
+    expect(addedAbortListeners.length).toBeGreaterThan(0);
+    for (const listener of addedAbortListeners) {
+      expect(removeListener).toHaveBeenCalledWith("abort", listener);
+    }
   });
 
   it("interrupts a transient retry backoff when the caller aborts", async () => {

@@ -65,6 +65,17 @@ export function createCloseDecisionCoordinator(): {
   };
 }
 
+export async function acceptCloseBeforeCancellingGenerations(
+  rendererCanClose: boolean,
+  confirmDiscard: () => Promise<boolean>,
+  cancelActiveGenerations: () => Promise<void>,
+): Promise<boolean> {
+  const accepted = rendererCanClose || await confirmDiscard();
+  if (!accepted) return false;
+  await cancelActiveGenerations();
+  return true;
+}
+
 export function createBeforeQuitHandler(options: {
   readonly isFinalShutdown: () => boolean;
   readonly needsRendererDecision: () => boolean;

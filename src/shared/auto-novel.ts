@@ -314,6 +314,14 @@ export const ProductionRunSchema = z
   .strict();
 export type ProductionRun = z.infer<typeof ProductionRunSchema>;
 
+export const RecoverableRunSummarySchema = z.object({
+  bookId: UuidSchema,
+  runId: UuidSchema,
+  status: ProductionRunStatusSchema,
+  updatedAt: TimestampSchema,
+}).strict();
+export type RecoverableRunSummary = z.infer<typeof RecoverableRunSummarySchema>;
+
 export const ProductionRunQueueStateSchema = z.object({
   runId: UuidSchema,
   providerDescriptor: z.record(z.string(), z.unknown()).nullable(),

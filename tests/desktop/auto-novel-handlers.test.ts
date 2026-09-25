@@ -34,6 +34,7 @@ function createFixture(isTrustedSender = true) {
       listBooks: vi.fn(() => [book]),
       listRecoverableBookIds: vi.fn(() => [book.id]),
       listRecoverableBookDetails: vi.fn(() => [{ book, directions: [], foundation: null, chapterPlans: [], run: null }]),
+      listRecoverableRunSummaries: vi.fn(() => [{ bookId: book.id, runId: "c2fcea89-9d4e-4f45-8c55-777777777777", status: "queued", updatedAt: book.updatedAt }]),
       getBook: vi.fn(() => ({ book, directions: [], foundation: null, chapterPlans: [], run: null })),
       updateChapterPlan: vi.fn(),
       listDirections: vi.fn(() => []),
@@ -130,6 +131,24 @@ describe("auto novel desktop IPC", () => {
     expect(services.directorService.generateDirectionsWithWorkflow).toHaveBeenCalledOnce();
   });
 
+  it("does not persist a book when Main cannot resolve its workflow", async () => {
+    const { handlers, services, providerVault } = createFixture();
+    vi.mocked(providerVault.resolveWorkflow).mockRejectedValue(new Error("Provider credentials are unavailable"));
+
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksCreate)?.(
+      {},
+      {
+        input: { idea: "模型配置无效时不应留下空作品" },
+        providerId: "custom",
+        idempotencyKey: "director-invalid-workflow",
+      },
+    );
+
+    expect(result).toMatchObject({ ok: false });
+    expect(services.bookRepository.createBook).not.toHaveBeenCalled();
+    expect(services.directorService.generateDirectionsWithWorkflow).not.toHaveBeenCalled();
+  });
+
   it("rejects an untrusted sender before invoking services", async () => {
     const { handlers, services } = createFixture(false);
     const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksList)?.({}, undefined);
@@ -150,6 +169,14 @@ describe("auto novel desktop IPC", () => {
     const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksRecoverableDetails)?.({}, undefined);
     expect(result).toMatchObject({ ok: true, data: [{ book: { id: "9ac0d75d-1dc2-42b5-bebe-4671f58ed79c" } }] });
     expect(services.bookRepository.listRecoverableBookDetails).toHaveBeenCalledOnce();
+  });
+
+  it("exposes lightweight recoverable run summaries through a dedicated channel", async () => {
+    const { handlers, services, book } = createFixture();
+    const result = await handlers.get(AUTO_NOVEL_CHANNELS.booksRecoverableRunSummaries)?.({}, undefined);
+
+    expect(result).toMatchObject({ ok: true, data: [{ bookId: book.id, status: "queued" }] });
+    expect(services.bookRepository.listRecoverableRunSummaries).toHaveBeenCalledOnce();
   });
 
   it("exposes a single-run summary through a fixed channel without lease secrets", async () => {

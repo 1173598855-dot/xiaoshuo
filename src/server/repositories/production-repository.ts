@@ -222,6 +222,11 @@ export interface ProductionRunDetailsSnapshot {
   acceptedChapters: readonly Chapter[];
 }
 
+export interface ProductionRewriteContext {
+  latestCandidateChapterId: string | null;
+  lastAcceptedChapterPosition: number | null;
+}
+
 export class ProductionRunNotFoundError extends Error {
   readonly code = "NOT_FOUND";
 
@@ -911,6 +916,27 @@ export class ProductionRepository {
       book: BookSchema.parse(bookDetails.book),
       candidates: candidateRows.map(toCandidate),
       acceptedChapters: this.getChapters(run.bookId).filter(({ revision }) => revision > 0),
+    };
+  }
+
+  getRewriteContext(runId: string, bookId: string): ProductionRewriteContext {
+    const row = this.database.prepare(
+      `SELECT
+         (SELECT chapter_id FROM chapter_candidates
+           WHERE run_id = ? ORDER BY created_at DESC, id DESC LIMIT 1)
+           AS latest_candidate_chapter_id,
+         (SELECT c.position FROM chapters c
+           JOIN books b ON b.project_id = c.project_id
+          WHERE b.id = ? AND c.revision > 0
+          ORDER BY c.position DESC, c.id DESC LIMIT 1)
+           AS last_accepted_chapter_position`,
+    ).get(runId, bookId) as {
+      latest_candidate_chapter_id: string | null;
+      last_accepted_chapter_position: number | null;
+    };
+    return {
+      latestCandidateChapterId: row.latest_candidate_chapter_id,
+      lastAcceptedChapterPosition: row.last_accepted_chapter_position,
     };
   }
 

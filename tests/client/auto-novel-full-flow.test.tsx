@@ -154,7 +154,8 @@ describe("auto-novel full client flow", () => {
       const url = String(input);
       if (url.endsWith("/api/books") && init?.method !== "POST") return json([selectedBook]);
       if (url.endsWith("/api/providers")) return json([provider]);
-      if (url.endsWith("/api/books/recoverable/details")) return json([recovered]);
+      if (url.endsWith("/api/books/recoverable/runs")) return json([{ bookId: baseBook.id, runId: pausedRun.id, status: pausedRun.status, updatedAt: pausedRun.updatedAt }]);
+      if (url.endsWith(`/api/books/${baseBook.id}`)) return json(recovered);
       if (url.endsWith(`/api/production-runs/${pausedRun.id}`)) return json(runDetails);
       if (url.includes(`/api/production-runs/${pausedRun.id}/resume`)) return json(pausedRun, 202);
       throw new Error(`Unhandled request ${init?.method ?? "GET"} ${url}`);
@@ -168,6 +169,59 @@ describe("auto-novel full client flow", () => {
       expect.stringContaining(`/api/production-runs/${pausedRun.id}/resume`),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("loads one full book for recovery and resumes other queued runs from summaries", async () => {
+    const selectedBook = { ...baseBook, status: "ready-to-draft" as const, revision: 2, selectedDirectionId: direction.id };
+    const pausedRun = {
+      id: "c2fcea89-9d4e-4f45-8c55-777777777777",
+      bookId: selectedBook.id,
+      kind: "production" as const,
+      status: "paused" as const,
+      stage: "draft" as const,
+      currentChapterNumber: 1,
+      version: 3,
+      idempotencyKey: "paused-run",
+      errorCode: null,
+      memoryContextConfig: { mode: "automatic" as const, entryIds: [] },
+      createdAt: baseBook.createdAt,
+      updatedAt: baseBook.updatedAt,
+    };
+    const queuedRun = { ...pausedRun, id: "d2fcea89-9d4e-4f45-8c55-777777777777", status: "queued" as const };
+    const runningRun = { ...pausedRun, id: "e2fcea89-9d4e-4f45-8c55-777777777777", status: "running" as const };
+    const otherBookId = "f2fcea89-9d4e-4f45-8c55-777777777777";
+    const recovered = {
+      book: selectedBook,
+      directions: [{ ...direction, selected: true }],
+      foundation: null,
+      chapterPlans: [plan],
+      run: pausedRun,
+    };
+    const runDetails = { run: pausedRun, checkpoints: [], candidate: null, book: selectedBook, candidates: [], acceptedChapters: [] };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/books") && init?.method !== "POST") return json([selectedBook]);
+      if (url.endsWith("/api/providers")) return json([provider]);
+      if (url.endsWith("/api/books/recoverable/runs")) return json([
+        { bookId: selectedBook.id, runId: pausedRun.id, status: pausedRun.status, updatedAt: pausedRun.updatedAt },
+        { bookId: otherBookId, runId: queuedRun.id, status: queuedRun.status, updatedAt: queuedRun.updatedAt },
+        { bookId: "02fcea89-9d4e-4f45-8c55-777777777777", runId: runningRun.id, status: runningRun.status, updatedAt: runningRun.updatedAt },
+      ]);
+      if (url.endsWith(`/api/books/${selectedBook.id}`)) return json(recovered);
+      if (url.endsWith(`/api/production-runs/${pausedRun.id}`)) return json(runDetails);
+      if (url.endsWith(`/api/production-runs/${queuedRun.id}/resume`)) return json(queuedRun, 202);
+      if (url.endsWith(`/api/production-runs/${runningRun.id}/resume`)) return json(runningRun, 202);
+      throw new Error(`Unhandled request ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: /从检查点继续/ })).toBeEnabled();
+    expect(fetchMock.mock.calls.filter(([input, init]) => String(input).startsWith("/api/books/") && !String(input).includes("/recoverable") && init?.method !== "POST")).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/api/production-runs/${queuedRun.id}/resume`), expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/api/production-runs/${runningRun.id}/resume`), expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining(`/api/production-runs/${pausedRun.id}/resume`), expect.objectContaining({ method: "POST" }));
   });
 
   it("takes the one-click path straight to production", async () => {

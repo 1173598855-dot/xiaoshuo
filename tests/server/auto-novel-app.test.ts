@@ -629,6 +629,21 @@ describe("auto-novel HTTP app", () => {
     expect(body[0]).toMatchObject({ book: { id: book.id }, run: { status: "queued" } });
   });
 
+  it("returns lightweight recoverable run summaries for startup recovery", async () => {
+    const { app, bookRepository, productionRepository } = fixture();
+    const book = bookRepository.createBook({ idea: "轻量启动恢复" });
+    const run = productionRepository.createRun(book.id, "production", "recoverable-run-summary");
+    const response = await app.request("/api/books/recoverable/runs");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([{
+      bookId: book.id,
+      runId: run.id,
+      status: run.status,
+      updatedAt: run.updatedAt,
+    }]);
+  });
+
   it("returns an author-safe production task history projection", async () => {
     const { app, bookRepository, productionRepository } = fixture();
     const book = bookRepository.createBook({ idea: "任务中心故事" });

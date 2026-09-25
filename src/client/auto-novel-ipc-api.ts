@@ -10,6 +10,7 @@ import {
   ChapterCandidateSchema,
   ProductionRunSchema,
   ProductionRunSummarySchema,
+  RecoverableRunSummarySchema,
   StoryDirectionSchema,
   UpdateCandidateTextInputSchema,
   UpdateCandidateMemoryReviewInputSchema,
@@ -60,6 +61,9 @@ export function createAutoNovelIpcApi(api: AutoNovelDesktopApiV2): AutoNovelApi 
     },
     async listRecoverableBookDetails() {
       return parseResult(await api.books.listRecoverableDetails(), z.array(BookDetailsSchema));
+    },
+    async listRecoverableRunSummaries() {
+      return parseResult(await api.books.listRecoverableRunSummaries(), z.array(RecoverableRunSummarySchema));
     },
     async listRunSummaries(bookId, options = {}) {
       if (options.status || options.before || options.limit !== undefined) {

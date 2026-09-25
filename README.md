@@ -27,6 +27,7 @@
 - 审核正文、记忆中心和正式正文统一使用深色阅读 surface 与高对比文字；记忆卡、JSON 内容、Diff、候选文本和批注区域不再泄漏旧的纸张白底。
 - “工作流”面板可选择单模型，或为规划导演、章节写作、内容审核和问题修复分别指定模型；浏览器端工作流只保存在当前会话，桌面端只提交 Provider ID 和模型名，由 Main/Vault 按角色解析独立凭据。无密钥固定地址 Provider 可直接跨选；需要 API Key 或自定义地址的 Provider 需先在模型设置中分别保存；
 - 生产室支持暂停、继续、停止、失败阶段重试和重新选择当前模型；应用启动时会自动恢复排队中/运行中的任务；
+- 启动恢复先读取轻量任务摘要，再按需载入作品详情；桌面退出前会检查候选、批注和时间线草稿，只有确认退出后才停止后台生成；
 - 生产室支持对当前章节发起 AI 重写，重写结果仍然是隔离候选，必须审核并采纳后才会进入正文；
 - Provider 设置支持关闭/低/中/高思考等级；OpenAI、Anthropic、Google 和 OpenAI-compatible 会按各自原生参数映射，不支持时安全降级为关闭。
 - 生产室与用量接口记录输入/输出/缓存读写 Token、缓存命中率和估算费用；不同模型阶段携带统一 `xiaoyi-context-v1` 上下文同步包和记忆指纹。
@@ -109,6 +110,7 @@ npm run dev
 | `POST` | `/api/providers/test` | 用最小生成请求测试 Provider 连接 |
 | `GET` / `POST` | `/api/books` | 列出作品 / 用想法创建作品并按 `directionCount` 生成 1–12 个方向；请求可携带 `provider` 或 `workflow` |
 | `GET` | `/api/books/recoverable` | 返回启动恢复所需的可恢复作品 ID（不返回密钥或正文） |
+| `GET` | `/api/books/recoverable/runs` | 轻量返回每部作品最近的可恢复任务摘要，客户端只加载需要展示的一部作品详情 |
 | `GET` | `/api/books/recoverable/details` | 一次返回启动恢复需要的作品详情（不返回密钥） |
 | `GET` | `/api/books/:bookId` | 读取作品、基础设定、章纲和任务摘要 |
 | `GET` | `/api/books/:bookId/directions` | 单独读取方向候选 |

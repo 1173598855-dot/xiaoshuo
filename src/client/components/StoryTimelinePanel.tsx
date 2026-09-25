@@ -9,6 +9,7 @@ import {
 import type { AutoNovelApi } from "../auto-novel-api";
 import type { AutoNovelProviderInput } from "../auto-novel-api";
 import type { ChapterPlanPreviewEnvelope } from "../../shared/authoring";
+import { useUnsavedWork } from "../app/unsaved-work";
 
 interface StoryTimelinePanelProps {
   details: BookDetails;
@@ -24,16 +25,19 @@ type TimelineDraft = Pick<
 > & { foreshadowingText: string };
 
 export function StoryTimelinePanel({ details, api, onUpdated, onClose, provider }: StoryTimelinePanelProps) {
-  const [drafts, setDrafts] = useState<Record<string, TimelineDraft>>(() => createDrafts(details.chapterPlans));
+  const initialDrafts = useMemo(() => createDrafts(details.chapterPlans), [details.chapterPlans]);
+  const [drafts, setDrafts] = useState<Record<string, TimelineDraft>>(initialDrafts);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<ChapterPlanPreviewEnvelope | null>(null);
+  const hasUnsavedDrafts = details.chapterPlans.some((plan) => !sameTimelineDraft(drafts[plan.id], initialDrafts[plan.id]));
+  useUnsavedWork(`story-timeline:${details.book.id}`, hasUnsavedDrafts);
 
   useEffect(() => {
-    setDrafts(createDrafts(details.chapterPlans));
-  }, [details.book.revision, details.chapterPlans]);
+    setDrafts(initialDrafts);
+  }, [details.book.revision, initialDrafts]);
 
   const volumes = useMemo(() => {
     const grouped = new Map<number, ChapterPlan[]>();
@@ -251,6 +255,17 @@ function createDrafts(plans: readonly ChapterPlan[]): Record<string, TimelineDra
     hook: plan.hook,
     foreshadowingText: plan.foreshadowing.join("\n"),
   }]));
+}
+
+function sameTimelineDraft(left: TimelineDraft | undefined, right: TimelineDraft | undefined): boolean {
+  return Boolean(left && right &&
+    left.volumeNumber === right.volumeNumber &&
+    left.volumeTitle === right.volumeTitle &&
+    left.title === right.title &&
+    left.summary === right.summary &&
+    left.objective === right.objective &&
+    left.hook === right.hook &&
+    left.foreshadowingText === right.foreshadowingText);
 }
 
 function splitLines(value: string): string[] {

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -45,6 +45,24 @@ describe("desktop database import preview", () => {
 
     await expect(manager.previewImportDatabase(source)).rejects.toThrow();
     expect(manager.getRuntime().workspaceRepository.getWorkspace().project.title).toBe("未命名长篇");
+  });
+
+  it("refuses to place an encrypted export beside stale SQLite sidecars", async () => {
+    const userData = await mkdtemp(join(tmpdir(), "xiaoyi-db-encrypted-sidecar-"));
+    const exportDirectory = await mkdtemp(join(tmpdir(), "xiaoyi-db-encrypted-sidecar-target-"));
+    directories.push(userData, exportDirectory);
+    const manager = new DesktopDatabaseManager(userData, { platform: "win32" });
+    managers.push(manager);
+    await manager.initialize();
+    const destination = join(exportDirectory, "target.db");
+    const sidecarPath = `${destination}-wal`;
+    await writeFile(sidecarPath, "stale wal data");
+
+    await expect(manager.exportEncryptedDatabase(destination, "test-password"))
+      .rejects.toThrow("sidecars");
+
+    expect(await readFile(sidecarPath, "utf8")).toBe("stale wal data");
+    await expect(readFile(destination)).rejects.toThrow();
   });
 
   it("restores the old runtime when replacement startup fails after import", async () => {

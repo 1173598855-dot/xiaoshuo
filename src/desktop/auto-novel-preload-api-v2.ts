@@ -11,6 +11,7 @@ import type {
   CreateBookInput,
   ProductionRun,
   ProductionRunSummary,
+  RecoverableRunSummary,
   StoryDirection,
   UpdateCandidateTextInput,
   UpdateCandidateMemoryReviewInput,
@@ -52,6 +53,7 @@ export interface AutoNovelDesktopApiV2 {
     list(): Promise<DesktopResult<readonly Book[]>>;
     listRecoverableIds(): Promise<DesktopResult<readonly string[]>>;
     listRecoverableDetails(): Promise<DesktopResult<readonly BookDetails[]>>;
+    listRecoverableRunSummaries(): Promise<DesktopResult<readonly RecoverableRunSummary[]>>;
     listRuns(bookId: string): Promise<DesktopResult<readonly ProductionRunSummary[]>>;
     listSnapshots(bookId: string): Promise<DesktopResult<readonly StorySnapshot[]>>;
     createSnapshot(input: { bookId: string; name: string }): Promise<DesktopResult<StorySnapshot>>;
@@ -142,6 +144,7 @@ export function createAutoNovelPreloadApiV2(
       list: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksList),
       listRecoverableIds: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableList),
       listRecoverableDetails: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableDetails),
+      listRecoverableRunSummaries: () => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRecoverableRunSummaries),
       listRuns: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksRuns, { bookId }),
       listSnapshots: (bookId) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotsList, { bookId }),
       createSnapshot: (input) => invoke(ipcRenderer, AUTO_NOVEL_CHANNELS.booksSnapshotCreate, input),

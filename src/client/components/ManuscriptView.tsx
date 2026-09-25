@@ -7,6 +7,7 @@ import type { AutoNovelApi } from "../auto-novel-api";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 import { runAnime, runAnimeStagger } from "../motion/anime-motion";
 import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
+import { useUnsavedWork } from "../app/unsaved-work";
 import { ExportPreflightPanel } from "./ExportPreflightPanel";
 import { ThemeSelect } from "./ThemeSelect";
 
@@ -24,6 +25,7 @@ interface ManuscriptViewProps {
 type ManuscriptAnnotation = { bookmarked: boolean; note: string; updatedAt: string };
 const MANUSCRIPT_ANNOTATIONS_KEY = "xiaoyi.manuscript-annotations.v1";
 const MANUSCRIPT_SCROLL_PREFIX = "xiaoyi.manuscript-scroll.v1:";
+const DOWNLOAD_OBJECT_URL_REVOKE_DELAY_MS = 1_000;
 
 export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpenNavigation, onOpenCommandPalette, onOpenCreatorDashboard }: ManuscriptViewProps) {
   const [query, setQuery] = useState("");
@@ -39,6 +41,8 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
   const [annotations, setAnnotations] = useState<Record<string, ManuscriptAnnotation>>(() => loadAnnotations(book.book.id));
   const [annotationChapterId, setAnnotationChapterId] = useState<string | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState("");
+  const annotationIsDirty = annotationChapterId !== null && annotationDraft.trim() !== (annotations[annotationChapterId]?.note ?? "");
+  useUnsavedWork(`manuscript-annotation:${book.book.id}`, annotationIsDirty);
   const [preflightOpen, setPreflightOpen] = useState(false);
   useEffect(() => {
     if (preserveImportedChapters.current) {
@@ -125,7 +129,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
       anchor.href = url;
       anchor.download = `${safeFileName(book.book.title)}.${format === "markdown" ? "md" : format}`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_OBJECT_URL_REVOKE_DELAY_MS);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "导出失败，请稍后重试。" );
     } finally {
@@ -198,7 +202,7 @@ export function ManuscriptView({ book, chapters, api, onBack, onImported, onOpen
       {importMessage ? <p className="manuscript-import-message" role="status">{importMessage}</p> : null}
       {currentChapters.length > 0 ? <div className="manuscript-toolbar"><label htmlFor="manuscript-search">搜索正文</label><input id="manuscript-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜章节标题或正文" /><span>{filteredChapters.length} / {currentChapters.length} 章</span></div> : null}
       <section className="manuscript-layout">
-        {currentChapters.length > 0 ? <aside className="manuscript-toc" aria-label="正文目录"><strong>目录</strong>{currentChapters.map((chapter) => <a key={chapter.id} href={`#chapter-${chapter.id}`}>{chapter.title}</a>)}</aside> : null}
+        {filteredChapters.length > 0 ? <aside className="manuscript-toc" aria-label="正文目录"><strong>目录</strong>{filteredChapters.map((chapter) => <a key={chapter.id} href={`#chapter-${chapter.id}`}>{chapter.title}</a>)}</aside> : null}
         <div className="manuscript-list" aria-label="正式正文">
           {currentChapters.length === 0 ? <div className="review-empty"><FileText size={20} /><span>还没有已采纳章节。</span></div> : filteredChapters.length === 0 ? <div className="review-empty"><FileText size={20} /><span>没有匹配的章节。</span></div> : filteredChapters.map((chapter) => <ManuscriptChapter key={chapter.id} chapter={chapter} annotation={annotations[chapter.id]} editing={annotationChapterId === chapter.id} draft={annotationDraft} onToggleBookmark={() => toggleBookmark(chapter.id)} onOpenAnnotation={() => openAnnotation(chapter.id)} onDraftChange={setAnnotationDraft} onSave={() => saveAnnotation(chapter.id)} onCancel={() => setAnnotationChapterId(null)} />)}
         </div>

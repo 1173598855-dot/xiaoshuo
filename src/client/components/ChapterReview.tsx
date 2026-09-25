@@ -9,6 +9,7 @@ import type {
   MemoryUpdate,
 } from "../../shared/memory";
 import type { AutoNovelApi, AutoNovelProviderInput, AutoNovelRunDetails } from "../auto-novel-api";
+import { useUnsavedWork } from "../app/unsaved-work";
 
 interface ChapterReviewProps {
   details: AutoNovelRunDetails | null;
@@ -46,6 +47,11 @@ export function ChapterReview({ details, api, provider, onResume, onRewrite, onA
   const [planReport, setPlanReport] = useState<Awaited<ReturnType<AutoNovelApi["checkCandidatePlanFulfillment"]>> | null>(null);
   const [planCheckBusy, setPlanCheckBusy] = useState(false);
   const [planCheckError, setPlanCheckError] = useState<string | null>(null);
+
+  useUnsavedWork(
+    `candidate-text:${candidate?.id ?? "none"}`,
+    Boolean(candidate && editing && draftText !== candidate.candidateText),
+  );
 
   useEffect(() => {
     activeCandidateKeyRef.current = activeCandidateKey;
