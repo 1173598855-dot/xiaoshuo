@@ -24,4 +24,4 @@
 - [x] lint、typecheck、依赖审计（0 漏洞）与完整单测（107 个文件 / 489 项通过）
 - [x] build/server smoke、Web E2E（10 项）、auth E2E（2 项）、桌面 smoke 与 Electron E2E（1 项）
 - [x] 三视口检查（1440x960、1024x768、390x844）；限流器 LRU、超时分类、草稿续写和 Three.js 延迟挂载均有回归覆盖
-- [ ] 最终 diff 复核和 GitHub 推送
+- [x] 最终 diff 复核和 GitHub 推送
