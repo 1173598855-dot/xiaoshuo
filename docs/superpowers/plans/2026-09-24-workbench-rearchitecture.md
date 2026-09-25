@@ -94,7 +94,7 @@
 - [x] 重写章节只查询最近候选章节和最近采纳位置，避免载入全书正文、候选和检查点。
 - [x] 全量质量门禁：lint、typecheck、480 项单测、build/server smoke、9 项 Web E2E、2 项 auth E2E、Electron smoke 与桌面 E2E。
 - [x] 完成差异自审并保留本地审查页。
-- [ ] 推送前核对 `origin/main`，完成提交并推送。
+- [x] 推送前核对 `origin/main`，完成提交并推送。
 
 ## 执行波次
 
