@@ -117,7 +117,8 @@ function AppOverlayHost({
     { id: "workflow", label: "配置模型工作流", description: "选择单模型或多模型角色编排", icon: Workflow, shortcut: "W", onSelect: () => onOpenTool("workflow") },
     { id: "provider", label: "打开模型设置", description: "管理 Provider、模型与会话凭据", icon: Settings2, shortcut: "P", onSelect: () => onOpenTool("provider") },
     { id: "motion", label: motionMode === "quiet" ? "开启完整动效" : "切换安静动效", description: "控制书页、光晕和状态转场的强度", icon: Sparkles, onSelect: onMotionModeChange },
-    ...(page === "home" ? [{ id: "new-story", label: "开始新故事", description: "把一个想法交给自动导演", icon: Sparkles, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() }] : []),
+    ...(page === "home" ? [{ id: "new-story", label: "开始新故事", description: "进入独立创作页，写下小说构思", icon: Sparkles, shortcut: "N", onSelect: () => onPageChange("story-creation") }] : []),
+    ...(page === "story-creation" ? [{ id: "back-home", label: "返回故事起点", description: "回到最近作品与工作台首页", icon: BookOpen, onSelect: () => onPageChange("home") }] : []),
     ...(page === "directions" ? [
       { id: "auto-select", label: "自动选择方向", description: "采用排名第一的方向并开始生产", icon: GitBranch, shortcut: "A", onSelect: onAutoSelectDirection },
       { id: "back-home", label: "返回故事想法", description: "回到首页重新编辑创作起点", icon: BookOpen, onSelect: () => onPageChange("home") },
@@ -172,7 +173,7 @@ function AppOverlayHost({
         return <Suspense fallback={lazyPanelFallback}><DataManagementDialog open onClose={close("data")} onBeforeOperation={async () => true} onImported={onImported} /></Suspense>;
       case "assets":
         return <Suspense fallback={lazyPanelFallback}><AssetLibraryPanel sourceBook={page === "home" ? null : bookDetails} onClose={close("assets")} onUseAsset={(asset: CreativeAsset) => {
-          if (page === "home") onAssetDraft({ id: asset.id, text: `${asset.name}\n\n${asset.content}` });
+          if (page === "home" || page === "story-creation") onAssetDraft({ id: asset.id, text: `${asset.name}\n\n${asset.content}` });
           else window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: `${asset.name}\n\n${asset.content}`, directionCount: 3, selectedPresetId: null, updatedAt: Date.now() }));
           onCloseTool("assets");
         }} /></Suspense>;

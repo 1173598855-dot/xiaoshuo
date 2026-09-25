@@ -285,6 +285,7 @@ describe("auto-novel full client flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "进入创作页" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "故事想法" }), {
       target: { value: baseBook.idea },
     });
@@ -369,6 +370,7 @@ describe("auto-novel full client flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "进入创作页" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "故事想法" }), { target: { value: baseBook.idea } });
     fireEvent.click(screen.getByRole("button", { name: "开始开书" }));
     expect(await screen.findByText("午夜迁徙")).toBeInTheDocument();
@@ -413,6 +415,9 @@ describe("auto-novel full client flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "注册并登录" }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "新建故事" })).toBeInTheDocument());
+    expect(screen.queryByRole("textbox", { name: "故事想法" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "进入创作页" }));
+    expect(screen.getByRole("heading", { name: "写下你想讲的故事" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "故事想法" })).toBeVisible();
     expect(sessionStorage.getItem("xiaoyi.access-token.v1")).toContain("account-session-token");
   });

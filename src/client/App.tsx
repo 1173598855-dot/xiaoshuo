@@ -43,6 +43,7 @@ export function App() {
   const appShell = useAppShellState();
   const { state: shellState, openTool, closeTool, openNavigation, closeNavigation, openCommand, closeCommand, toggleCommand } = appShell;
   const [page, setPage] = useState<Page>("home");
+  const [creationToolsOpen, setCreationToolsOpen] = useState(false);
   const [books, setBooks] = useState<readonly Book[]>([]);
   const [bookDetails, setBookDetails] = useState<BookDetails | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -531,6 +532,7 @@ export function App() {
   return <Suspense fallback={<div className="app-loading" role="status"><span>正在打开故事工作台</span></div>}><WorkbenchView
     state={{
       page,
+      creationToolsOpen,
       books,
       bookDetails,
       runId,
@@ -552,6 +554,7 @@ export function App() {
     actions={{
       home: {
         createIdea: (input, autoStart) => { setAssetDraft(null); void createIdea(input, autoStart); },
+        startCreateStory: (openTools = false) => { setCreationToolsOpen(openTools); setPage("story-creation"); },
         openBook: (book) => void openBook(book),
         configureProvider: () => openTool("provider"),
         configureWorkflow: () => openTool("workflow"),
@@ -562,6 +565,10 @@ export function App() {
         openCommand,
         openNavigation,
         retry: () => { setLoading(true); setError(null); void loadLibrary(); },
+      },
+      storyCreation: {
+        back: () => { setCreationToolsOpen(false); setPage("home"); },
+        toolsOpened: () => setCreationToolsOpen(false),
       },
       directions: {
         select: (direction) => void selectDirection(direction),
@@ -626,7 +633,10 @@ export function App() {
         closeNavigation,
         openCommand,
         closeCommand,
-        changePage: setPage,
+        changePage: (nextPage) => {
+          setPage(nextPage);
+          if (nextPage !== "story-creation") setCreationToolsOpen(false);
+        },
         toggleMotionMode: () => setMotionMode((current) => current === "quiet" ? "full" : "quiet"),
         saveProvider: handleProviderSave,
         clearProviderKey: handleProviderClearKey,

@@ -22,18 +22,23 @@ describe("auto-novel client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens on the idea director instead of the legacy chapter workbench", async () => {
+  it("opens on the story home and keeps its editor on a dedicated page", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("textbox", { name: "故事想法" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "新建故事" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "故事想法" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument();
     expect(screen.queryByText("生成候选")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "进入创作页" }));
+    expect(await screen.findByRole("heading", { name: "写下你想讲的故事" })).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "故事想法" })).toBeInTheDocument();
   });
 
   it("opens a deferred author tool from the home navigation", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("textbox", { name: "故事想法" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "进入创作页" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "故事想法" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "模型配置" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "打开工作区导航" }));

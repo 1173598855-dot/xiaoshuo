@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
 
 test("turns one idea into a reviewed manuscript", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "进入创作页" }).click();
   await expect(page.getByRole("textbox", { name: "故事想法" })).toBeVisible();
 
   await page.getByRole("textbox", { name: "故事想法" }).fill(
@@ -144,8 +145,9 @@ test("accepts a custom direction count and collaborative workflow", async ({ pag
   await expect(page.getByRole("button", { name: /用当前模型填充全部角色/ })).toBeVisible();
   await page.getByRole("button", { name: /用当前模型填充全部角色/ }).click();
   await page.getByRole("button", { name: "应用工作流" }).click();
+  await page.getByRole("button", { name: "进入创作页" }).click();
   await page.getByRole("textbox", { name: "故事想法" }).fill("一个会在凌晨移动的城市");
-  await page.getByText("更多构思工具").click();
+  await page.locator(".idea-tools-disclosure > summary").click();
   await page.getByLabel("方向数量").fill("5");
   await page.getByRole("button", { name: "开始开书" }).click();
   await expect(page.getByText("自动方向 5")).toBeVisible();
@@ -194,8 +196,22 @@ test("opens the author navigation drawer and preserves focus on close", async ({
   await expect(trigger).toBeFocused();
 });
 
+test("opens a dedicated story creation page and keeps its draft on return", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "进入创作页" }).click();
+  await expect(page.getByRole("heading", { name: "写下你想讲的故事" })).toBeVisible();
+  await page.getByRole("textbox", { name: "故事想法" }).fill("一间只在下雨时出现的书店");
+  await page.getByRole("button", { name: "返回故事起点" }).click();
+
+  await expect(page.getByRole("heading", { name: "继续作品" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "故事想法" })).toHaveCount(0);
+  await page.getByRole("button", { name: "进入创作页" }).click();
+  await expect(page.getByRole("textbox", { name: "故事想法" })).toHaveValue("一间只在下雨时出现的书店");
+});
+
 test("refines a selected candidate passage and reviews outline fulfillment without gating acceptance", async ({ page }, testInfo) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "进入创作页" }).click();
   await page.getByRole("textbox", { name: "故事想法" }).fill("e2e-selected-passage · 一座只在凌晨移动的城");
   await page.getByRole("button", { name: "开始开书" }).click();
   await expect(page.getByText("自动方向 1")).toBeVisible();
@@ -390,7 +406,10 @@ for (const viewport of [
   test(`keeps the idea entry usable at ${viewport.name} size`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/");
-    await expect(page.getByRole("textbox", { name: "故事想法" })).toBeVisible();
+    await page.getByRole("button", { name: "进入创作页" }).click();
+    const idea = page.getByRole("textbox", { name: "故事想法" });
+    await expect(idea).toBeVisible();
+    await expect.poll(() => idea.evaluate((textarea) => textarea.getBoundingClientRect().height)).toBeGreaterThan(300);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

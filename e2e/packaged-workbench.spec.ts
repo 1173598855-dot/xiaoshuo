@@ -33,6 +33,7 @@ test("loads the packaged application into the new idea director", async () => {
     await window.getByPlaceholder("密码（至少 12 位）").fill("packaged-test-password-123");
     await window.getByPlaceholder("邀请码").fill(invitationCode);
     await window.getByRole("button", { name: "注册并登录" }).click();
+    await window.getByRole("button", { name: "进入创作页" }).click();
     await expect(window.getByRole("textbox", { name: "故事想法" })).toBeVisible();
     await expect(window.getByRole("button", { name: "模型设置" })).toBeVisible();
   } finally {

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { runAnimeStagger } from "../motion/anime-motion";
 
-export type WorkbenchPage = "home" | "directions" | "production" | "manuscript";
+export type WorkbenchPage = "home" | "story-creation" | "directions" | "production" | "manuscript";
 export type MotionMode = "full" | "quiet";
 
 export interface WorkbenchQuickAction {
@@ -310,7 +310,8 @@ export function WorkbenchNavigationDrawer({
     action();
   };
   const pageItems: Array<{ page: WorkbenchPage; label: string; detail: string; icon: LucideIcon; disabled?: boolean }> = [
-    { page: "home", label: "故事起点", detail: "输入想法与打开作品", icon: Home },
+    { page: "home", label: "故事起点", detail: "查看最近作品与创作入口", icon: Home },
+    { page: "story-creation", label: "新建故事", detail: "进入独立的小说构思页", icon: BookOpen },
     { page: "directions", label: "方向选择", detail: "比较整本书的走向", icon: Compass, disabled: !hasDirections },
     { page: "production", label: "自动生产室", detail: "逐章生产与候选审核", icon: Activity, disabled: !hasBook },
     { page: "manuscript", label: "正式正文", detail: "阅读已采纳章节", icon: FileText, disabled: !hasBook },

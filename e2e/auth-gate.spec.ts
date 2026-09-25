@@ -16,6 +16,7 @@ test("registers from the real invitation-gated web entry", async ({ page, reques
   await page.getByPlaceholder("密码（至少 12 位）").fill("e2e-auth-password-123");
   await page.getByPlaceholder("邀请码").fill(invitation.code);
   await page.getByRole("button", { name: "注册并登录" }).click();
+  await page.getByRole("button", { name: "进入创作页" }).click();
   await expect(page.getByRole("textbox", { name: "故事想法" })).toBeVisible();
 });
 

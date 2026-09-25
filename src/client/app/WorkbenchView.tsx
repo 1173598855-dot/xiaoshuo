@@ -16,11 +16,13 @@ const DirectionPicker = lazy(() => import("../components/DirectionPicker").then(
 const ProductionRoom = lazy(() => import("../components/ProductionRoom").then(({ ProductionRoom: component }) => ({ default: component })));
 const ChapterReview = lazy(() => import("../components/ChapterReview").then(({ ChapterReview: component }) => ({ default: component })));
 const ManuscriptView = lazy(() => import("../components/ManuscriptView").then(({ ManuscriptView: component }) => ({ default: component })));
+const StoryCreationPage = lazy(() => import("../components/StoryCreationPage").then(({ StoryCreationPage: component }) => ({ default: component })));
 
 const lazyPanelFallback = <div className="panel-loading" role="status">正在打开工作区…</div>;
 
 export interface WorkbenchViewState {
   page: WorkbenchPage;
+  creationToolsOpen: boolean;
   books: readonly Book[];
   bookDetails: BookDetails | null;
   runId: string | null;
@@ -43,6 +45,7 @@ export interface WorkbenchViewState {
 export interface WorkbenchViewActions {
   home: {
     createIdea: (input: CreateBookInput, autoStart?: boolean) => void;
+    startCreateStory: (openTools?: boolean) => void;
     openBook: (book: Book) => void;
     configureProvider: () => void;
     configureWorkflow: () => void;
@@ -53,6 +56,10 @@ export interface WorkbenchViewActions {
     openCommand: () => void;
     openNavigation: () => void;
     retry: () => void;
+  };
+  storyCreation: {
+    back: () => void;
+    toolsOpened: () => void;
   };
   directions: {
     select: (direction: StoryDirection) => void;
@@ -117,7 +124,7 @@ export interface WorkbenchViewActions {
 }
 
 export function WorkbenchView({ state, actions }: { state: WorkbenchViewState; actions: WorkbenchViewActions }) {
-  if (state.page !== "home" && !state.bookDetails) {
+  if (state.page !== "home" && state.page !== "story-creation" && !state.bookDetails) {
     return <div className="app-error" role="alert">{state.error ?? "作品不存在。"}<button type="button" onClick={() => actions.shell.changePage("home")}>返回</button></div>;
   }
 
@@ -127,8 +134,7 @@ export function WorkbenchView({ state, actions }: { state: WorkbenchViewState; a
       books={state.books}
       busy={state.busy}
       error={state.error}
-      assetDraft={state.assetDraft}
-      onCreateIdea={actions.home.createIdea}
+      onStartCreateStory={actions.home.startCreateStory}
       onOpenBook={actions.home.openBook}
       onConfigureProvider={actions.home.configureProvider}
       onConfigureWorkflow={actions.home.configureWorkflow}
@@ -141,6 +147,22 @@ export function WorkbenchView({ state, actions }: { state: WorkbenchViewState; a
       onOpenNavigation={actions.home.openNavigation}
       onRetry={actions.home.retry}
     />;
+  } else if (state.page === "story-creation") {
+    pageContent = <Suspense fallback={lazyPanelFallback}><StoryCreationPage
+      busy={state.busy}
+      error={state.error}
+      assetDraft={state.assetDraft}
+      onAssetDraftApplied={() => actions.shell.assetDraft(null)}
+      openIdeaTools={state.creationToolsOpen}
+      onIdeaToolsOpened={actions.storyCreation.toolsOpened}
+      onSubmit={actions.home.createIdea}
+      onBack={actions.storyCreation.back}
+      onConfigureProvider={actions.home.configureProvider}
+      onConfigureWorkflow={actions.home.configureWorkflow}
+      onOpenNavigation={actions.home.openNavigation}
+      onOpenCommandPalette={actions.home.openCommand}
+      onRetry={actions.home.retry}
+    /></Suspense>;
   } else if (state.page === "directions" && state.bookDetails) {
     pageContent = <Suspense fallback={lazyPanelFallback}><DirectionPicker
       directions={state.bookDetails.directions}

@@ -4,7 +4,6 @@ import { BookShelf } from "./BookShelf";
 
 import type { Book, CreateBookInput } from "../../shared/auto-novel";
 import { BlackHoleBackdrop } from "./BlackHoleBackdrop";
-import { SpotlightCard } from "./SpotlightCard";
 import { WorkbenchQuickActions, WorkbenchStatusStrip } from "./WorkbenchChrome";
 import { isMotionSuppressed, useMotionEnabled } from "../motion/motion-policy";
 import { AceternityAmbientLayer } from "./AceternityAmbientLayer";
@@ -15,7 +14,7 @@ interface CreativeHomeProps {
   books: readonly Book[];
   busy: boolean;
   error: string | null;
-  onCreateIdea: (input: CreateBookInput, autoStart?: boolean) => void;
+  onStartCreateStory: (openTools?: boolean) => void;
   onOpenBook: (book: Book) => void;
   onConfigureProvider: () => void;
   onConfigureWorkflow: () => void;
@@ -27,14 +26,13 @@ interface CreativeHomeProps {
   onOpenCommandPalette?: () => void;
   onOpenNavigation?: () => void;
   onRetry?: () => void;
-  assetDraft?: { id: string; text: string } | null;
 }
 
 export function CreativeHome({
   books,
   busy,
   error,
-  onCreateIdea,
+  onStartCreateStory,
   onOpenBook,
   onConfigureProvider,
   onConfigureWorkflow,
@@ -46,10 +44,8 @@ export function CreativeHome({
   onOpenCommandPalette,
   onOpenNavigation,
   onRetry,
-  assetDraft,
 }: CreativeHomeProps) {
   const processRef = useRef<HTMLOListElement>(null);
-  const ideaToolsRef = useRef<HTMLDetailsElement>(null);
   const [activeProcess, setActiveProcess] = useState(0);
   const processLabels = ["写下想法", "选择方向", "逐章生产", "审核成书"];
 
@@ -87,13 +83,8 @@ export function CreativeHome({
               ...(onOpenCreatorDashboard ? [{ id: "dashboard", label: "创作统计", icon: Activity, onSelect: onOpenCreatorDashboard }] : []),
               ...(onOpenAssetLibrary ? [{ id: "assets", label: "资产库", icon: Library, onSelect: onOpenAssetLibrary }] : []),
               ...(onOpenData ? [{ id: "data", label: "数据管理", icon: Database, onSelect: onOpenData }] : []),
-              { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => {
-                const tools = ideaToolsRef.current;
-                if (!tools) return;
-                tools.open = true;
-                tools.querySelector<HTMLButtonElement>(".preset-book-cover")?.click();
-              } },
-              { id: "new-idea", label: "新故事", icon: Plus, shortcut: "N", onSelect: () => document.getElementById("story-idea")?.focus() },
+              { id: "inspiration", label: "打开灵感册", icon: BookOpen, onSelect: () => onStartCreateStory(true) },
+              { id: "new-idea", label: "新故事", icon: Plus, shortcut: "N", onSelect: () => onStartCreateStory() },
               ...(onToggleMotionMode ? [{ id: "motion", label: motionMode === "quiet" ? "完整动效" : "安静动效", icon: Sparkles, onSelect: onToggleMotionMode }] : []),
             ]}
             onOpenNavigation={onOpenNavigation}
@@ -101,6 +92,7 @@ export function CreativeHome({
           />
         </div>
       </header>
+      {error ? <div className="home-load-error" role="alert"><span>{error}</span>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新连接</button> : null}</div> : null}
       <section className="idea-stage home-entry-layout" aria-label="继续创作或新建故事">
         <section className="home-continue-panel" aria-labelledby="home-continue-title">
           <div className="home-entry-heading">
@@ -124,12 +116,21 @@ export function CreativeHome({
         <section className="idea-column home-create-panel" aria-labelledby="home-create-title">
           <div className="home-create-heading">
             <h2 id="home-create-title">新建故事</h2>
-            <p>写下一句话；先挑故事方向，或明确选择一键开写。</p>
+            <p>把灵感带进专属创作页，慢慢写出下一本小说。</p>
           </div>
-          <SpotlightCard className="idea-spotlight-shell aceternity-moving-border">
-            <IdeaForm busy={busy} error={error} assetDraft={assetDraft} onRetry={onRetry} onSubmit={onCreateIdea} ideaToolsRef={ideaToolsRef} />
-          </SpotlightCard>
-          <div className="idea-caption"><span>先看方向，再决定怎么开写</span><span>输入 → 选择 → 写作</span></div>
+          <div className="home-create-launch">
+            <div className="home-create-launch-copy">
+              <span className="home-create-launch-mark" aria-hidden="true"><Plus size={19} /></span>
+              <div>
+                <strong>从一句灵感开始</strong>
+                <span>草稿会自动保存在当前浏览器，随时可以回来继续。</span>
+              </div>
+            </div>
+            <button className="primary-button home-create-launch-action" type="button" disabled={busy} onClick={() => onStartCreateStory()}>
+              进入创作页 <ChevronRight size={17} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="idea-caption"><span>独立写作空间 · 先构思，再选方向</span><span>输入 → 选择 → 写作</span></div>
         </section>
       </section>
 
@@ -195,10 +196,11 @@ const BUILT_IN_PRESETS: readonly StoryPreset[] = [
 const IDEA_DRAFT_KEY = "xiaoyi.idea-draft.v1";
 const CUSTOM_PRESETS_KEY = "xiaoyi.idea-presets.v1";
 
-function IdeaForm({
+export function StoryIdeaComposer({
   busy,
   error,
   assetDraft,
+  onAssetDraftApplied,
   onRetry,
   onSubmit,
   ideaToolsRef,
@@ -206,6 +208,7 @@ function IdeaForm({
   busy: boolean;
   error: string | null;
   assetDraft?: { id: string; text: string } | null;
+  onAssetDraftApplied?: () => void;
   onRetry?: () => void;
   onSubmit: (input: CreateBookInput, autoStart?: boolean) => void;
   ideaToolsRef: React.RefObject<HTMLDetailsElement | null>;
@@ -250,24 +253,31 @@ function IdeaForm({
     setIdea(assetDraft.text);
     setSelectedPresetId(null);
     setDraftState("restored");
-  }, [assetDraft?.id, assetDraft?.text]);
+    onAssetDraftApplied?.();
+  }, [assetDraft?.id, assetDraft?.text, onAssetDraftApplied]);
 
   useEffect(() => {
     if (!draftReady) return;
-    const timer = window.setTimeout(() => {
+    const persistDraft = () => {
       try {
         if (!idea.trim()) {
           window.localStorage.removeItem(IDEA_DRAFT_KEY);
-          setDraftState("empty");
           return;
         }
         window.localStorage.setItem(IDEA_DRAFT_KEY, JSON.stringify({ idea, directionCount, selectedPresetId, updatedAt: Date.now() }));
-        if (draftState !== "restored") setDraftState("saved");
       } catch {
-        setDraftState("empty");
+        // Draft storage is best-effort and must never block writing.
       }
+    };
+    const timer = window.setTimeout(() => {
+      persistDraft();
+      if (!idea.trim()) setDraftState("empty");
+      else if (draftState !== "restored") setDraftState("saved");
     }, 350);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      persistDraft();
+    };
   }, [directionCount, draftReady, draftState, idea, selectedPresetId]);
 
   const clearDraft = () => {

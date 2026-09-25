@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CreativeHome } from "../../src/client/components/CreativeHome";
+import { StoryCreationPage } from "../../src/client/components/StoryCreationPage";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -15,7 +17,7 @@ function renderHome() {
       books={[]}
       busy={false}
       error={null}
-      onCreateIdea={vi.fn()}
+      onStartCreateStory={vi.fn()}
       onOpenBook={vi.fn()}
       onConfigureProvider={vi.fn()}
       onConfigureWorkflow={vi.fn()}
@@ -23,7 +25,41 @@ function renderHome() {
   );
 }
 
+function renderCreationPage(overrides: Partial<ComponentProps<typeof StoryCreationPage>> = {}) {
+  return render(
+    <StoryCreationPage
+      busy={false}
+      error={null}
+      assetDraft={null}
+      onSubmit={vi.fn()}
+      onBack={vi.fn()}
+      onConfigureProvider={vi.fn()}
+      onConfigureWorkflow={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
+
 describe("CreativeHome author entry", () => {
+  it("keeps the story editor off the home page and opens its dedicated creation page", () => {
+    const onStartCreateStory = vi.fn();
+    render(
+      <CreativeHome
+        books={[]}
+        busy={false}
+        error={null}
+        onStartCreateStory={onStartCreateStory}
+        onOpenBook={vi.fn()}
+        onConfigureProvider={vi.fn()}
+        onConfigureWorkflow={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "故事想法" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "进入创作页" }));
+    expect(onStartCreateStory).toHaveBeenCalledOnce();
+  });
+
   it("puts continuing a saved story beside creating a new one", () => {
     const book = {
       id: "71d98eb2-ec4f-4f18-8fd5-5666de8a9b17",
@@ -46,7 +82,7 @@ describe("CreativeHome author entry", () => {
         books={[book]}
         busy={false}
         error={null}
-        onCreateIdea={vi.fn()}
+        onStartCreateStory={vi.fn()}
         onOpenBook={onOpenBook}
         onConfigureProvider={vi.fn()}
         onConfigureWorkflow={vi.fn()}
@@ -62,17 +98,7 @@ describe("CreativeHome author entry", () => {
 
   it("keeps review-first and one-click creation actions distinct", () => {
     const onCreateIdea = vi.fn();
-    render(
-      <CreativeHome
-        books={[]}
-        busy={false}
-        error={null}
-        onCreateIdea={onCreateIdea}
-        onOpenBook={vi.fn()}
-        onConfigureProvider={vi.fn()}
-        onConfigureWorkflow={vi.fn()}
-      />,
-    );
+    renderCreationPage({ onSubmit: onCreateIdea });
     const idea = screen.getByRole("textbox", { name: "故事想法" });
     fireEvent.change(idea, { target: { value: "一场只发生在旧车站的暴雨" } });
 
@@ -88,23 +114,23 @@ describe("CreativeHome author entry", () => {
     renderHome();
 
     expect(screen.getByTestId("aceternity-ambient")).toHaveAttribute("data-variant", "home");
-    expect(screen.getByRole("textbox", { name: "故事想法" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "故事想法" })).not.toBeInTheDocument();
   });
 
   it("restores an unfinished idea draft from local storage", async () => {
     window.localStorage.setItem("xiaoyi.idea-draft.v1", JSON.stringify({ idea: "一封会回信的信", directionCount: 5, selectedPresetId: null }));
-    renderHome();
+    renderCreationPage();
 
     await waitFor(() => expect(screen.getByRole("textbox", { name: "故事想法" })).toHaveValue("一封会回信的信"));
     expect(screen.getByRole("status")).toHaveTextContent("已恢复上次未完成的草稿");
-    fireEvent.click(screen.getByText("更多构思工具"));
+    fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
     expect(screen.getByRole("spinbutton", { name: "方向数量" })).toHaveValue(5);
   });
 
   it("saves a custom preset without leaving the story form", async () => {
-    renderHome();
+    renderCreationPage();
     fireEvent.change(screen.getByRole("textbox", { name: "故事想法" }), { target: { value: "一座只在雨夜出现的车站" } });
-    fireEvent.click(screen.getByText("更多构思工具"));
+    fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "保存为预设" }));
     fireEvent.change(screen.getByRole("textbox", { name: "预设名称" }), { target: { value: "雨夜车站" } });
     fireEvent.click(screen.getByRole("button", { name: "保存预设" }));
@@ -123,8 +149,8 @@ describe("CreativeHome author entry", () => {
   });
 
   it("gives clear feedback when a preset is adopted", () => {
-    renderHome();
-    fireEvent.click(screen.getByText("更多构思工具"));
+    renderCreationPage();
+    fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: /灵感册翻一页/ }));
     fireEvent.click(screen.getByRole("button", { name: "采用这套写法" }));
 
@@ -133,8 +159,8 @@ describe("CreativeHome author entry", () => {
   });
 
   it("can seed a new idea without leaving the author form", () => {
-    renderHome();
-    fireEvent.click(screen.getByText("更多构思工具"));
+    renderCreationPage();
+    fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: /换个灵感/ }));
 
     expect(screen.getByRole("textbox", { name: "故事想法" })).not.toHaveValue("");
@@ -144,10 +170,10 @@ describe("CreativeHome author entry", () => {
   it("draws a local plot spark and inserts it only when the author chooses", () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0);
     try {
-      renderHome();
+      renderCreationPage();
       const idea = screen.getByRole("textbox", { name: "故事想法" });
       fireEvent.change(idea, { target: { value: "一个只在雨夜开门的旧书店" } });
-      fireEvent.click(screen.getByText("更多构思工具"));
+      fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
       fireEvent.click(screen.getByRole("button", { name: "抽一条情节火花" }));
 
       const spark = screen.getByRole("group", { name: "情节火花建议" });
@@ -171,12 +197,13 @@ describe("CreativeHome author entry", () => {
   });
 
   it("exposes a useful overflow menu instead of a single leftover action", () => {
+    const onStartCreateStory = vi.fn();
     render(
       <CreativeHome
         books={[]}
         busy={false}
         error={null}
-        onCreateIdea={vi.fn()}
+        onStartCreateStory={onStartCreateStory}
         onOpenBook={vi.fn()}
         onConfigureProvider={vi.fn()}
         onConfigureWorkflow={vi.fn()}
@@ -196,22 +223,13 @@ describe("CreativeHome author entry", () => {
     expect(within(menu).getByRole("menuitem", { name: /新故事/ })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: "创作统计" })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: "安静动效" })).toBeVisible();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "打开灵感册" }));
+    expect(onStartCreateStory).toHaveBeenCalledWith(true);
   });
 
   it("turns a local service failure into an actionable retry state", () => {
     const onRetry = vi.fn();
-    render(
-      <CreativeHome
-        books={[]}
-        busy={false}
-        error="本地服务无法完成请求。"
-        onCreateIdea={vi.fn()}
-        onOpenBook={vi.fn()}
-        onConfigureProvider={vi.fn()}
-        onConfigureWorkflow={vi.fn()}
-        onRetry={onRetry}
-      />,
-    );
+    renderCreationPage({ error: "本地服务无法完成请求。", onRetry });
 
     expect(screen.getByRole("alert")).toHaveTextContent("本地服务暂时没连上");
     fireEvent.click(screen.getByRole("button", { name: "重新连接" }));
@@ -221,7 +239,7 @@ describe("CreativeHome author entry", () => {
 
   it("turns a preset page immediately when the saved motion preference is quiet", () => {
     window.localStorage.setItem("xiaoyi.motion-mode.v1", "quiet");
-    renderHome();
+    renderCreationPage();
 
     fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
@@ -231,7 +249,7 @@ describe("CreativeHome author entry", () => {
   });
 
   it("finishes an active preset turn as soon as quiet mode is enabled", async () => {
-    renderHome();
+    renderCreationPage();
     fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
@@ -244,8 +262,8 @@ describe("CreativeHome author entry", () => {
 
   it("keeps the current page when the story idea changes", () => {
     window.localStorage.setItem("xiaoyi.motion-mode.v1", "quiet");
-    renderHome();
-    fireEvent.click(screen.getByText("更多构思工具"));
+    renderCreationPage();
+    fireEvent.click(screen.getByText(/^更多构思工具/, { selector: "summary" }));
     fireEvent.click(document.querySelector<HTMLButtonElement>(".preset-book-cover")!);
     fireEvent.click(screen.getByRole("button", { name: "采用这套写法" }));
     fireEvent.click(screen.getByRole("button", { name: "悬疑短篇" }));

@@ -110,4 +110,13 @@ describe("WorkbenchChrome", () => {
     fireEvent.click(dashboard);
     expect(props.onOpenCreatorDashboard).toHaveBeenCalledOnce();
   });
+
+  it("lists the dedicated story creation page in the workbench navigation", () => {
+    const props = { ...drawerProps(), currentPage: "home" as const };
+    render(<WorkbenchNavigationDrawer {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /新建故事/ }));
+
+    expect(props.onNavigate).toHaveBeenCalledWith("story-creation");
+  });
 });
