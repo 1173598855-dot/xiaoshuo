@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabase } from "../../src/server/db/database";
 import { migrate } from "../../src/server/db/migrations";
@@ -71,5 +71,14 @@ describe("AuthoringService", () => {
     expect(report.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ category: "term-drift", blocking: true, severity: "error" }),
     ]));
+  });
+
+  it("loads book details once while building the quality gate", () => {
+    const { service, books, book } = fixture();
+    const getBook = vi.spyOn(books, "getBook");
+
+    service.qualityGate(book.id);
+
+    expect(getBook).toHaveBeenCalledTimes(1);
   });
 });

@@ -1449,14 +1449,9 @@ export class ProductionRepository {
           throw new CandidateStaleError(candidateId);
         }
 
-      const bookDetails = this.bookRepository.getBook(candidate.bookId);
       const quality = this.qualityGate?.(candidate.bookId, candidateId, true);
       const blockingCount = quality?.issues.filter((issue) => issue.blocking === true || issue.severity === "error").length ?? 0;
       if (blockingCount > 0) throw new QualityGateBlockedError(blockingCount);
-      const projectId = this.database
-        .prepare("SELECT project_id AS projectId FROM books WHERE id = ?")
-        .get(candidate.bookId) as { projectId: string } | undefined;
-      if (!projectId) throw new Error("Book project is missing");
       const chapter = this.getChapter(candidate.chapterId);
       if (chapter.revision !== expectedRevision) {
         throw new ProductionRevisionConflictError(expectedRevision, chapter.revision);
@@ -1584,8 +1579,6 @@ export class ProductionRepository {
             .get(candidate.runId, candidate.bookId, "production") as unknown as RunRow | undefined)
         : undefined;
       if (!runRow) throw new Error("Production run is missing");
-      void bookDetails;
-      void projectId;
       return {
         candidate: acceptedCandidate,
         chapter: acceptedChapter,

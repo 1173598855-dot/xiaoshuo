@@ -221,7 +221,8 @@ export class DesktopDatabaseManager {
     }
     const isFirstRun = this.isFirstRun ?? !existsSync(this.paths.databasePath);
     this.isFirstRun = isFirstRun;
-    if (!isFirstRun && !pendingRecovery) {
+    const hasPreMigrationIntegrityCheck = !isFirstRun && !pendingRecovery;
+    if (hasPreMigrationIntegrityCheck) {
       this.assertActiveDatabaseSupportedBeforeStartup();
     }
     const startupLineage =
@@ -230,7 +231,9 @@ export class DesktopDatabaseManager {
         : undefined;
     const runtime = this.runtime ?? this.createRuntime();
     try {
-      const workspace = this.verifyRuntime(runtime);
+      const workspace = this.verifyRuntime(runtime, {
+        skipIntegrityCheck: hasPreMigrationIntegrityCheck,
+      });
       this.databaseLineage = this.ensureDatabaseLineage(
         runtime.database,
         startupLineage,
@@ -1097,8 +1100,15 @@ getAutoNovelServices(): AutoNovelServices {
     }
   }
 
-  private verifyRuntime(runtime: ServerRuntime): Workspace {
-    this.assertIntegrity(runtime.database);
+  private verifyRuntime(
+    runtime: ServerRuntime,
+    options: { readonly skipIntegrityCheck?: boolean } = {},
+  ): Workspace {
+    if (!options.skipIntegrityCheck) {
+      this.assertIntegrity(runtime.database);
+    } else {
+      this.assertForeignKeys(runtime.database);
+    }
     assertCanonicalDatabaseSchema(runtime.database);
     const workspace = WorkspaceSchema.safeParse(
       runtime.workspaceRepository.getWorkspace(),
@@ -1212,6 +1222,10 @@ getAutoNovelServices(): AutoNovelServices {
     if (integrityMessages.length !== 1 || integrityMessages[0] !== "ok") {
       throw new DatabaseIntegrityError();
     }
+    this.assertForeignKeys(database);
+  }
+
+  private assertForeignKeys(database: DatabaseSyncType): void {
     const foreignKeyViolations = database.prepare("PRAGMA foreign_key_check").all();
     if (foreignKeyViolations.length > 0) {
       throw new DatabaseIntegrityError();

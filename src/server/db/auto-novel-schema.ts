@@ -223,6 +223,12 @@ const AUTO_NOVEL_SCHEMA = `
 
 export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database.exec(AUTO_NOVEL_SCHEMA);
+  const schemaVersionRow = database
+    .prepare("SELECT value FROM app_meta WHERE key = ?")
+    .get("auto_novel_schema_version") as { value: string } | undefined;
+  const currentSchemaVersion = Number(schemaVersionRow?.value ?? 0);
+  const needsCandidateHistoryBackfill =
+    !Number.isSafeInteger(currentSchemaVersion) || currentSchemaVersion < 6;
   const candidateColumns = database.prepare("PRAGMA table_xinfo(chapter_candidates)").all() as Array<{ name: string }>;
   if (!candidateColumns.some(({ name }) => name === "run_id")) {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN run_id TEXT REFERENCES production_runs(id) ON DELETE CASCADE");
@@ -256,25 +262,27 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
     database.exec("ALTER TABLE chapter_candidates ADD COLUMN memory_context_config_json TEXT NOT NULL DEFAULT '{\"mode\":\"automatic\",\"entryIds\":[]}'");
   }
   database.exec("CREATE INDEX IF NOT EXISTS chapter_candidates_run_idx ON chapter_candidates(run_id, chapter_id, created_at DESC)");
-  const legacyCandidates = database.prepare(
-    `SELECT c.id, c.original_text, c.candidate_text, c.created_at
-       FROM chapter_candidates c
-      WHERE NOT EXISTS (
-        SELECT 1 FROM candidate_text_revisions r WHERE r.candidate_id = c.id
-      )`,
-  ).all() as Array<{ id: string; original_text: string; candidate_text: string; created_at: string }>;
-  if (legacyCandidates.length > 0) {
-    const insertCandidateHistory = database.prepare(
-      `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
-       VALUES (?, ?, 0, ?, ?)`,
-    );
-    for (const candidate of legacyCandidates) {
-      insertCandidateHistory.run(
-        randomUUID(),
-        candidate.id,
-        candidate.original_text || candidate.candidate_text,
-        candidate.created_at,
+  if (needsCandidateHistoryBackfill) {
+    const legacyCandidates = database.prepare(
+      `SELECT c.id, c.original_text, c.candidate_text, c.created_at
+         FROM chapter_candidates c
+        WHERE NOT EXISTS (
+          SELECT 1 FROM candidate_text_revisions r WHERE r.candidate_id = c.id
+        )`,
+    ).all() as Array<{ id: string; original_text: string; candidate_text: string; created_at: string }>;
+    if (legacyCandidates.length > 0) {
+      const insertCandidateHistory = database.prepare(
+        `INSERT OR IGNORE INTO candidate_text_revisions (id, candidate_id, revision, text, created_at)
+         VALUES (?, ?, 0, ?, ?)`,
       );
+      for (const candidate of legacyCandidates) {
+        insertCandidateHistory.run(
+          randomUUID(),
+          candidate.id,
+          candidate.original_text || candidate.candidate_text,
+          candidate.created_at,
+        );
+      }
     }
   }
   const columns = database.prepare("PRAGMA table_xinfo(books)").all() as Array<{ name: string }>;
@@ -371,8 +379,8 @@ export function ensureAutoNovelSchema(database: DatabaseSync): void {
   database
     .prepare(
       `INSERT INTO app_meta (key, value)
-       VALUES ('auto_novel_schema_version', '5')
+       VALUES ('auto_novel_schema_version', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
-    .run();
+    .run(String(Number.isSafeInteger(currentSchemaVersion) ? Math.max(6, currentSchemaVersion) : 6));
 }

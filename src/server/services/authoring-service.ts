@@ -55,6 +55,14 @@ export class AuthoringService {
 
   consistency(bookId: string, options: { readonly seed?: boolean } = {}): ConsistencyReport {
     const details = this.bookRepository.getBook(bookId);
+    return this.buildConsistencyReport(bookId, details, options);
+  }
+
+  private buildConsistencyReport(
+    bookId: string,
+    details: ReturnType<BookRepository["getBook"]>,
+    options: { readonly seed?: boolean },
+  ): ConsistencyReport {
     const entries = options.seed === false
       ? this.memoryService.listPersisted(bookId, { includeArchived: true })
       : this.memoryService.list(bookId, { includeArchived: true });
@@ -100,7 +108,8 @@ export class AuthoringService {
    * report or bypass the blocking issues returned here.
    */
   qualityGate(bookId: string, candidateId: string | null = null, readOnly = false): QualityGateReport {
-    const consistency = this.consistency(bookId, { seed: !readOnly });
+    const details = this.bookRepository.getBook(bookId);
+    const consistency = this.buildConsistencyReport(bookId, details, { seed: !readOnly });
     const issues: QualityGateIssue[] = consistency.issues.map((issue) => ({
       id: `consistency-${issue.id}`,
       category: issue.code.includes("FORESHADOWING")
@@ -129,7 +138,7 @@ export class AuthoringService {
       ? this.authoringWorkspaceRepository?.getPersisted(bookId)
       : this.authoringWorkspaceRepository?.get(bookId);
     const chapters = this.productionRepository.getChapters(bookId).filter((chapter) => chapter.revision > 0);
-    const plans = this.bookRepository.getBook(bookId).chapterPlans;
+    const plans = details.chapterPlans;
     const seenTitles = new Map<string, number>();
     for (const plan of plans) {
       const key = plan.title.trim().toLocaleLowerCase();
